@@ -12,7 +12,7 @@
     "test": "turbo test",
     "clean": "turbo clean",
     "typecheck": "turbo typecheck",
-    "release": "turbo build --force && cd packages/core && npm publish --access public && cd ../tracker && npm publish --access public && cd ../client && npm publish --access public && cd ../node && npm publish --access public && cd ../react && npm publish --access public && cd ../react-native && npm publish --access public"
+    "release": "turbo build --force && cd packages/core && bun publish --access public && cd ../tracker && bun publish --access public && cd ../client && bun publish --access public && cd ../node && bun publish --access public && cd ../react && bun publish --access public && cd ../react-native && bun publish --access public"
   },
   "packageManager": "bun@1.2.1",
   "devDependencies": {
