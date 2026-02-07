@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { LitemetricsClient, EventListItem, EventType, Period } from '@litemetrics/client';
 import { queryKeys } from '../hooks/useAnalytics';
-import { getBrowserIcon, getOSIcon, getDeviceIcon } from './icons';
+import { getBrowserIcon, getOSIcon, getDeviceIcon, countryToFlag } from './icons';
 import { ExportButton } from './ExportButton';
 
 interface EventsExplorerProps {
@@ -362,10 +362,3 @@ function EventDetail({ event, onUserClick }: { event: EventListItem; onUserClick
   );
 }
 
-function countryToFlag(code: string): string {
-  if (code.length !== 2) return '';
-  const upper = code.toUpperCase();
-  return String.fromCodePoint(
-    ...Array.from(upper).map((c) => 0x1F1E6 + c.charCodeAt(0) - 65)
-  );
-}

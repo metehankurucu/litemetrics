@@ -12,13 +12,13 @@ export function StatCard({ title, value, loading, previousValue, changePercent }
   const isNegative = hasComparison && changePercent! < 0;
 
   return (
-    <div className="rounded-xl bg-white border border-zinc-200 p-5 hover:border-zinc-300 transition-colors">
+    <div className="rounded-xl bg-white border border-zinc-200 p-6 hover:border-zinc-300 hover:shadow-md hover:-translate-y-0.5 transition-all duration-200">
       <p className="text-xs font-medium text-zinc-400 uppercase tracking-wide mb-1">{title}</p>
       {loading ? (
         <div className="h-8 w-20 bg-zinc-100 rounded animate-pulse" />
       ) : (
         <div className="flex items-end gap-2">
-          <p className="text-2xl font-semibold tabular-nums text-zinc-900">
+          <p className="text-3xl font-semibold tabular-nums text-zinc-900">
             {typeof value === 'number' ? value.toLocaleString() : value}
           </p>
           {hasComparison && (

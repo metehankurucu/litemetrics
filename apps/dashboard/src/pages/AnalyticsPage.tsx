@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { QueryResult, Period, LitemetricsClient } from '@litemetrics/client';
 import { queryKeys } from '../hooks/useAnalytics';
 import { StatCard } from '../components/StatCard';
-import { TopList } from '../components/TopList';
+import { TopList, type TopListType } from '../components/TopList';
 import { TimeSeriesChart } from '../components/TimeSeriesChart';
 import { PeriodSelector } from '../components/PeriodSelector';
 import { WorldMap } from '../components/WorldMap';
@@ -12,13 +12,13 @@ import { ExportButton } from '../components/ExportButton';
 
 type TopMetric = 'top_pages' | 'top_referrers' | 'top_countries' | 'top_events' | 'top_browsers' | 'top_devices';
 
-const topMetrics: { metric: TopMetric; title: string }[] = [
-  { metric: 'top_pages', title: 'Pages' },
-  { metric: 'top_referrers', title: 'Referrers' },
-  { metric: 'top_countries', title: 'Countries' },
-  { metric: 'top_events', title: 'Events' },
-  { metric: 'top_browsers', title: 'Browsers' },
-  { metric: 'top_devices', title: 'Devices' },
+const topMetrics: { metric: TopMetric; title: string; type: TopListType }[] = [
+  { metric: 'top_pages', title: 'Pages', type: 'pages' },
+  { metric: 'top_referrers', title: 'Referrers', type: 'referrers' },
+  { metric: 'top_countries', title: 'Countries', type: 'countries' },
+  { metric: 'top_events', title: 'Events', type: 'events' },
+  { metric: 'top_browsers', title: 'Browsers', type: 'browsers' },
+  { metric: 'top_devices', title: 'Devices', type: 'devices' },
 ];
 
 interface AnalyticsPageProps {
@@ -108,7 +108,7 @@ export function AnalyticsPage({ siteId, client, period, onPeriodChange }: Analyt
       <TimeSeriesChart client={client} siteId={siteId} period={effectivePeriod} />
 
       {/* Overview Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-5 mb-6">
         <StatCard
           title="Pageviews"
           value={overview.pageviews?.total ?? 0}
@@ -139,17 +139,18 @@ export function AnalyticsPage({ siteId, client, period, onPeriodChange }: Analyt
       <WorldMap client={client} siteId={siteId} period={effectivePeriod} />
 
       {/* Pie Charts */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-6">
         <PieChartCard title="Browsers" data={browserPieData} loading={loading} />
         <PieChartCard title="Devices" data={devicePieData} loading={loading} />
       </div>
 
       {/* Top Lists */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         {topMetrics.map((t) => (
           <TopList
             key={t.metric}
             title={t.title}
+            type={t.type}
             data={tops[t.metric]?.data ?? null}
             loading={loading}
           />

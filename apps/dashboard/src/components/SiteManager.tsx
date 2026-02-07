@@ -186,6 +186,21 @@ export function SiteManager() {
     },
   });
 
+  const updateMutation = useMutation({
+    mutationFn: async ({ siteId, data }: { siteId: string; data: { allowedOrigins?: string[] } }) => {
+      const { site } = await sitesClient.updateSite(siteId, data);
+      return site;
+    },
+    onSuccess: (site) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.sites() });
+      setSelected(site);
+      setError(null);
+    },
+    onError: (err) => {
+      setError(err instanceof Error ? err.message : 'Failed to update site');
+    },
+  });
+
   const regenerateMutation = useMutation({
     mutationFn: async (siteId: string) => {
       const { site } = await sitesClient.regenerateSecret(siteId);
@@ -330,11 +345,78 @@ export function SiteManager() {
               <Field label="Updated" value={new Date(selected.updatedAt).toLocaleString()} />
             </div>
 
+            {/* Allowed Hostnames */}
+            <AllowedHostnames
+              hostnames={selected.allowedOrigins ?? []}
+              onUpdate={(hostnames) => updateMutation.mutate({ siteId: selected.siteId, data: { allowedOrigins: hostnames } })}
+              saving={updateMutation.isPending}
+            />
+
             {/* Setup Guide */}
             <SetupGuide site={selected} />
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function AllowedHostnames({ hostnames, onUpdate, saving }: {
+  hostnames: string[];
+  onUpdate: (hostnames: string[]) => void;
+  saving: boolean;
+}) {
+  const [input, setInput] = useState('');
+
+  const handleAdd = () => {
+    const val = input.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+    if (!val || hostnames.includes(val)) return;
+    onUpdate([...hostnames, val]);
+    setInput('');
+  };
+
+  const handleRemove = (hostname: string) => {
+    onUpdate(hostnames.filter((h) => h !== hostname));
+  };
+
+  return (
+    <div>
+      <p className="text-xs text-zinc-400 mb-2">Allowed Hostnames</p>
+      <div className="flex flex-wrap gap-2 mb-2">
+        {hostnames.map((h) => (
+          <span key={h} className="inline-flex items-center gap-1 bg-zinc-100 border border-zinc-200 rounded-lg px-2.5 py-1 text-sm font-mono text-zinc-700">
+            {h}
+            <button
+              onClick={() => handleRemove(h)}
+              className="text-zinc-400 hover:text-red-500 transition-colors ml-0.5"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </span>
+        ))}
+        {hostnames.length === 0 && (
+          <span className="text-xs text-zinc-400 italic">All hostnames allowed</span>
+        )}
+      </div>
+      <div className="flex gap-2">
+        <input
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
+          placeholder="example.com"
+          className="flex-1 bg-white border border-zinc-300 rounded-lg px-3 py-1.5 text-sm font-mono focus:outline-none focus:border-indigo-500"
+        />
+        <button
+          onClick={handleAdd}
+          disabled={saving}
+          className="text-xs bg-indigo-600 hover:bg-indigo-500 disabled:bg-indigo-400 text-white px-3 py-1.5 rounded-lg transition-colors"
+        >
+          {saving ? 'Saving...' : 'Add'}
+        </button>
+      </div>
+      <p className="text-xs text-zinc-400 mt-1.5">Only events from these hostnames will be recorded. Leave empty to allow all.</p>
     </div>
   );
 }

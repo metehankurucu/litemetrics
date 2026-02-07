@@ -116,6 +116,10 @@ export interface TrackerConfig {
   endpoint: string;
   autoTrack?: boolean;
   autoSpa?: boolean;
+  autoOutbound?: boolean;
+  autoFileDownloads?: boolean;
+  autoScrollDepth?: boolean;
+  autoRageClicks?: boolean;
   batchSize?: number;
   flushInterval?: number;
   respectDnt?: boolean;

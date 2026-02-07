@@ -148,6 +148,31 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
         const ip = extractIp(req);
         const enriched = enrichEvents(payload.events, ip, userAgent);
 
+        // Hostname filtering: check site's allowedOrigins
+        const siteId = enriched[0]?.siteId;
+        if (siteId) {
+          const site = await db.getSite(siteId);
+          if (site?.allowedOrigins && site.allowedOrigins.length > 0) {
+            const allowed = new Set(site.allowedOrigins.map((h) => h.toLowerCase()));
+            const filtered = enriched.filter((event) => {
+              if (!event.url) return true; // non-pageview events pass through
+              try {
+                const hostname = new URL(event.url).hostname.toLowerCase();
+                return allowed.has(hostname);
+              } catch {
+                return true; // malformed URLs pass through
+              }
+            });
+            if (filtered.length === 0) {
+              sendJson(res, 200, { ok: true });
+              return;
+            }
+            await db.insertEvents(filtered);
+            sendJson(res, 200, { ok: true });
+            return;
+          }
+        }
+
         await db.insertEvents(enriched);
         sendJson(res, 200, { ok: true });
       } catch (err) {

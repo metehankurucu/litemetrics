@@ -9,7 +9,7 @@ import type {
 import { STORAGE_KEY_OPTOUT } from '@litemetrics/core';
 import { SessionManager } from './session';
 import { Transport } from './transport';
-import { AutoTracker } from './auto';
+import { AutoTracker, initOutboundTracking, initFileDownloadTracking, initScrollDepthTracking, initRageClickTracking } from './auto';
 import { parseUTM, now } from './utils';
 import { initAttributeTracking } from './attributes';
 
@@ -47,6 +47,13 @@ export function createTracker(config: TrackerConfig): LitemetricsInstance {
     // ignore
   }
 
+  const {
+    autoOutbound = true,
+    autoFileDownloads = true,
+    autoScrollDepth = true,
+    autoRageClicks = true,
+  } = config;
+
   const session = new SessionManager();
   const transport = new Transport({
     endpoint,
@@ -56,6 +63,7 @@ export function createTracker(config: TrackerConfig): LitemetricsInstance {
   });
   let autoTracker: AutoTracker | null = null;
   let cleanupAttributes: (() => void) | null = null;
+  const autoCleanups: (() => void)[] = [];
   let optedOut = false;
 
   function getContext(): ClientContext {
@@ -181,6 +189,7 @@ export function createTracker(config: TrackerConfig): LitemetricsInstance {
 
     destroy(): void {
       cleanupAttributes?.();
+      autoCleanups.forEach((fn) => fn());
       autoTracker?.stop();
       transport.destroy();
     },
@@ -189,6 +198,12 @@ export function createTracker(config: TrackerConfig): LitemetricsInstance {
   // Initialize data-attribute event tracking
   if (autoTrack && typeof document !== 'undefined') {
     cleanupAttributes = initAttributeTracking(instance);
+
+    // Enhanced auto-tracking
+    if (autoOutbound) autoCleanups.push(initOutboundTracking(instance));
+    if (autoFileDownloads) autoCleanups.push(initFileDownloadTracking(instance));
+    if (autoScrollDepth) autoCleanups.push(initScrollDepthTracking(instance));
+    if (autoRageClicks) autoCleanups.push(initRageClickTracking(instance));
   }
 
   return instance;

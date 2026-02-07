@@ -1,17 +1,51 @@
+import { useState } from 'react';
 import type { QueryDataPoint } from '@litemetrics/client';
+import { getBrowserIcon, getOSIcon, getDeviceIcon, getReferrerIcon, countryToFlag } from './icons';
+
+export type TopListType = 'pages' | 'referrers' | 'countries' | 'events' | 'browsers' | 'devices';
 
 interface TopListProps {
   title: string;
   data: QueryDataPoint[] | null;
   loading?: boolean;
+  type?: TopListType;
 }
 
-export function TopList({ title, data, loading }: TopListProps) {
+function getIcon(type: TopListType | undefined, key: string): React.ReactNode {
+  if (!type) return null;
+  switch (type) {
+    case 'pages':
+      return (
+        <svg className="w-4 h-4 flex-shrink-0 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+        </svg>
+      );
+    case 'referrers':
+      return getReferrerIcon(key);
+    case 'countries': {
+      const flag = countryToFlag(key);
+      return flag ? <span className="text-sm flex-shrink-0 leading-none">{flag}</span> : null;
+    }
+    case 'events':
+      return (
+        <svg className="w-4 h-4 flex-shrink-0 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 10V3L4 14h7v7l9-11h-7z" />
+        </svg>
+      );
+    case 'browsers':
+      return getBrowserIcon(key);
+    case 'devices':
+      return getDeviceIcon(key);
+  }
+}
+
+export function TopList({ title, data, loading, type }: TopListProps) {
+  const [tooltip, setTooltip] = useState<{ key: string; value: number; pct: number; x: number; y: number } | null>(null);
   const maxValue = data ? Math.max(...data.map((d) => d.value), 1) : 1;
   const totalValue = data ? data.reduce((sum, d) => sum + d.value, 0) : 0;
 
   return (
-    <div className="rounded-xl bg-white border border-zinc-200 p-5">
+    <div className="rounded-xl bg-white border border-zinc-200 p-5 hover:shadow-sm transition-all duration-200">
       <h3 className="text-xs font-medium text-zinc-400 uppercase tracking-wide mb-4">{title}</h3>
       {loading ? (
         <div className="space-y-3">
@@ -24,22 +58,34 @@ export function TopList({ title, data, loading }: TopListProps) {
           <p className="text-zinc-300 text-sm">No data yet</p>
         </div>
       ) : (
-        <div className="space-y-1.5">
+        <div className="space-y-1">
           {data.map((item) => {
             const pct = totalValue > 0 ? Math.round((item.value / totalValue) * 100) : 0;
+            const icon = getIcon(type, item.key);
             return (
-              <div key={item.key} className="relative group">
+              <div
+                key={item.key}
+                className="relative group"
+                onMouseEnter={(e) => {
+                  const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                  setTooltip({ key: item.key, value: item.value, pct, x: rect.left + rect.width / 2, y: rect.top });
+                }}
+                onMouseLeave={() => setTooltip(null)}
+              >
                 <div
-                  className="absolute inset-0 bg-indigo-50 rounded transition-all group-hover:bg-indigo-100/80"
+                  className="absolute inset-0 bg-indigo-50 rounded transition-all group-hover:bg-indigo-100"
                   style={{ width: `${(item.value / maxValue) * 100}%` }}
                 />
                 <div className="relative flex items-center justify-between px-2.5 py-1.5 text-sm">
-                  <span className="truncate mr-3 text-zinc-700">{item.key || '(direct)'}</span>
+                  <div className="flex items-center gap-2 truncate mr-3">
+                    {icon}
+                    <span className="truncate text-zinc-700">{item.key || '(direct)'}</span>
+                  </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
-                    <span className="text-zinc-500 tabular-nums text-xs">
+                    <span className="text-zinc-600 tabular-nums text-xs font-medium">
                       {item.value.toLocaleString()}
                     </span>
-                    <span className="text-zinc-300 tabular-nums text-xs w-8 text-right">
+                    <span className="text-zinc-400 tabular-nums text-xs w-8 text-right">
                       {pct}%
                     </span>
                   </div>
@@ -47,6 +93,15 @@ export function TopList({ title, data, loading }: TopListProps) {
               </div>
             );
           })}
+        </div>
+      )}
+      {tooltip && (
+        <div
+          className="fixed z-50 bg-zinc-900 text-white text-xs rounded-lg px-3 py-2 shadow-lg pointer-events-none max-w-xs"
+          style={{ left: tooltip.x, top: tooltip.y - 8, transform: 'translate(-50%, -100%)' }}
+        >
+          <p className="font-medium break-all">{tooltip.key || '(direct)'}</p>
+          <p className="text-zinc-400 mt-0.5">{tooltip.value.toLocaleString()} &middot; {tooltip.pct}%</p>
         </div>
       )}
     </div>
