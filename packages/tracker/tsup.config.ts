@@ -5,7 +5,7 @@ export default defineConfig([
     entry: ['src/index.ts'],
     format: ['esm', 'cjs'],
     outDir: 'dist',
-    dts: true,
+    dts: { resolve: ['@litemetrics/core'] },
     clean: true,
     sourcemap: true,
     outExtension({ format }) {

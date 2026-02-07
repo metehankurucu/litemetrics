@@ -1,0 +1,31 @@
+{
+  "name": "@litemetrics/example-ui-demo",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build"
+  },
+  "dependencies": {
+    "@litemetrics/ui": "workspace:*",
+    "@litemetrics/client": "workspace:*",
+    "@litemetrics/core": "workspace:*",
+    "@tanstack/react-query": "^5",
+    "react": "^19",
+    "react-dom": "^19",
+    "react-icons": "^5.5.0",
+    "recharts": "^2",
+    "react-simple-maps": "^3"
+  },
+  "devDependencies": {
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@vitejs/plugin-react": "^4",
+    "autoprefixer": "^10",
+    "postcss": "^8",
+    "tailwindcss": "^3",
+    "typescript": "^5.7",
+    "vite": "^6"
+  }
+}

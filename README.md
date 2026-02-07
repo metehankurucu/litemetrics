@@ -123,6 +123,7 @@ For MongoDB instead: `db: { adapter: 'mongodb', url: 'mongodb://localhost:27017/
 | [`@litemetrics/react`](./packages/react) | React provider and hooks |
 | [`@litemetrics/react-native`](./packages/react-native) | React Native / Expo provider |
 | [`@litemetrics/client`](./packages/client) | Typed client for reading analytics data |
+| [`@litemetrics/ui`](./packages/ui) | Themeable React dashboard components (dark mode, CSS variables) |
 | [`@litemetrics/dashboard`](./apps/dashboard) | Analytics dashboard (React + Vite + Tailwind) |
 | [`@litemetrics/server`](./apps/server) | Self-hosted server (serves dashboard + API) |
 

@@ -1,0 +1,74 @@
+{
+  "name": "@litemetrics/ui",
+  "version": "0.1.1",
+  "description": "Pre-built React dashboard components for Litemetrics analytics",
+  "license": "MIT",
+  "author": "Metehan Kurucu",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/metehankurucu/litemetrics",
+    "directory": "packages/ui"
+  },
+  "keywords": [
+    "analytics",
+    "litemetrics",
+    "react",
+    "dashboard",
+    "components",
+    "ui"
+  ],
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@litemetrics/client": "workspace:*",
+    "@litemetrics/core": "workspace:*",
+    "react-icons": "^5.5.0"
+  },
+  "peerDependencies": {
+    "react": ">=18",
+    "react-dom": ">=18",
+    "recharts": ">=2",
+    "@tanstack/react-query": ">=5",
+    "tailwindcss": ">=3"
+  },
+  "peerDependenciesMeta": {
+    "react-simple-maps": {
+      "optional": true
+    },
+    "tailwindcss": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@tanstack/react-query": "^5",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "react": "^19",
+    "react-dom": "^19",
+    "react-simple-maps": "^3",
+    "recharts": "^2",
+    "tsup": "^8",
+    "typescript": "^5.7"
+  }
+}
