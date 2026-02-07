@@ -8,7 +8,7 @@ services:
       - clickhouse_data:/var/lib/clickhouse
       - clickhouse_logs:/var/log/clickhouse-server
     environment:
-      CLICKHOUSE_DB: insayt
+      CLICKHOUSE_DB: litemetrics
       CLICKHOUSE_USER: default
       CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
     cap_add:
@@ -24,7 +24,7 @@ services:
       retries: 10
     restart: unless-stopped
 
-  insayt:
+  litemetrics:
     build:
       context: .
       dockerfile: Dockerfile

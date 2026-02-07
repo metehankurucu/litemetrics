@@ -1,5 +1,5 @@
 {
-  "name": "@insayt/example-react",
+  "name": "@litemetrics/example-react",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -8,8 +8,8 @@
     "build": "vite build"
   },
   "dependencies": {
-    "@insayt/react": "workspace:*",
-    "@insayt/client": "workspace:*",
+    "@litemetrics/react": "workspace:*",
+    "@litemetrics/client": "workspace:*",
     "react": "^19",
     "react-dom": "^19"
   },

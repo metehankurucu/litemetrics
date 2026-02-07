@@ -1,11 +1,11 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { createSitesClient, type Site } from '@insayt/client';
+import { createSitesClient, type Site } from '@litemetrics/client';
 import { useAuth } from '../auth';
 
 export function SiteManager() {
   const { adminSecret } = useAuth();
   const sitesClient = useMemo(() => createSitesClient({
-    baseUrl: import.meta.env.VITE_INSAYT_URL || '',
+    baseUrl: import.meta.env.VITE_LITEMETRICS_URL || '',
     adminSecret: adminSecret || '',
   }), [adminSecret]);
   const [sites, setSites] = useState<Site[]>([]);
@@ -194,9 +194,9 @@ export function SiteManager() {
             <div>
               <h3 className="text-sm font-medium text-zinc-500 mb-2">Tracker Integration</h3>
               <pre className="bg-zinc-50 border border-zinc-200 rounded-lg p-4 text-xs text-zinc-700 overflow-x-auto">
-{`<script src="YOUR_SERVER/insayt.js"></script>
+{`<script src="YOUR_SERVER/litemetrics.js"></script>
 <script>
-  Insayt.init({
+  Litemetrics.init({
     siteId: '${selected.siteId}',
     endpoint: 'YOUR_SERVER/api/collect',
   });
@@ -207,7 +207,7 @@ export function SiteManager() {
             <div>
               <h3 className="text-sm font-medium text-zinc-500 mb-2">Client SDK</h3>
               <pre className="bg-zinc-50 border border-zinc-200 rounded-lg p-4 text-xs text-zinc-700 overflow-x-auto">
-{`import { createClient } from '@insayt/client';
+{`import { createClient } from '@litemetrics/client';
 
 const client = createClient({
   baseUrl: 'YOUR_SERVER',

@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react';
-import { useInsayt, usePageView, useTrackEvent } from '@insayt/react';
-import { createClient, type QueryResult } from '@insayt/client';
+import { useLitemetrics, usePageView, useTrackEvent } from '@litemetrics/react';
+import { createClient, type QueryResult } from '@litemetrics/client';
 
-const INSAYT_URL = import.meta.env.VITE_INSAYT_URL || 'http://localhost:3002';
-const SITE_ID = import.meta.env.VITE_INSAYT_SITE_ID || 'demo';
-const SECRET_KEY = import.meta.env.VITE_INSAYT_SECRET_KEY || '';
+const LITEMETRICS_URL = import.meta.env.VITE_LITEMETRICS_URL || 'http://localhost:3002';
+const SITE_ID = import.meta.env.VITE_LITEMETRICS_SITE_ID || 'demo';
+const SECRET_KEY = import.meta.env.VITE_LITEMETRICS_SECRET_KEY || '';
 
 const client = createClient({
-  baseUrl: INSAYT_URL,
+  baseUrl: LITEMETRICS_URL,
   siteId: SITE_ID,
   secretKey: SECRET_KEY || undefined,
 });
@@ -19,7 +19,7 @@ export function App() {
 
   return (
     <div style={{ maxWidth: 800, margin: '0 auto', padding: 24 }}>
-      <h1 style={{ fontSize: 24, marginBottom: 8 }}>Insayt React Example</h1>
+      <h1 style={{ fontSize: 24, marginBottom: 8 }}>Litemetrics React Example</h1>
       <p style={{ color: '#71717a', marginBottom: 24, fontSize: 14 }}>
         siteId: <code style={{ background: '#27272a', padding: '2px 6px', borderRadius: 4 }}>{SITE_ID}</code>
       </p>
@@ -58,7 +58,7 @@ export function App() {
 
 function HomePage() {
   usePageView('/home');
-  const { track } = useInsayt();
+  const { track } = useLitemetrics();
 
   return (
     <Section title="Home">
@@ -85,7 +85,7 @@ function AboutPage() {
 
 function PricingPage() {
   usePageView('/pricing');
-  const { track, identify } = useInsayt();
+  const { track, identify } = useLitemetrics();
 
   return (
     <Section title="Pricing">

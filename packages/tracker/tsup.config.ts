@@ -13,21 +13,21 @@ export default defineConfig([
     },
     esbuildOptions(options) {
       options.outbase = 'src';
-      options.entryNames = 'insayt';
+      options.entryNames = 'litemetrics';
     },
   },
   {
     entry: ['src/index.ts'],
     format: ['iife'],
     outDir: 'dist',
-    globalName: 'Insayt',
+    globalName: 'Litemetrics',
     minify: true,
     outExtension() {
       return { js: '.global.js' };
     },
     esbuildOptions(options) {
       options.outbase = 'src';
-      options.entryNames = 'insayt';
+      options.entryNames = 'litemetrics';
     },
   },
 ]);

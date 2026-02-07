@@ -2,8 +2,8 @@
 
 ## Authentication
 
-- **Admin Secret** -- Full access to site management. Header: `X-Insayt-Admin-Secret`
-- **Site Secret** -- Read access to a site's analytics. Header: `X-Insayt-Secret`
+- **Admin Secret** -- Full access to site management. Header: `X-Litemetrics-Admin-Secret`
+- **Site Secret** -- Read access to a site's analytics. Header: `X-Litemetrics-Secret`
 - The collect endpoint is public (no auth).
 
 ---
@@ -52,7 +52,7 @@ Max 100 events per request.
 
 Query analytics metrics for a site.
 
-**Headers:** `X-Insayt-Secret: sk_your_secret_key`
+**Headers:** `X-Litemetrics-Secret: sk_your_secret_key`
 
 **Parameters:**
 
@@ -173,7 +173,7 @@ Time series data uses the same endpoint with `metric=timeseries`.
 
 List tracked events with pagination.
 
-**Headers:** `X-Insayt-Secret: sk_your_secret_key`
+**Headers:** `X-Litemetrics-Secret: sk_your_secret_key`
 
 **Parameters:**
 
@@ -211,7 +211,7 @@ List tracked events with pagination.
 
 List tracked visitors.
 
-**Headers:** `X-Insayt-Secret: sk_your_secret_key`
+**Headers:** `X-Litemetrics-Secret: sk_your_secret_key`
 
 **Parameters:**
 
@@ -235,7 +235,7 @@ Get a visitor's event history.
 
 ## Site Management -- /api/sites
 
-All endpoints require `X-Insayt-Admin-Secret` header.
+All endpoints require `X-Litemetrics-Admin-Secret` header.
 
 | Method | Path | Description |
 |--------|------|-------------|

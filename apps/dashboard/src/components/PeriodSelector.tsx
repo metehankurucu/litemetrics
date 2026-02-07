@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { Period } from '@insayt/client';
+import type { Period } from '@litemetrics/client';
 import { DateRangePicker } from './DateRangePicker';
 
 const periods: { value: Period; label: string }[] = [

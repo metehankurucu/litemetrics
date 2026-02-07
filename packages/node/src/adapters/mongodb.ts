@@ -1,4 +1,4 @@
-import type { DBAdapter, EnrichedEvent, QueryParams, QueryResult, QueryDataPoint, TimeSeriesParams, TimeSeriesResult, RetentionParams, RetentionResult, RetentionCohort, Site, CreateSiteRequest, UpdateSiteRequest, EventListParams, EventListResult, EventListItem, UserListParams, UserListResult, UserDetail } from '@insayt/core';
+import type { DBAdapter, EnrichedEvent, QueryParams, QueryResult, QueryDataPoint, TimeSeriesParams, TimeSeriesResult, RetentionParams, RetentionResult, RetentionCohort, Site, CreateSiteRequest, UpdateSiteRequest, EventListParams, EventListResult, EventListItem, UserListParams, UserListResult, UserDetail } from '@litemetrics/core';
 import { MongoClient, type Collection, type Db } from 'mongodb';
 import { resolvePeriod, previousPeriodRange, autoGranularity, granularityToDateFormat, fillBuckets, getISOWeek, generateSiteId, generateSecretKey } from './utils';
 
@@ -44,8 +44,8 @@ interface SiteDocument {
   updated_at: Date;
 }
 
-const EVENTS_COLLECTION = 'insayt_events';
-const SITES_COLLECTION = 'insayt_sites';
+const EVENTS_COLLECTION = 'litemetrics_events';
+const SITES_COLLECTION = 'litemetrics_sites';
 
 export class MongoDBAdapter implements DBAdapter {
   private client: MongoClient;

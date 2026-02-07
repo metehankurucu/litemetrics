@@ -1,3 +1,3 @@
-export { InsaytProvider } from './context';
-export type { InsaytProviderProps } from './context';
-export { useInsayt, usePageView, useTrackEvent } from './hooks';
+export { LitemetricsProvider } from './context';
+export type { LitemetricsProviderProps } from './context';
+export { useLitemetrics, usePageView, useTrackEvent } from './hooks';

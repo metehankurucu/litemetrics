@@ -1,16 +1,16 @@
 # Getting Started
 
-Insayt runs inside your existing Node.js server with ClickHouse (default) or MongoDB. No separate service needed.
+Litemetrics runs inside your existing Node.js server with ClickHouse (default) or MongoDB. No separate service needed.
 
 ## 1. Add the Collector
 
 ```bash
-bun add @insayt/node
+bun add @litemetrics/node
 ```
 
 ```ts
 import express from 'express';
-import { createCollector } from '@insayt/node';
+import { createCollector } from '@litemetrics/node';
 
 const app = express();
 app.use(express.json());
@@ -31,7 +31,7 @@ app.all('/api/sites/*', (req, res) => collector.sitesHandler()(req, res));
 app.listen(3002);
 ```
 
-This creates 2 tables in ClickHouse (`insayt_events` and `insayt_sites`). Existing data is not touched.
+This creates 2 tables in ClickHouse (`litemetrics_events` and `litemetrics_sites`). Existing data is not touched.
 
 Using MongoDB instead? Pass `{ adapter: 'mongodb', url: 'mongodb://localhost:27017/myapp' }` to `db`.
 
@@ -50,7 +50,7 @@ console.log(site.secretKey);  // sk_...
 ```bash
 curl -X POST http://localhost:3002/api/sites \
   -H "Content-Type: application/json" \
-  -H "X-Insayt-Admin-Secret: change-me" \
+  -H "X-Litemetrics-Admin-Secret: change-me" \
   -d '{"name": "My App"}'
 ```
 
@@ -61,9 +61,9 @@ Save the `siteId` (public, goes in the tracker) and `secretKey` (private, for re
 **HTML:**
 
 ```html
-<script src="http://localhost:3002/insayt.js"></script>
+<script src="http://localhost:3002/litemetrics.js"></script>
 <script>
-  Insayt.createTracker({
+  Litemetrics.createTracker({
     siteId: 'YOUR_SITE_ID',
     endpoint: 'http://localhost:3002/api/collect'
   });
@@ -73,17 +73,17 @@ Save the `siteId` (public, goes in the tracker) and `secretKey` (private, for re
 **React:**
 
 ```bash
-bun add @insayt/react
+bun add @litemetrics/react
 ```
 
 ```tsx
-import { InsaytProvider } from '@insayt/react';
+import { LitemetricsProvider } from '@litemetrics/react';
 
 function App() {
   return (
-    <InsaytProvider siteId="YOUR_SITE_ID" endpoint="http://localhost:3002/api/collect">
+    <LitemetricsProvider siteId="YOUR_SITE_ID" endpoint="http://localhost:3002/api/collect">
       <YourApp />
-    </InsaytProvider>
+    </LitemetricsProvider>
   );
 }
 ```
@@ -91,17 +91,17 @@ function App() {
 **React Native / Expo:**
 
 ```bash
-bun add @insayt/react-native
+bun add @litemetrics/react-native
 ```
 
 ```tsx
-import { InsaytProvider } from '@insayt/react-native';
+import { LitemetricsProvider } from '@litemetrics/react-native';
 
 function App() {
   return (
-    <InsaytProvider siteId="YOUR_SITE_ID" endpoint="http://localhost:3002/api/collect">
+    <LitemetricsProvider siteId="YOUR_SITE_ID" endpoint="http://localhost:3002/api/collect">
       <YourApp />
-    </InsaytProvider>
+    </LitemetricsProvider>
   );
 }
 ```
@@ -112,17 +112,17 @@ The tracker automatically tracks pageviews, detects SPA navigation, batches even
 
 ```bash
 curl "http://localhost:3002/api/stats?siteId=YOUR_SITE_ID&metric=pageviews&period=7d" \
-  -H "X-Insayt-Secret: YOUR_SECRET_KEY"
+  -H "X-Litemetrics-Secret: YOUR_SECRET_KEY"
 ```
 
 Or use the [Dashboard](./dashboard.md).
 
 ## Data-Attribute Tracking
 
-Track clicks without writing JavaScript. Add `data-insayt-event` to any element:
+Track clicks without writing JavaScript. Add `data-litemetrics-event` to any element:
 
 ```html
-<button data-insayt-event="Signup" data-insayt-event-plan="pro">Sign Up</button>
+<button data-litemetrics-event="Signup" data-litemetrics-event-plan="pro">Sign Up</button>
 ```
 
 Clicking this tracks a `Signup` event with `{ plan: "pro" }` as properties.

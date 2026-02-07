@@ -1,3 +1,3 @@
 export { createTracker } from './tracker';
-export type { InsaytInstance } from './tracker';
-export type { TrackerConfig } from '@insayt/core';
+export type { LitemetricsInstance } from './tracker';
+export type { TrackerConfig } from '@litemetrics/core';

@@ -1,8 +1,8 @@
 import axios, { type AxiosInstance } from 'axios';
-import type { Metric, Period, Granularity, QueryResult, TimeSeriesResult, RetentionResult, EventListResult, UserListResult, UserDetail, EventType } from '@insayt/core';
+import type { Metric, Period, Granularity, QueryResult, TimeSeriesResult, RetentionResult, EventListResult, UserListResult, UserDetail, EventType } from '@litemetrics/core';
 
-export interface InsaytClientConfig {
-  /** Base URL of the Insayt server (e.g. "https://analytics.myapp.com") */
+export interface LitemetricsClientConfig {
+  /** Base URL of the Litemetrics server (e.g. "https://analytics.myapp.com") */
   baseUrl: string;
   /** Site ID to query */
   siteId: string;
@@ -53,18 +53,18 @@ export interface UsersListOptions {
   offset?: number;
 }
 
-export class InsaytClient {
+export class LitemetricsClient {
   private siteId: string;
   private endpoint: string;
   private http: AxiosInstance;
 
-  constructor(config: InsaytClientConfig) {
+  constructor(config: LitemetricsClientConfig) {
     this.siteId = config.siteId;
     this.endpoint = config.endpoint ?? '/api/stats';
 
     const headers: Record<string, string> = { ...config.headers };
     if (config.secretKey) {
-      headers['X-Insayt-Secret'] = config.secretKey;
+      headers['X-Litemetrics-Secret'] = config.secretKey;
     }
 
     this.http = axios.create({
@@ -211,7 +211,7 @@ export class InsaytClient {
   }
 }
 
-/** Create an InsaytClient instance */
-export function createClient(config: InsaytClientConfig): InsaytClient {
-  return new InsaytClient(config);
+/** Create an LitemetricsClient instance */
+export function createClient(config: LitemetricsClientConfig): LitemetricsClient {
+  return new LitemetricsClient(config);
 }

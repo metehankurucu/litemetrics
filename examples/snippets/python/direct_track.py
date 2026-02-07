@@ -13,7 +13,7 @@ import time
 import uuid
 import requests
 
-INSAYT_URL = "http://localhost:3002"
+LITEMETRICS_URL = "http://localhost:3002"
 SITE_ID = "your-site-id"
 
 
@@ -57,9 +57,9 @@ def identify(user_id, traits=None, visitor_id=None):
 
 
 def _send_event(event):
-    """Send event(s) to the Insayt collect endpoint."""
+    """Send event(s) to the Litemetrics collect endpoint."""
     resp = requests.post(
-        f"{INSAYT_URL}/api/collect",
+        f"{LITEMETRICS_URL}/api/collect",
         json={"events": [event]},
         headers={"Content-Type": "application/json"},
     )

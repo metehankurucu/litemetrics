@@ -4,7 +4,7 @@ import {
   STORAGE_KEY_VISITOR,
   STORAGE_KEY_LAST_ACTIVE,
   STORAGE_KEY_USER,
-} from '@insayt/core';
+} from '@litemetrics/core';
 import { generateId, hashString, getDayString, now } from './utils';
 
 function storageGet(key: string): string | null {

@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
-import type { InsaytClient, Period, TimeSeriesPoint } from '@insayt/client';
+import type { LitemetricsClient, Period, TimeSeriesPoint } from '@litemetrics/client';
 
 interface TimeSeriesChartProps {
-  client: InsaytClient;
+  client: LitemetricsClient;
   siteId: string;
   period: Period;
 }

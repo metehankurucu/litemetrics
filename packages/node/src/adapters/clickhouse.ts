@@ -1,9 +1,9 @@
-import type { DBAdapter, EnrichedEvent, QueryParams, QueryResult, QueryDataPoint, Granularity, TimeSeriesParams, TimeSeriesResult, RetentionParams, RetentionResult, RetentionCohort, Site, CreateSiteRequest, UpdateSiteRequest, EventListParams, EventListResult, EventListItem, UserListParams, UserListResult, UserDetail } from '@insayt/core';
+import type { DBAdapter, EnrichedEvent, QueryParams, QueryResult, QueryDataPoint, Granularity, TimeSeriesParams, TimeSeriesResult, RetentionParams, RetentionResult, RetentionCohort, Site, CreateSiteRequest, UpdateSiteRequest, EventListParams, EventListResult, EventListItem, UserListParams, UserListResult, UserDetail } from '@litemetrics/core';
 import { createClient, type ClickHouseClient } from '@clickhouse/client';
 import { resolvePeriod, previousPeriodRange, autoGranularity, fillBuckets, granularityToDateFormat, getISOWeek, generateSiteId, generateSecretKey } from './utils';
 
-const EVENTS_TABLE = 'insayt_events';
-const SITES_TABLE = 'insayt_sites';
+const EVENTS_TABLE = 'litemetrics_events';
+const SITES_TABLE = 'litemetrics_sites';
 
 const CREATE_EVENTS_TABLE = `
 CREATE TABLE IF NOT EXISTS ${EVENTS_TABLE} (

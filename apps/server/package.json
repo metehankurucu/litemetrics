@@ -1,5 +1,5 @@
 {
-  "name": "@insayt/server",
+  "name": "@litemetrics/server",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -9,8 +9,8 @@
     "start": "node dist/index.js"
   },
   "dependencies": {
-    "@insayt/node": "workspace:*",
-    "@insayt/tracker": "workspace:*",
+    "@litemetrics/node": "workspace:*",
+    "@litemetrics/tracker": "workspace:*",
     "cors": "^2.8.6",
     "express": "^5"
   },

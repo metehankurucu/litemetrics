@@ -1,11 +1,11 @@
 import { useState, useEffect, useCallback, memo } from 'react';
 import { ComposableMap, Geographies, Geography, ZoomableGroup } from 'react-simple-maps';
-import type { InsaytClient, Period } from '@insayt/client';
+import type { LitemetricsClient, Period } from '@litemetrics/client';
 
 const geoUrl = 'https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json';
 
 interface WorldMapProps {
-  client: InsaytClient;
+  client: LitemetricsClient;
   siteId: string;
   period: Period;
 }

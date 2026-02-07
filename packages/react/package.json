@@ -1,15 +1,15 @@
 {
-  "name": "@insayt/react",
+  "name": "@litemetrics/react",
   "version": "0.1.0",
-  "description": "React bindings for Insayt analytics (hooks + provider)",
+  "description": "React bindings for Litemetrics analytics (hooks + provider)",
   "license": "MIT",
   "author": "Metehan Kurucu",
   "repository": {
     "type": "git",
-    "url": "https://github.com/metehankurucu/insayt",
+    "url": "https://github.com/metehankurucu/litemetrics",
     "directory": "packages/react"
   },
-  "keywords": ["analytics", "insayt", "react", "hooks", "tracking"],
+  "keywords": ["analytics", "litemetrics", "react", "hooks", "tracking"],
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -32,7 +32,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@insayt/tracker": "workspace:*"
+    "@litemetrics/tracker": "workspace:*"
   },
   "peerDependencies": {
     "react": ">=18"

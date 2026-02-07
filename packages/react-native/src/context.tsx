@@ -1,20 +1,20 @@
 import { createContext, useContext, useEffect, useRef, useMemo } from "react";
-import type { TrackerConfig } from "@insayt/core";
+import type { TrackerConfig } from "@litemetrics/core";
 import { createRNTracker, type RNTrackerInstance } from "./tracker";
 
-interface InsaytRNContextValue {
+interface LitemetricsRNContextValue {
   tracker: RNTrackerInstance;
   siteId: string;
 }
 
-const InsaytRNContext = createContext<InsaytRNContextValue | null>(null);
+const LitemetricsRNContext = createContext<LitemetricsRNContextValue | null>(null);
 
-export interface InsaytProviderProps
+export interface LitemetricsProviderProps
   extends Omit<TrackerConfig, "autoTrack" | "autoSpa"> {
   children: React.ReactNode;
 }
 
-export function InsaytProvider({ children, ...config }: InsaytProviderProps) {
+export function LitemetricsProvider({ children, ...config }: LitemetricsProviderProps) {
   const trackerRef = useRef<RNTrackerInstance | null>(null);
 
   if (!trackerRef.current) {
@@ -27,7 +27,7 @@ export function InsaytProvider({ children, ...config }: InsaytProviderProps) {
     };
   }, []);
 
-  const value = useMemo<InsaytRNContextValue>(
+  const value = useMemo<LitemetricsRNContextValue>(
     () => ({
       tracker: trackerRef.current!,
       siteId: config.siteId,
@@ -36,16 +36,16 @@ export function InsaytProvider({ children, ...config }: InsaytProviderProps) {
   );
 
   return (
-    <InsaytRNContext.Provider value={value}>
+    <LitemetricsRNContext.Provider value={value}>
       {children}
-    </InsaytRNContext.Provider>
+    </LitemetricsRNContext.Provider>
   );
 }
 
-export function useInsaytRNContext(): InsaytRNContextValue {
-  const ctx = useContext(InsaytRNContext);
+export function useLitemetricsRNContext(): LitemetricsRNContextValue {
+  const ctx = useContext(LitemetricsRNContext);
   if (!ctx) {
-    throw new Error("useInsayt must be used within <InsaytProvider>");
+    throw new Error("useLitemetrics must be used within <LitemetricsProvider>");
   }
   return ctx;
 }

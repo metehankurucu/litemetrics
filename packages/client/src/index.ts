@@ -1,5 +1,5 @@
-export { InsaytClient, createClient } from './client';
-export type { InsaytClientConfig, StatsOptions, TimeSeriesOptions, EventsListOptions, UsersListOptions, RetentionOptions } from './client';
+export { LitemetricsClient, createClient } from './client';
+export type { LitemetricsClientConfig, StatsOptions, TimeSeriesOptions, EventsListOptions, UsersListOptions, RetentionOptions } from './client';
 
 export { SitesClient, createSitesClient } from './sites';
 export type { SitesClientConfig } from './sites';
@@ -27,4 +27,4 @@ export type {
   RetentionParams,
   RetentionResult,
   RetentionCohort,
-} from '@insayt/core';
+} from '@litemetrics/core';

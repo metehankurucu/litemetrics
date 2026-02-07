@@ -1,5 +1,5 @@
 {
-  "name": "insayt",
+  "name": "litemetrics",
   "private": true,
   "workspaces": [
     "packages/*",
@@ -11,7 +11,8 @@
     "dev": "turbo dev",
     "test": "turbo test",
     "clean": "turbo clean",
-    "typecheck": "turbo typecheck"
+    "typecheck": "turbo typecheck",
+    "release": "turbo build --force && cd packages/core && npm publish --access public && cd ../tracker && npm publish --access public && cd ../client && npm publish --access public && cd ../node && npm publish --access public && cd ../react && npm publish --access public && cd ../react-native && npm publish --access public"
   },
   "packageManager": "bun@1.2.1",
   "devDependencies": {

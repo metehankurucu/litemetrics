@@ -4,20 +4,20 @@ React-based analytics dashboard. Shows metrics, charts, maps, and user data.
 
 ## Setup
 
-Requires a running Insayt server and a site with `siteId` + `secretKey`.
+Requires a running Litemetrics server and a site with `siteId` + `secretKey`.
 
 Create `apps/dashboard/.env`:
 
 ```env
-VITE_INSAYT_API_URL=http://localhost:3002
-VITE_INSAYT_SITE_ID=your_site_id
-VITE_INSAYT_SECRET=your_secret_key
+VITE_LITEMETRICS_API_URL=http://localhost:3002
+VITE_LITEMETRICS_SITE_ID=your_site_id
+VITE_LITEMETRICS_SECRET=your_secret_key
 ```
 
 Run locally:
 
 ```bash
-bun run --filter @insayt/dashboard dev
+bun run --filter @litemetrics/dashboard dev
 ```
 
 Opens at `http://localhost:5173`.
@@ -25,10 +25,10 @@ Opens at `http://localhost:5173`.
 Build for production:
 
 ```bash
-bun run --filter @insayt/dashboard build
+bun run --filter @litemetrics/dashboard build
 ```
 
-Output in `apps/dashboard/dist/`. The `@insayt/server` package serves this automatically.
+Output in `apps/dashboard/dist/`. The `@litemetrics/server` package serves this automatically.
 
 ## Pages
 
@@ -95,4 +95,4 @@ Sidebar with links to all pages. Site selector at the top for switching between 
 - Recharts 2 (charts)
 - react-simple-maps (world map)
 - react-icons (browser/OS/device icons)
-- @insayt/client (API queries)
+- @litemetrics/client (API queries)

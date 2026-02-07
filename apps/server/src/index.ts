@@ -1,6 +1,6 @@
 import express from 'express';
 import cors from 'cors';
-import { createCollector } from '@insayt/node';
+import { createCollector } from '@litemetrics/node';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { existsSync } from 'fs';
@@ -15,8 +15,8 @@ const DB_ADAPTER = (process.env.DB_ADAPTER || 'clickhouse') as 'clickhouse' | 'm
 const DATABASE_URL = process.env.DATABASE_URL
   || process.env.CLICKHOUSE_URL
   || process.env.MONGODB_URL
-  || (DB_ADAPTER === 'clickhouse' ? 'http://localhost:8123' : 'mongodb://localhost:27017/insayt');
-const ADMIN_SECRET = process.env.ADMIN_SECRET || process.env.INSAYT_ADMIN_SECRET;
+  || (DB_ADAPTER === 'clickhouse' ? 'http://localhost:8123' : 'mongodb://localhost:27017/litemetrics');
+const ADMIN_SECRET = process.env.ADMIN_SECRET || process.env.LITEMETRICS_ADMIN_SECRET;
 const GEOIP = process.env.GEOIP !== 'false';
 const TRUST_PROXY = process.env.TRUST_PROXY !== 'false';
 
@@ -24,7 +24,7 @@ const TRUST_PROXY = process.env.TRUST_PROXY !== 'false';
 const corsOptions = cors({
   origin: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'X-Insayt-Secret', 'X-Insayt-Admin-Secret'],
+  allowedHeaders: ['Content-Type', 'X-Litemetrics-Secret', 'X-Litemetrics-Admin-Secret'],
 });
 
 app.options('/{*path}', corsOptions);
@@ -34,9 +34,9 @@ app.use(express.json());
 // ─── Request logger ──────────────────────────────────────
 app.use((req, _res, next) => {
   const ts = new Date().toISOString().slice(11, 19);
-  const auth = req.headers['x-insayt-admin-secret']
+  const auth = req.headers['x-litemetrics-admin-secret']
     ? '[admin]'
-    : req.headers['x-insayt-secret']
+    : req.headers['x-litemetrics-secret']
     ? '[secret]'
     : '';
   console.log(`${ts} ${req.method} ${req.url} ${auth}`);
@@ -71,8 +71,8 @@ app.all('/api/sites/{*path}', async (req, res) => { await sitesHandler(req, res)
 // ─── Serve tracker script ────────────────────────────────
 // Try multiple paths for tracker script
 const trackerPaths = [
-  join(__dirname, '../../packages/tracker/dist/insayt.global.js'),
-  join(__dirname, '../../../packages/tracker/dist/insayt.global.js'),
+  join(__dirname, '../../packages/tracker/dist/litemetrics.global.js'),
+  join(__dirname, '../../../packages/tracker/dist/litemetrics.global.js'),
 ];
 
 app.get('/tracker.js', (_req, res) => {
@@ -82,11 +82,11 @@ app.get('/tracker.js', (_req, res) => {
       return;
     }
   }
-  res.status(404).send('Tracker script not found. Run: turbo build --filter=@insayt/tracker');
+  res.status(404).send('Tracker script not found. Run: turbo build --filter=@litemetrics/tracker');
 });
 
-// Also serve as /insayt.js for compatibility
-app.get('/insayt.js', (_req, res) => {
+// Also serve as /litemetrics.js for compatibility
+app.get('/litemetrics.js', (_req, res) => {
   for (const p of trackerPaths) {
     if (existsSync(p)) {
       res.sendFile(p);
@@ -126,7 +126,7 @@ if (dashboardDir) {
 
 // ─── Start server ────────────────────────────────────────
 app.listen(PORT, () => {
-  console.log(`\n  Insayt Server running at http://localhost:${PORT}`);
+  console.log(`\n  Litemetrics Server running at http://localhost:${PORT}`);
   console.log(`  Database: ${DB_ADAPTER} @ ${DATABASE_URL}\n`);
   console.log(`  API Endpoints:`);
   console.log(`    POST /api/collect     - Event collection`);
@@ -138,7 +138,7 @@ app.listen(PORT, () => {
   if (dashboardDir) {
     console.log(`    GET  /               - Dashboard UI`);
   } else {
-    console.log(`    Dashboard not built - run: turbo build --filter=@insayt/dashboard`);
+    console.log(`    Dashboard not built - run: turbo build --filter=@litemetrics/dashboard`);
   }
   console.log();
   if (!ADMIN_SECRET) {

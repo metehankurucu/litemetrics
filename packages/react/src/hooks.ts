@@ -1,19 +1,19 @@
 import { useEffect, useRef } from 'react';
-import { useInsaytContext } from './context';
+import { useLitemetricsContext } from './context';
 
 /**
- * Access the Insayt tracker instance.
+ * Access the Litemetrics tracker instance.
  *
  * @example
  * ```tsx
  * function Button() {
- *   const { track, identify } = useInsayt();
+ *   const { track, identify } = useLitemetrics();
  *   return <button onClick={() => track('click', { id: 'cta' })}>Click</button>;
  * }
  * ```
  */
-export function useInsayt() {
-  const { tracker } = useInsaytContext();
+export function useLitemetrics() {
+  const { tracker } = useLitemetricsContext();
 
   return {
     track: tracker.track.bind(tracker),
@@ -50,7 +50,7 @@ export function useInsayt() {
  * ```
  */
 export function usePageView(pathname?: string) {
-  const { tracker } = useInsaytContext();
+  const { tracker } = useLitemetricsContext();
   const isFirst = useRef(true);
 
   useEffect(() => {
@@ -79,7 +79,7 @@ export function usePageView(pathname?: string) {
  * ```
  */
 export function useTrackEvent(name: string, properties?: Record<string, unknown>) {
-  const { tracker } = useInsaytContext();
+  const { tracker } = useLitemetricsContext();
 
   useEffect(() => {
     tracker.track(name, properties);

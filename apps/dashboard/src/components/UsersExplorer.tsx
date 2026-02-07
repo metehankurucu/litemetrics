@@ -1,11 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
-import type { InsaytClient, UserDetail, EventListItem } from '@insayt/client';
+import type { LitemetricsClient, UserDetail, EventListItem } from '@litemetrics/client';
 import { getBrowserIcon, getOSIcon, getDeviceIcon } from './icons';
 import { ExportButton } from './ExportButton';
 
 interface UsersExplorerProps {
   siteId: string;
-  client: InsaytClient;
+  client: LitemetricsClient;
   initialVisitorId?: string | null;
   onBack?: () => void;
 }
@@ -37,7 +37,7 @@ export function UsersExplorer({ siteId, client, initialVisitorId, onBack }: User
 
 // ─── Users List ───────────────────────────────────────────
 
-function UsersList({ siteId, client, onSelect }: { siteId: string; client: InsaytClient; onSelect: (id: string) => void }) {
+function UsersList({ siteId, client, onSelect }: { siteId: string; client: LitemetricsClient; onSelect: (id: string) => void }) {
   const [users, setUsers] = useState<UserDetail[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -220,7 +220,7 @@ function UsersList({ siteId, client, onSelect }: { siteId: string; client: Insay
 
 // ─── User Detail View ────────────────────────────────────
 
-function UserDetailView({ siteId, client, visitorId, onBack }: { siteId: string; client: InsaytClient; visitorId: string; onBack: () => void }) {
+function UserDetailView({ siteId, client, visitorId, onBack }: { siteId: string; client: LitemetricsClient; visitorId: string; onBack: () => void }) {
   const [user, setUser] = useState<UserDetail | null>(null);
   const [events, setEvents] = useState<EventListItem[]>([]);
   const [eventsTotal, setEventsTotal] = useState(0);

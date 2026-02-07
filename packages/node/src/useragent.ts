@@ -1,4 +1,4 @@
-import type { DeviceInfo } from '@insayt/core';
+import type { DeviceInfo } from '@litemetrics/core';
 import { UAParser } from 'ua-parser-js';
 
 const parser = new UAParser();

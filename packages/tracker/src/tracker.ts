@@ -5,15 +5,15 @@ import type {
   CustomEvent,
   IdentifyEvent,
   ClientContext,
-} from '@insayt/core';
-import { STORAGE_KEY_OPTOUT } from '@insayt/core';
+} from '@litemetrics/core';
+import { STORAGE_KEY_OPTOUT } from '@litemetrics/core';
 import { SessionManager } from './session';
 import { Transport } from './transport';
 import { AutoTracker } from './auto';
 import { parseUTM, now } from './utils';
 import { initAttributeTracking } from './attributes';
 
-export interface InsaytInstance {
+export interface LitemetricsInstance {
   track(name: string, properties?: Record<string, unknown>): void;
   identify(userId: string, traits?: Record<string, unknown>): void;
   page(url?: string, title?: string): void;
@@ -23,7 +23,7 @@ export interface InsaytInstance {
   destroy(): void;
 }
 
-export function createTracker(config: TrackerConfig): InsaytInstance {
+export function createTracker(config: TrackerConfig): LitemetricsInstance {
   const {
     siteId,
     endpoint,
@@ -119,7 +119,7 @@ export function createTracker(config: TrackerConfig): InsaytInstance {
 
   // We need a reference to the instance for attribute tracking
   // so we create it first then init attributes
-  const instance: InsaytInstance = {
+  const instance: LitemetricsInstance = {
     track(name: string, properties?: Record<string, unknown>): void {
       session.getVisitorId().then((visitorId) => {
         const event: CustomEvent & ClientContext = {
@@ -194,7 +194,7 @@ export function createTracker(config: TrackerConfig): InsaytInstance {
   return instance;
 }
 
-function createNoopTracker(): InsaytInstance {
+function createNoopTracker(): LitemetricsInstance {
   return {
     track() {},
     identify() {},

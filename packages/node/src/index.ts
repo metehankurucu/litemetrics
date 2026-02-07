@@ -22,4 +22,4 @@ export type {
   UserListParams,
   UserListResult,
   UserDetail,
-} from '@insayt/core';
+} from '@litemetrics/core';

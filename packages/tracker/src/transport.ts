@@ -1,5 +1,5 @@
-import type { ClientEvent, CollectPayload } from '@insayt/core';
-import { DEFAULT_BATCH_SIZE, DEFAULT_FLUSH_INTERVAL } from '@insayt/core';
+import type { ClientEvent, CollectPayload } from '@litemetrics/core';
+import { DEFAULT_BATCH_SIZE, DEFAULT_FLUSH_INTERVAL } from '@litemetrics/core';
 
 export interface TransportOptions {
   endpoint: string;
@@ -52,7 +52,7 @@ export class Transport {
     const body = JSON.stringify(payload);
 
     if (this.debug) {
-      console.log('[insayt] sending', events.length, 'events', events);
+      console.log('[litemetrics] sending', events.length, 'events', events);
     }
 
     // Try fetch first, fall back to sendBeacon

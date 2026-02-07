@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Vanilla PHP server-side tracking for Insayt.
+ * Vanilla PHP server-side tracking for Litemetrics.
  *
  * No framework required — just curl.
  *
@@ -11,7 +11,7 @@
  *   track_event('your-site-id', 'purchase', ['amount' => 99]);
  */
 
-define('INSAYT_URL', getenv('INSAYT_URL') ?: 'http://localhost:3002');
+define('LITEMETRICS_URL', getenv('LITEMETRICS_URL') ?: 'http://localhost:3002');
 
 /**
  * Track a pageview event.
@@ -62,13 +62,13 @@ function identify_user(string $siteId, string $userId, array $traits = [], ?stri
 }
 
 /**
- * Send event to Insayt collect endpoint.
+ * Send event to Litemetrics collect endpoint.
  */
 function send_event(array $event): array
 {
     $payload = json_encode(['events' => [$event]]);
 
-    $ch = curl_init(INSAYT_URL . '/api/collect');
+    $ch = curl_init(LITEMETRICS_URL . '/api/collect');
     curl_setopt_array($ch, [
         CURLOPT_POST => true,
         CURLOPT_POSTFIELDS => $payload,

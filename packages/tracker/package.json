@@ -1,26 +1,26 @@
 {
-  "name": "@insayt/tracker",
+  "name": "@litemetrics/tracker",
   "version": "0.1.0",
   "description": "Lightweight browser analytics tracker (<3KB gzipped)",
   "license": "MIT",
   "author": "Metehan Kurucu",
   "repository": {
     "type": "git",
-    "url": "https://github.com/metehankurucu/insayt",
+    "url": "https://github.com/metehankurucu/litemetrics",
     "directory": "packages/tracker"
   },
-  "keywords": ["analytics", "tracking", "insayt", "browser", "pageview"],
+  "keywords": ["analytics", "tracking", "litemetrics", "browser", "pageview"],
   "type": "module",
-  "main": "./dist/insayt.cjs",
-  "module": "./dist/insayt.js",
+  "main": "./dist/litemetrics.cjs",
+  "module": "./dist/litemetrics.js",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/insayt.js",
-      "require": "./dist/insayt.cjs"
+      "import": "./dist/litemetrics.js",
+      "require": "./dist/litemetrics.cjs"
     },
-    "./script": "./dist/insayt.global.js"
+    "./script": "./dist/litemetrics.global.js"
   },
   "files": ["dist"],
   "publishConfig": {
@@ -33,7 +33,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@insayt/core": "workspace:*"
+    "@litemetrics/core": "workspace:*"
   },
   "devDependencies": {
     "tsup": "^8",

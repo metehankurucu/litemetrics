@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Insayt Analytics Demo</title>
+  <title>Litemetrics Analytics Demo</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: system-ui, sans-serif; max-width: 800px; margin: 0 auto; padding: 2rem; background: #0a0a0a; color: #e5e5e5; }
@@ -24,7 +24,7 @@
   </style>
 </head>
 <body>
-  <h1>Insayt Analytics Demo</h1>
+  <h1>Litemetrics Analytics Demo</h1>
   <p>Open your browser console to see tracker events. Click buttons below to generate events.</p>
 
   <div class="grid" id="stats">
@@ -64,15 +64,15 @@
     <div class="log" id="log"></div>
   </div>
 
-  <script src="/insayt.js"></script>
+  <script src="/litemetrics.js"></script>
   <script>
-    const insayt = Insayt.createTracker({
+    const litemetrics = Litemetrics.createTracker({
       siteId: 'demo',
       endpoint: '/api/collect',
       debug: true,
     });
 
-    window.insayt = insayt;
+    window.litemetrics = litemetrics;
 
     const log = document.getElementById('log');
     function addLog(msg) {
@@ -81,12 +81,12 @@
     }
 
     window.trackEvent = function(name, props) {
-      insayt.track(name, props);
+      litemetrics.track(name, props);
       addLog(`track("${name}", ${JSON.stringify(props)})`);
     };
 
     window.identifyUser = function() {
-      insayt.identify('user-123', { name: 'Demo User', plan: 'pro' });
+      litemetrics.identify('user-123', { name: 'Demo User', plan: 'pro' });
       addLog('identify("user-123", { name: "Demo User", plan: "pro" })');
     };
 

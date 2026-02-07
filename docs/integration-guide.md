@@ -1,15 +1,15 @@
 # Integration Guide
 
-How to add Insayt tracking to different platforms. All examples assume your server is at `https://analytics.yoursite.com`.
+How to add Litemetrics tracking to different platforms. All examples assume your server is at `https://analytics.yoursite.com`.
 
 ## JavaScript / TypeScript
 
 ### HTML
 
 ```html
-<script src="https://analytics.yoursite.com/insayt.js"></script>
+<script src="https://analytics.yoursite.com/litemetrics.js"></script>
 <script>
-  const tracker = Insayt.createTracker({
+  const tracker = Litemetrics.createTracker({
     siteId: 'YOUR_SITE_ID',
     endpoint: 'https://analytics.yoursite.com/api/collect'
   });
@@ -22,39 +22,39 @@ How to add Insayt tracking to different platforms. All examples assume your serv
 
 ### Data Attributes
 
-Track clicks without code. Add `data-insayt-event` to any element:
+Track clicks without code. Add `data-litemetrics-event` to any element:
 
 ```html
-<button data-insayt-event="Signup" data-insayt-event-plan="pro">Sign Up</button>
+<button data-litemetrics-event="Signup" data-litemetrics-event-plan="pro">Sign Up</button>
 ```
 
-All `data-insayt-event-*` attributes are collected as event properties.
+All `data-litemetrics-event-*` attributes are collected as event properties.
 
 ### React
 
 ```bash
-bun add @insayt/react
+bun add @litemetrics/react
 ```
 
 ```tsx
 // App.tsx
-import { InsaytProvider } from '@insayt/react';
+import { LitemetricsProvider } from '@litemetrics/react';
 
 function App() {
   return (
-    <InsaytProvider
+    <LitemetricsProvider
       siteId="YOUR_SITE_ID"
       endpoint="https://analytics.yoursite.com/api/collect"
     >
       <YourApp />
-    </InsaytProvider>
+    </LitemetricsProvider>
   );
 }
 ```
 
 ```tsx
 // Hooks
-import { useInsayt, usePageView } from '@insayt/react';
+import { useLitemetrics, usePageView } from '@litemetrics/react';
 import { useLocation } from 'react-router';
 
 function PageTracker() {
@@ -64,7 +64,7 @@ function PageTracker() {
 }
 
 function SignupButton() {
-  const { track } = useInsayt();
+  const { track } = useLitemetrics();
   return (
     <button onClick={() => track('signup_click', { plan: 'pro' })}>
       Sign Up
@@ -76,23 +76,23 @@ function SignupButton() {
 ### Next.js (App Router)
 
 ```bash
-bun add @insayt/react
+bun add @litemetrics/react
 ```
 
 ```tsx
 // app/providers.tsx
 'use client';
 
-import { InsaytProvider } from '@insayt/react';
+import { LitemetricsProvider } from '@litemetrics/react';
 
 export function Providers({ children }: { children: React.ReactNode }) {
   return (
-    <InsaytProvider
+    <LitemetricsProvider
       siteId="YOUR_SITE_ID"
       endpoint="https://analytics.yoursite.com/api/collect"
     >
       {children}
-    </InsaytProvider>
+    </LitemetricsProvider>
   );
 }
 ```
@@ -116,7 +116,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 // app/page-tracker.tsx
 'use client';
 
-import { usePageView } from '@insayt/react';
+import { usePageView } from '@litemetrics/react';
 import { usePathname } from 'next/navigation';
 
 export function PageTracker() {
@@ -129,18 +129,18 @@ export function PageTracker() {
 ### React Native / Expo
 
 ```bash
-bun add @insayt/react-native
+bun add @litemetrics/react-native
 ```
 
 ```tsx
-import { InsaytProvider, useNavigationTracking } from '@insayt/react-native';
+import { LitemetricsProvider, useNavigationTracking } from '@litemetrics/react-native';
 import { NavigationContainer, useNavigationContainerRef } from '@react-navigation/native';
 
 function App() {
   const navigationRef = useNavigationContainerRef();
 
   return (
-    <InsaytProvider
+    <LitemetricsProvider
       siteId="YOUR_SITE_ID"
       endpoint="https://analytics.yoursite.com/api/collect"
     >
@@ -148,7 +148,7 @@ function App() {
         <NavigationTracker navigationRef={navigationRef} />
         <YourScreens />
       </NavigationContainer>
-    </InsaytProvider>
+    </LitemetricsProvider>
   );
 }
 
@@ -161,13 +161,13 @@ function NavigationTracker({ navigationRef }) {
 ### Vue
 
 ```bash
-bun add @insayt/tracker
+bun add @litemetrics/tracker
 ```
 
 ```vue
 <script setup>
 import { onMounted, onUnmounted } from 'vue';
-import { createTracker } from '@insayt/tracker';
+import { createTracker } from '@litemetrics/tracker';
 import { useRouter } from 'vue-router';
 
 let tracker;
@@ -221,12 +221,12 @@ import requests
 from flask import Flask, request, jsonify
 
 app = Flask(__name__)
-INSAYT_URL = 'https://analytics.yoursite.com'
+LITEMETRICS_URL = 'https://analytics.yoursite.com'
 
 @app.route('/api/collect', methods=['POST'])
 def collect():
     resp = requests.post(
-        f'{INSAYT_URL}/api/collect',
+        f'{LITEMETRICS_URL}/api/collect',
         json=request.json,
         headers={'Content-Type': 'application/json'}
     )
@@ -241,14 +241,14 @@ import requests
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 
-INSAYT_URL = 'https://analytics.yoursite.com'
+LITEMETRICS_URL = 'https://analytics.yoursite.com'
 
 @csrf_exempt
 def collect(request):
     if request.method != 'POST':
         return JsonResponse({'error': 'Method not allowed'}, status=405)
     resp = requests.post(
-        f'{INSAYT_URL}/api/collect',
+        f'{LITEMETRICS_URL}/api/collect',
         json=json.loads(request.body),
         headers={'Content-Type': 'application/json'}
     )
@@ -260,7 +260,7 @@ def collect(request):
 ```php
 Route::post('/collect', function (Request $request) {
     $response = Http::post(
-        env('INSAYT_URL') . '/api/collect',
+        env('LITEMETRICS_URL') . '/api/collect',
         $request->all()
     );
     return response()->json($response->json(), $response->status());
@@ -275,7 +275,7 @@ class AnalyticsController < ApplicationController
 
   def collect
     response = Net::HTTP.post(
-      URI("#{ENV['INSAYT_URL']}/api/collect"),
+      URI("#{ENV['LITEMETRICS_URL']}/api/collect"),
       request.raw_post,
       'Content-Type' => 'application/json'
     )
@@ -314,14 +314,14 @@ func trackEvent(siteID, url string) error {
 
 ## Reading Data
 
-Use `@insayt/client` or query the API directly:
+Use `@litemetrics/client` or query the API directly:
 
 ```bash
-bun add @insayt/client
+bun add @litemetrics/client
 ```
 
 ```ts
-import { createClient } from '@insayt/client';
+import { createClient } from '@litemetrics/client';
 
 const client = createClient({
   baseUrl: 'https://analytics.yoursite.com',

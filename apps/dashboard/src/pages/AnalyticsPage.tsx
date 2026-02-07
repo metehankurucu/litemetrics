@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import type { QueryResult, Period, InsaytClient } from '@insayt/client';
+import type { QueryResult, Period, LitemetricsClient } from '@litemetrics/client';
 import { StatCard } from '../components/StatCard';
 import { TopList } from '../components/TopList';
 import { TimeSeriesChart } from '../components/TimeSeriesChart';
@@ -21,7 +21,7 @@ const topMetrics: { metric: TopMetric; title: string }[] = [
 
 interface AnalyticsPageProps {
   siteId: string;
-  client: InsaytClient;
+  client: LitemetricsClient;
   period: Period;
   onPeriodChange: (p: Period) => void;
 }

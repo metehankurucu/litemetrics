@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { createSitesClient, type Site } from '@insayt/client';
+import { createSitesClient, type Site } from '@litemetrics/client';
 import { useAuth } from '../auth';
 
 interface SiteSelectorProps {
@@ -16,7 +16,7 @@ export function SiteSelector({ siteId, onChange }: SiteSelectorProps) {
   useEffect(() => {
     if (!adminSecret) return;
     const client = createSitesClient({
-      baseUrl: import.meta.env.VITE_INSAYT_URL || '',
+      baseUrl: import.meta.env.VITE_LITEMETRICS_URL || '',
       adminSecret,
     });
     client.listSites().then(({ sites }) => setSites(sites)).catch(() => {});

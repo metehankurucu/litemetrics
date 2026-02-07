@@ -1,4 +1,4 @@
-import type { QueryParams, Period, Granularity, TimeSeriesPoint } from '@insayt/core';
+import type { QueryParams, Period, Granularity, TimeSeriesPoint } from '@litemetrics/core';
 import { randomBytes } from 'crypto';
 
 export function resolvePeriod(q: Pick<QueryParams, 'period' | 'dateFrom' | 'dateTo'>): { dateRange: { from: string; to: string }; period: Period } {

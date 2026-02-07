@@ -1,8 +1,8 @@
 import axios, { type AxiosInstance } from 'axios';
-import type { Site, CreateSiteRequest, UpdateSiteRequest } from '@insayt/core';
+import type { Site, CreateSiteRequest, UpdateSiteRequest } from '@litemetrics/core';
 
 export interface SitesClientConfig {
-  /** Base URL of the Insayt server */
+  /** Base URL of the Litemetrics server */
   baseUrl: string;
   /** Admin secret for authentication */
   adminSecret: string;
@@ -21,7 +21,7 @@ export class SitesClient {
       baseURL: config.baseUrl.replace(/\/$/, ''),
       headers: {
         'Content-Type': 'application/json',
-        'X-Insayt-Admin-Secret': config.adminSecret,
+        'X-Litemetrics-Admin-Secret': config.adminSecret,
       },
     });
   }

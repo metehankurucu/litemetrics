@@ -1,9 +1,9 @@
-import type { InsaytClient } from '@insayt/client';
+import type { LitemetricsClient } from '@litemetrics/client';
 import { UsersExplorer } from '../components/UsersExplorer';
 
 interface UsersPageProps {
   siteId: string;
-  client: InsaytClient;
+  client: LitemetricsClient;
   initialVisitorId: string | null;
   onBack: () => void;
 }

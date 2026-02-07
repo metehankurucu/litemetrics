@@ -1,11 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
-import type { InsaytClient, RetentionCohort, Period } from '@insayt/client';
+import type { LitemetricsClient, RetentionCohort, Period } from '@litemetrics/client';
 import { PeriodSelector } from '../components/PeriodSelector';
 import { ExportButton } from '../components/ExportButton';
 
 interface RetentionPageProps {
   siteId: string;
-  client: InsaytClient;
+  client: LitemetricsClient;
 }
 
 export function RetentionPage({ siteId, client }: RetentionPageProps) {

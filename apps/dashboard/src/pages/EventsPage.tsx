@@ -1,9 +1,9 @@
-import type { InsaytClient } from '@insayt/client';
+import type { LitemetricsClient } from '@litemetrics/client';
 import { EventsExplorer } from '../components/EventsExplorer';
 
 interface EventsPageProps {
   siteId: string;
-  client: InsaytClient;
+  client: LitemetricsClient;
   onUserClick: (visitorId: string) => void;
 }
 

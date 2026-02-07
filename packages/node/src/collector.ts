@@ -16,7 +16,7 @@ import type {
   Site,
   CreateSiteRequest,
   UpdateSiteRequest,
-} from '@insayt/core';
+} from '@litemetrics/core';
 import { ClickHouseAdapter } from './adapters/clickhouse';
 import { MongoDBAdapter } from './adapters/mongodb';
 import { initGeoIP, resolveGeo } from './geoip';
@@ -57,14 +57,14 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
 
   function isAdmin(req: any): boolean {
     if (!config.adminSecret) return false;
-    return req.headers?.['x-insayt-admin-secret'] === config.adminSecret;
+    return req.headers?.['x-litemetrics-admin-secret'] === config.adminSecret;
   }
 
   async function isAuthorizedForSite(req: any, siteId: string): Promise<boolean> {
     // Admin can access everything
     if (isAdmin(req)) return true;
     // Check site secret
-    const secret = req.headers?.['x-insayt-secret'];
+    const secret = req.headers?.['x-litemetrics-secret'];
     if (!secret) return false;
     const site = await db.getSiteBySecret(secret);
     return site !== null && site.siteId === siteId;
@@ -150,7 +150,7 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
 
   function queryHandler(): (req: any, res: any) => void | Promise<void> {
     return async (req: any, res: any) => {
-      if (setCors(req, res, 'GET, OPTIONS', 'X-Insayt-Secret, X-Insayt-Admin-Secret')) return;
+      if (setCors(req, res, 'GET, OPTIONS', 'X-Litemetrics-Secret, X-Litemetrics-Admin-Secret')) return;
 
       try {
         const params = extractQueryParams(req);
@@ -210,7 +210,7 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
 
   function sitesHandler(): (req: any, res: any) => void | Promise<void> {
     return async (req: any, res: any) => {
-      if (setCors(req, res, 'GET, POST, PUT, DELETE, OPTIONS', 'X-Insayt-Admin-Secret')) return;
+      if (setCors(req, res, 'GET, POST, PUT, DELETE, OPTIONS', 'X-Litemetrics-Admin-Secret')) return;
 
       // Admin auth required for all site management
       if (!isAdmin(req)) {
@@ -291,7 +291,7 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
 
   function eventsHandler(): (req: any, res: any) => void | Promise<void> {
     return async (req: any, res: any) => {
-      if (setCors(req, res, 'GET, OPTIONS', 'X-Insayt-Secret, X-Insayt-Admin-Secret')) return;
+      if (setCors(req, res, 'GET, OPTIONS', 'X-Litemetrics-Secret, X-Litemetrics-Admin-Secret')) return;
 
       if (req.method !== 'GET') {
         sendJson(res, 405, { ok: false, error: 'Method not allowed' });
@@ -337,7 +337,7 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
 
   function usersHandler(): (req: any, res: any) => void | Promise<void> {
     return async (req: any, res: any) => {
-      if (setCors(req, res, 'GET, OPTIONS', 'X-Insayt-Secret, X-Insayt-Admin-Secret')) return;
+      if (setCors(req, res, 'GET, OPTIONS', 'X-Litemetrics-Secret, X-Litemetrics-Admin-Secret')) return;
 
       if (req.method !== 'GET') {
         sendJson(res, 405, { ok: false, error: 'Method not allowed' });

@@ -1,28 +1,28 @@
-import type { InsaytInstance } from './tracker';
+import type { LitemetricsInstance } from './tracker';
 
-const ATTR_EVENT = 'data-insayt-event';
-const ATTR_PREFIX = 'data-insayt-event-';
+const ATTR_EVENT = 'data-litemetrics-event';
+const ATTR_PREFIX = 'data-litemetrics-event-';
 
 /**
  * Initialize data-attribute event tracking.
- * Clicks on elements with `data-insayt-event="EventName"` will be auto-tracked.
- * Additional properties via `data-insayt-event-*` attributes.
+ * Clicks on elements with `data-litemetrics-event="EventName"` will be auto-tracked.
+ * Additional properties via `data-litemetrics-event-*` attributes.
  *
  * Example:
- *   <button data-insayt-event="Signup" data-insayt-event-plan="pro">
+ *   <button data-litemetrics-event="Signup" data-litemetrics-event-plan="pro">
  *   → tracks event "Signup" with { plan: "pro" }
  */
-export function initAttributeTracking(instance: InsaytInstance): () => void {
+export function initAttributeTracking(instance: LitemetricsInstance): () => void {
   function handleClick(e: Event) {
     const target = e.target as HTMLElement | null;
     if (!target) return;
 
-    // Walk up the DOM to find an element with data-insayt-event
+    // Walk up the DOM to find an element with data-litemetrics-event
     let el: HTMLElement | null = target;
     while (el) {
       const eventName = el.getAttribute(ATTR_EVENT);
       if (eventName) {
-        // Collect data-insayt-event-* properties
+        // Collect data-litemetrics-event-* properties
         const properties: Record<string, string> = {};
         const attrs = el.attributes;
         for (let i = 0; i < attrs.length; i++) {

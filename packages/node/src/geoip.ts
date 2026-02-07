@@ -1,4 +1,4 @@
-import type { GeoInfo } from '@insayt/core';
+import type { GeoInfo } from '@litemetrics/core';
 
 let reader: any = null;
 
@@ -98,7 +98,7 @@ async function findGeoLiteDB(): Promise<string | null> {
 
   const candidates = [
     join(process.cwd(), 'GeoLite2-City.mmdb'),
-    join(homedir(), '.insayt', 'GeoLite2-City.mmdb'),
+    join(homedir(), '.litemetrics', 'GeoLite2-City.mmdb'),
     '/usr/share/GeoIP/GeoLite2-City.mmdb',
     '/var/lib/GeoIP/GeoLite2-City.mmdb',
   ];

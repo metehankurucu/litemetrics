@@ -1,4 +1,4 @@
-import type { QueryDataPoint } from '@insayt/client';
+import type { QueryDataPoint } from '@litemetrics/client';
 
 interface TopListProps {
   title: string;

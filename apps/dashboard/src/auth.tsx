@@ -1,24 +1,24 @@
 import { createContext, useContext, useState, useCallback, type ReactNode } from 'react';
-import { createClient, createSitesClient, type InsaytClient } from '@insayt/client';
+import { createClient, createSitesClient, type LitemetricsClient } from '@litemetrics/client';
 
-const STORAGE_KEY = 'insayt_admin_secret';
-const BASE_URL = import.meta.env.VITE_INSAYT_URL || '';
+const STORAGE_KEY = 'litemetrics_admin_secret';
+const BASE_URL = import.meta.env.VITE_LITEMETRICS_URL || '';
 
 interface AuthContextValue {
   adminSecret: string | null;
   isAuthenticated: boolean;
   login: (secret: string) => Promise<boolean>;
   logout: () => void;
-  client: InsaytClient;
+  client: LitemetricsClient;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-function makeClient(secret: string | null): InsaytClient {
+function makeClient(secret: string | null): LitemetricsClient {
   return createClient({
     baseUrl: BASE_URL,
     siteId: 'default',
-    headers: secret ? { 'X-Insayt-Admin-Secret': secret } : undefined,
+    headers: secret ? { 'X-Litemetrics-Admin-Secret': secret } : undefined,
   });
 }
 
@@ -30,7 +30,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return null;
     }
   });
-  const [client, setClient] = useState<InsaytClient>(() => makeClient(adminSecret));
+  const [client, setClient] = useState<LitemetricsClient>(() => makeClient(adminSecret));
 
   const login = useCallback(async (secret: string): Promise<boolean> => {
     try {

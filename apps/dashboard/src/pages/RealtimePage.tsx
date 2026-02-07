@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import type { InsaytClient, EventListItem } from '@insayt/client';
+import type { LitemetricsClient, EventListItem } from '@litemetrics/client';
 import { getBrowserIcon, getOSIcon, getDeviceIcon } from '../components/icons';
 
 interface RealtimePageProps {
   siteId: string;
-  client: InsaytClient;
+  client: LitemetricsClient;
 }
 
 export function RealtimePage({ siteId, client }: RealtimePageProps) {

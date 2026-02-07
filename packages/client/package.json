@@ -1,15 +1,15 @@
 {
-  "name": "@insayt/client",
+  "name": "@litemetrics/client",
   "version": "0.1.0",
-  "description": "Client-side SDK for querying Insayt analytics data",
+  "description": "Client-side SDK for querying Litemetrics analytics data",
   "license": "MIT",
   "author": "Metehan Kurucu",
   "repository": {
     "type": "git",
-    "url": "https://github.com/metehankurucu/insayt",
+    "url": "https://github.com/metehankurucu/litemetrics",
     "directory": "packages/client"
   },
-  "keywords": ["analytics", "insayt", "client", "dashboard", "query"],
+  "keywords": ["analytics", "litemetrics", "client", "dashboard", "query"],
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -32,7 +32,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@insayt/core": "workspace:*",
+    "@litemetrics/core": "workspace:*",
     "axios": "^1.13.4"
   },
   "devDependencies": {

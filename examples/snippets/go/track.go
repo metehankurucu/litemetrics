@@ -4,7 +4,7 @@
 //
 //	go run track.go
 //
-// Set INSAYT_URL environment variable to point to your Insayt server.
+// Set LITEMETRICS_URL environment variable to point to your Litemetrics server.
 // Default: http://localhost:3002
 package main
 
@@ -17,7 +17,7 @@ import (
 	"time"
 )
 
-var insaytURL = getEnv("INSAYT_URL", "http://localhost:3002")
+var litemetricsURL = getEnv("LITEMETRICS_URL", "http://localhost:3002")
 
 type Event map[string]interface{}
 
@@ -25,7 +25,7 @@ type CollectPayload struct {
 	Events []Event `json:"events"`
 }
 
-// TrackPageview sends a pageview event to the Insayt server.
+// TrackPageview sends a pageview event to the Litemetrics server.
 func TrackPageview(siteID, url string, visitorID string) error {
 	return sendEvent(Event{
 		"type":      "pageview",
@@ -37,7 +37,7 @@ func TrackPageview(siteID, url string, visitorID string) error {
 	})
 }
 
-// TrackEvent sends a custom event to the Insayt server.
+// TrackEvent sends a custom event to the Litemetrics server.
 func TrackEvent(siteID, name string, properties map[string]interface{}, visitorID string) error {
 	return sendEvent(Event{
 		"type":       "event",
@@ -50,7 +50,7 @@ func TrackEvent(siteID, name string, properties map[string]interface{}, visitorI
 	})
 }
 
-// Identify sends an identify event to the Insayt server.
+// Identify sends an identify event to the Litemetrics server.
 func Identify(siteID, userID string, traits map[string]interface{}, visitorID string) error {
 	return sendEvent(Event{
 		"type":      "identify",
@@ -71,7 +71,7 @@ func sendEvent(event Event) error {
 	}
 
 	resp, err := http.Post(
-		insaytURL+"/api/collect",
+		litemetricsURL+"/api/collect",
 		"application/json",
 		bytes.NewBuffer(body),
 	)

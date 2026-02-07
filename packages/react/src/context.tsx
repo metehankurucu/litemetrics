@@ -1,25 +1,25 @@
 import { createContext, useContext, useEffect, useRef, useMemo } from 'react';
-import type { InsaytInstance, TrackerConfig } from '@insayt/tracker';
-import { createTracker } from '@insayt/tracker';
+import type { LitemetricsInstance, TrackerConfig } from '@litemetrics/tracker';
+import { createTracker } from '@litemetrics/tracker';
 
-interface InsaytContextValue {
-  tracker: InsaytInstance;
+interface LitemetricsContextValue {
+  tracker: LitemetricsInstance;
   siteId: string;
 }
 
-const InsaytContext = createContext<InsaytContextValue | null>(null);
+const LitemetricsContext = createContext<LitemetricsContextValue | null>(null);
 
-export interface InsaytProviderProps extends Omit<TrackerConfig, 'autoTrack'> {
+export interface LitemetricsProviderProps extends Omit<TrackerConfig, 'autoTrack'> {
   children: React.ReactNode;
   autoPageView?: boolean;
 }
 
-export function InsaytProvider({
+export function LitemetricsProvider({
   children,
   autoPageView = true,
   ...config
-}: InsaytProviderProps) {
-  const trackerRef = useRef<InsaytInstance | null>(null);
+}: LitemetricsProviderProps) {
+  const trackerRef = useRef<LitemetricsInstance | null>(null);
 
   if (!trackerRef.current) {
     trackerRef.current = createTracker({
@@ -36,7 +36,7 @@ export function InsaytProvider({
     };
   }, []);
 
-  const value = useMemo<InsaytContextValue>(
+  const value = useMemo<LitemetricsContextValue>(
     () => ({
       tracker: trackerRef.current!,
       siteId: config.siteId,
@@ -45,16 +45,16 @@ export function InsaytProvider({
   );
 
   return (
-    <InsaytContext.Provider value={value}>
+    <LitemetricsContext.Provider value={value}>
       {children}
-    </InsaytContext.Provider>
+    </LitemetricsContext.Provider>
   );
 }
 
-export function useInsaytContext(): InsaytContextValue {
-  const ctx = useContext(InsaytContext);
+export function useLitemetricsContext(): LitemetricsContextValue {
+  const ctx = useContext(LitemetricsContext);
   if (!ctx) {
-    throw new Error('useInsayt must be used within <InsaytProvider>');
+    throw new Error('useLitemetrics must be used within <LitemetricsProvider>');
   }
   return ctx;
 }

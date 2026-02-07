@@ -1,15 +1,15 @@
 {
-  "name": "@insayt/react-native",
+  "name": "@litemetrics/react-native",
   "version": "0.1.0",
-  "description": "React Native / Expo bindings for Insayt analytics",
+  "description": "React Native / Expo bindings for Litemetrics analytics",
   "license": "MIT",
   "author": "Metehan Kurucu",
   "repository": {
     "type": "git",
-    "url": "https://github.com/metehankurucu/insayt",
+    "url": "https://github.com/metehankurucu/litemetrics",
     "directory": "packages/react-native"
   },
-  "keywords": ["analytics", "insayt", "react-native", "expo", "tracking"],
+  "keywords": ["analytics", "litemetrics", "react-native", "expo", "tracking"],
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -32,7 +32,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@insayt/core": "workspace:*"
+    "@litemetrics/core": "workspace:*"
   },
   "peerDependencies": {
     "react": ">=18",

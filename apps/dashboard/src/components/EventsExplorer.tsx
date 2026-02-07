@@ -1,11 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
-import type { InsaytClient, EventListItem, EventType, Period } from '@insayt/client';
+import type { LitemetricsClient, EventListItem, EventType, Period } from '@litemetrics/client';
 import { getBrowserIcon, getOSIcon, getDeviceIcon } from './icons';
 import { ExportButton } from './ExportButton';
 
 interface EventsExplorerProps {
   siteId: string;
-  client: InsaytClient;
+  client: LitemetricsClient;
   onUserClick?: (visitorId: string) => void;
 }
 

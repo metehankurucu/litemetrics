@@ -29,7 +29,7 @@ export interface IdentifyEvent extends BaseEvent {
   traits?: Record<string, unknown>;
 }
 
-export type InsaytEvent = PageviewEvent | CustomEvent | IdentifyEvent;
+export type LitemetricsEvent = PageviewEvent | CustomEvent | IdentifyEvent;
 
 // ─── Event Payload (what client sends) ─────────────────────
 
@@ -56,7 +56,7 @@ export interface UTMParams {
   content?: string;
 }
 
-export type ClientEvent = InsaytEvent & ClientContext;
+export type ClientEvent = LitemetricsEvent & ClientContext;
 
 // ─── Enriched Event (after server processing) ──────────────
 

@@ -1,25 +1,25 @@
-# Rails controller for proxying Insayt analytics events.
+# Rails controller for proxying Litemetrics analytics events.
 #
 # Add to config/routes.rb:
-#   post '/api/collect', to: 'insayt#collect'
-#   get  '/api/stats',   to: 'insayt#stats'
+#   post '/api/collect', to: 'litemetrics#collect'
+#   get  '/api/stats',   to: 'litemetrics#stats'
 #
-# Set INSAYT_URL in your environment:
-#   INSAYT_URL=http://localhost:3002
+# Set LITEMETRICS_URL in your environment:
+#   LITEMETRICS_URL=http://localhost:3002
 
 require "net/http"
 require "json"
 require "uri"
 
-class InsaytController < ApplicationController
+class LitemetricsController < ApplicationController
   skip_before_action :verify_authenticity_token, only: [:collect]
 
-  INSAYT_URL = ENV.fetch("INSAYT_URL", "http://localhost:3002")
+  LITEMETRICS_URL = ENV.fetch("LITEMETRICS_URL", "http://localhost:3002")
 
   # POST /api/collect
-  # Proxy tracker events to Insayt server.
+  # Proxy tracker events to Litemetrics server.
   def collect
-    uri = URI("#{INSAYT_URL}/api/collect")
+    uri = URI("#{LITEMETRICS_URL}/api/collect")
     response = Net::HTTP.post(
       uri,
       request.raw_post,
@@ -30,16 +30,16 @@ class InsaytController < ApplicationController
   end
 
   # GET /api/stats
-  # Proxy stats queries to Insayt server.
+  # Proxy stats queries to Litemetrics server.
   def stats
-    uri = URI("#{INSAYT_URL}/api/stats")
+    uri = URI("#{LITEMETRICS_URL}/api/stats")
     uri.query = request.query_string
 
     req = Net::HTTP::Get.new(uri)
     req["Content-Type"] = "application/json"
 
-    secret = request.headers["X-Insayt-Secret"]
-    req["X-Insayt-Secret"] = secret if secret
+    secret = request.headers["X-Litemetrics-Secret"]
+    req["X-Litemetrics-Secret"] = secret if secret
 
     response = Net::HTTP.start(uri.hostname, uri.port) { |http| http.request(req) }
 
@@ -52,11 +52,11 @@ end
 # For tracking events from Ruby without Rails:
 #
 #   require_relative 'rails_proxy'
-#   InsaytTracker.track_pageview('your-site-id', '/about')
-#   InsaytTracker.track_event('your-site-id', 'purchase', { amount: 99 })
+#   LitemetricsTracker.track_pageview('your-site-id', '/about')
+#   LitemetricsTracker.track_event('your-site-id', 'purchase', { amount: 99 })
 
-module InsaytTracker
-  INSAYT_URL = ENV.fetch("INSAYT_URL", "http://localhost:3002")
+module LitemetricsTracker
+  LITEMETRICS_URL = ENV.fetch("LITEMETRICS_URL", "http://localhost:3002")
 
   def self.track_pageview(site_id, url, visitor_id: "server", referrer: nil)
     send_event({
@@ -95,7 +95,7 @@ module InsaytTracker
   end
 
   def self.send_event(event)
-    uri = URI("#{INSAYT_URL}/api/collect")
+    uri = URI("#{LITEMETRICS_URL}/api/collect")
     response = Net::HTTP.post(
       uri,
       { events: [event] }.to_json,

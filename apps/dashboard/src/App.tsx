@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Routes, Route, NavLink, useNavigate, Navigate } from 'react-router';
-import type { Period } from '@insayt/client';
+import type { Period } from '@litemetrics/client';
 import { useAuth } from './auth';
 import { LoginPage } from './components/LoginPage';
 import { SiteSelector } from './components/SiteSelector';
@@ -78,7 +78,7 @@ const navItems: NavItem[] = [
 export function App() {
   const { isAuthenticated, login, logout, client } = useAuth();
   const navigate = useNavigate();
-  const [siteId, setSiteId] = useState(import.meta.env.VITE_INSAYT_SITE_ID || 'demo');
+  const [siteId, setSiteId] = useState(import.meta.env.VITE_LITEMETRICS_SITE_ID || 'demo');
   const [period, setPeriod] = useState<Period>('7d');
   const [userVisitorId, setUserVisitorId] = useState<string | null>(null);
 
@@ -97,7 +97,7 @@ export function App() {
       <aside className="w-56 bg-white border-r border-zinc-200 flex flex-col flex-shrink-0 fixed h-full">
         {/* Logo */}
         <div className="px-5 py-4 flex items-center justify-center border-b border-zinc-100">
-          <img src="/logo.png" alt="Insayt" className="h-9" />
+          <img src="/logo.png" alt="Litemetrics" className="h-9" />
         </div>
 
         {/* Site selector */}

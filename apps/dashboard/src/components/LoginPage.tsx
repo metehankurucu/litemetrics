@@ -27,7 +27,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
     <div className="min-h-screen bg-zinc-50 flex items-center justify-center p-4">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <img src="/logo.png" alt="Insayt" className="h-16 mx-auto mb-4" />
+          <img src="/logo.png" alt="Litemetrics" className="h-16 mx-auto mb-4" />
           <p className="text-sm text-zinc-500">Enter your admin secret to continue</p>
         </div>
 
@@ -58,7 +58,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
         </form>
 
         <p className="text-center text-xs text-zinc-400 mt-6">
-          Powered by <a href="https://github.com/metehankurucu/insayt" target="_blank" rel="noopener noreferrer" className="hover:text-zinc-600 transition-colors">Insayt</a>
+          Powered by <a href="https://github.com/metehankurucu/litemetrics" target="_blank" rel="noopener noreferrer" className="hover:text-zinc-600 transition-colors">Litemetrics</a>
         </p>
       </div>
     </div>

@@ -5,7 +5,7 @@ import type {
   CustomEvent,
   IdentifyEvent,
   ClientContext,
-} from '@insayt/core';
+} from '@litemetrics/core';
 
 export interface RNTrackerInstance {
   track(name: string, properties?: Record<string, unknown>): void;
@@ -50,7 +50,7 @@ export function createRNTracker(config: TrackerConfig): RNTrackerInstance {
     const events = queue.splice(0);
 
     if (debug) {
-      console.log('[insayt:rn] sending', events.length, 'events');
+      console.log('[litemetrics:rn] sending', events.length, 'events');
     }
 
     fetch(endpoint, {
@@ -58,7 +58,7 @@ export function createRNTracker(config: TrackerConfig): RNTrackerInstance {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ events }),
     }).catch((err) => {
-      if (debug) console.warn('[insayt:rn] send failed', err);
+      if (debug) console.warn('[litemetrics:rn] send failed', err);
       // Push back to queue for retry
       queue.unshift(...events);
     });

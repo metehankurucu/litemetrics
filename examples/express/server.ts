@@ -1,6 +1,6 @@
 import express from "express";
 import cors from "cors";
-import { createCollector } from "@insayt/node";
+import { createCollector } from "@litemetrics/node";
 import { join } from "path";
 
 const app = express();
@@ -8,7 +8,7 @@ const app = express();
 const corsOptions = cors({
   origin: true,
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "X-Insayt-Secret", "X-Insayt-Admin-Secret"],
+  allowedHeaders: ["Content-Type", "X-Litemetrics-Secret", "X-Litemetrics-Admin-Secret"],
 });
 
 // Preflight - must be before other routes
@@ -19,26 +19,26 @@ app.use(express.json());
 // Request logger
 app.use((req, _res, next) => {
   const ts = new Date().toISOString().slice(11, 19);
-  const auth = req.headers["x-insayt-admin-secret"]
+  const auth = req.headers["x-litemetrics-admin-secret"]
     ? "[admin]"
-    : req.headers["x-insayt-secret"]
+    : req.headers["x-litemetrics-secret"]
     ? "[secret]"
     : "";
   console.log(`${ts} ${req.method} ${req.url} ${auth}`);
   next();
 });
 
-// Initialize Insayt collector
+// Initialize Litemetrics collector
 const DB_ADAPTER = (process.env.DB_ADAPTER || "clickhouse") as "clickhouse" | "mongodb";
 const DATABASE_URL =
   process.env.DATABASE_URL ||
   (DB_ADAPTER === "clickhouse"
     ? "http://localhost:8123"
-    : "mongodb://localhost:27017/insayt");
+    : "mongodb://localhost:27017/litemetrics");
 
 const collector = await createCollector({
   db: { adapter: DB_ADAPTER, url: DATABASE_URL },
-  adminSecret: process.env.INSAYT_ADMIN_SECRET,
+  adminSecret: process.env.LITEMETRICS_ADMIN_SECRET,
   geoip: false,
   trustProxy: true,
 });
@@ -77,9 +77,9 @@ app.all("/api/sites/{*path}", async (req, res) => {
 });
 
 // Serve tracker script
-app.get("/insayt.js", (_req, res) => {
+app.get("/litemetrics.js", (_req, res) => {
   res.sendFile(
-    join(import.meta.dirname, "../../packages/tracker/dist/insayt.global.js")
+    join(import.meta.dirname, "../../packages/tracker/dist/litemetrics.global.js")
   );
 });
 
@@ -90,7 +90,7 @@ app.get("/", (_req, res) => {
 
 const PORT = process.env.PORT || 3002;
 app.listen(PORT, () => {
-  console.log(`Insayt demo running at http://localhost:${PORT}`);
+  console.log(`Litemetrics demo running at http://localhost:${PORT}`);
   console.log(`\nEndpoints:`);
   console.log(`  POST /api/collect    - Event collection (public)`);
   console.log(`  GET  /api/stats      - Query analytics (secret key required)`);
@@ -100,10 +100,10 @@ app.listen(PORT, () => {
     `  ALL  /api/sites      - Site management (admin secret required)`
   );
   console.log(`  GET  /               - Demo page\n`);
-  if (!process.env.INSAYT_ADMIN_SECRET) {
+  if (!process.env.LITEMETRICS_ADMIN_SECRET) {
     console.log(
-      `  Warning: INSAYT_ADMIN_SECRET not set - site management disabled`
+      `  Warning: LITEMETRICS_ADMIN_SECRET not set - site management disabled`
     );
-    console.log(`  Set it: INSAYT_ADMIN_SECRET=my-secret bun run dev\n`);
+    console.log(`  Set it: LITEMETRICS_ADMIN_SECRET=my-secret bun run dev\n`);
   }
 });

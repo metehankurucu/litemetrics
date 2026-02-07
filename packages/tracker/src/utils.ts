@@ -1,4 +1,4 @@
-import type { UTMParams } from '@insayt/core';
+import type { UTMParams } from '@litemetrics/core';
 
 export function generateId(): string {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {

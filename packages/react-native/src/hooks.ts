@@ -1,19 +1,19 @@
 import { useEffect, useRef, useCallback } from 'react';
-import { useInsaytRNContext } from './context';
+import { useLitemetricsRNContext } from './context';
 
 /**
- * Access the Insayt tracker instance in React Native.
+ * Access the Litemetrics tracker instance in React Native.
  *
  * @example
  * ```tsx
  * function Button() {
- *   const { track } = useInsayt();
+ *   const { track } = useLitemetrics();
  *   return <Pressable onPress={() => track('tap', { screen: 'home' })}><Text>Tap</Text></Pressable>;
  * }
  * ```
  */
-export function useInsayt() {
-  const { tracker } = useInsaytRNContext();
+export function useLitemetrics() {
+  const { tracker } = useLitemetricsRNContext();
 
   return {
     track: tracker.track.bind(tracker),
@@ -34,17 +34,17 @@ export function useInsayt() {
  * function App() {
  *   const { onStateChange, navigationRef } = useNavigationTracking();
  *   return (
- *     <InsaytProvider siteId="xxx" endpoint="https://api.example.com/collect">
+ *     <LitemetricsProvider siteId="xxx" endpoint="https://api.example.com/collect">
  *       <NavigationContainer ref={navigationRef} onStateChange={onStateChange}>
  *         <Stack.Navigator>...</Stack.Navigator>
  *       </NavigationContainer>
- *     </InsaytProvider>
+ *     </LitemetricsProvider>
  *   );
  * }
  * ```
  */
 export function useNavigationTracking() {
-  const { tracker } = useInsaytRNContext();
+  const { tracker } = useLitemetricsRNContext();
   const routeNameRef = useRef<string | undefined>(undefined);
   const navigationRef = useRef<any>(null);
 
@@ -74,7 +74,7 @@ export function useNavigationTracking() {
  * ```
  */
 export function useAppStateTracking() {
-  const { tracker } = useInsaytRNContext();
+  const { tracker } = useLitemetricsRNContext();
   const appStateRef = useRef<string>('active');
 
   useEffect(() => {

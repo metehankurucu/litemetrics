@@ -2,17 +2,17 @@
   "lockfileVersion": 1,
   "workspaces": {
     "": {
-      "name": "insayt",
+      "name": "litemetrics",
       "devDependencies": {
         "turbo": "^2",
         "typescript": "^5.7",
       },
     },
     "apps/dashboard": {
-      "name": "@insayt/dashboard",
+      "name": "@litemetrics/dashboard",
       "version": "0.1.0",
       "dependencies": {
-        "@insayt/client": "workspace:*",
+        "@litemetrics/client": "workspace:*",
         "react": "^19",
         "react-dom": "^19",
         "react-icons": "^5.5.0",
@@ -32,11 +32,11 @@
       },
     },
     "apps/server": {
-      "name": "@insayt/server",
+      "name": "@litemetrics/server",
       "version": "0.1.0",
       "dependencies": {
-        "@insayt/node": "workspace:*",
-        "@insayt/tracker": "workspace:*",
+        "@litemetrics/node": "workspace:*",
+        "@litemetrics/tracker": "workspace:*",
         "cors": "^2.8.6",
         "express": "^5",
       },
@@ -48,11 +48,11 @@
       },
     },
     "examples/express": {
-      "name": "@insayt/example-express",
+      "name": "@litemetrics/example-express",
       "version": "0.1.0",
       "dependencies": {
-        "@insayt/node": "workspace:*",
-        "@insayt/tracker": "workspace:*",
+        "@litemetrics/node": "workspace:*",
+        "@litemetrics/tracker": "workspace:*",
         "cors": "^2.8.6",
         "express": "^5",
       },
@@ -63,11 +63,11 @@
       },
     },
     "examples/react-app": {
-      "name": "@insayt/example-react",
+      "name": "@litemetrics/example-react",
       "version": "0.1.0",
       "dependencies": {
-        "@insayt/client": "workspace:*",
-        "@insayt/react": "workspace:*",
+        "@litemetrics/client": "workspace:*",
+        "@litemetrics/react": "workspace:*",
         "react": "^19",
         "react-dom": "^19",
       },
@@ -80,10 +80,10 @@
       },
     },
     "packages/client": {
-      "name": "@insayt/client",
+      "name": "@litemetrics/client",
       "version": "0.1.0",
       "dependencies": {
-        "@insayt/core": "workspace:*",
+        "@litemetrics/core": "workspace:*",
         "axios": "^1.13.4",
       },
       "devDependencies": {
@@ -92,7 +92,7 @@
       },
     },
     "packages/core": {
-      "name": "@insayt/core",
+      "name": "@litemetrics/core",
       "version": "0.1.0",
       "devDependencies": {
         "tsup": "^8",
@@ -100,11 +100,11 @@
       },
     },
     "packages/node": {
-      "name": "@insayt/node",
+      "name": "@litemetrics/node",
       "version": "0.1.0",
       "dependencies": {
         "@clickhouse/client": "^1.17.0",
-        "@insayt/core": "workspace:*",
+        "@litemetrics/core": "workspace:*",
         "maxmind": "^4.3",
         "mongodb": "^6",
         "ua-parser-js": "^2",
@@ -116,10 +116,10 @@
       },
     },
     "packages/react": {
-      "name": "@insayt/react",
+      "name": "@litemetrics/react",
       "version": "0.1.0",
       "dependencies": {
-        "@insayt/tracker": "workspace:*",
+        "@litemetrics/tracker": "workspace:*",
       },
       "devDependencies": {
         "@types/react": "^19",
@@ -132,10 +132,10 @@
       },
     },
     "packages/react-native": {
-      "name": "@insayt/react-native",
+      "name": "@litemetrics/react-native",
       "version": "0.1.0",
       "dependencies": {
-        "@insayt/core": "workspace:*",
+        "@litemetrics/core": "workspace:*",
       },
       "devDependencies": {
         "@types/react": "^19",
@@ -149,10 +149,10 @@
       },
     },
     "packages/tracker": {
-      "name": "@insayt/tracker",
+      "name": "@litemetrics/tracker",
       "version": "0.1.0",
       "dependencies": {
-        "@insayt/core": "workspace:*",
+        "@litemetrics/core": "workspace:*",
       },
       "devDependencies": {
         "tsup": "^8",
@@ -291,26 +291,6 @@
 
     "@esbuild/win32-x64": ["@esbuild/win32-x64@0.27.3", "", { "os": "win32", "cpu": "x64" }, "sha512-4uJGhsxuptu3OcpVAzli+/gWusVGwZZHTlS63hh++ehExkVT8SgiEf7/uC/PclrPPkLhZqGgCTjd0VWLo6xMqA=="],
 
-    "@insayt/client": ["@insayt/client@workspace:packages/client"],
-
-    "@insayt/core": ["@insayt/core@workspace:packages/core"],
-
-    "@insayt/dashboard": ["@insayt/dashboard@workspace:apps/dashboard"],
-
-    "@insayt/example-express": ["@insayt/example-express@workspace:examples/express"],
-
-    "@insayt/example-react": ["@insayt/example-react@workspace:examples/react-app"],
-
-    "@insayt/node": ["@insayt/node@workspace:packages/node"],
-
-    "@insayt/react": ["@insayt/react@workspace:packages/react"],
-
-    "@insayt/react-native": ["@insayt/react-native@workspace:packages/react-native"],
-
-    "@insayt/server": ["@insayt/server@workspace:apps/server"],
-
-    "@insayt/tracker": ["@insayt/tracker@workspace:packages/tracker"],
-
     "@isaacs/ttlcache": ["@isaacs/ttlcache@1.4.1", "", {}, "sha512-RQgQ4uQ+pLbqXfOmieB91ejmLwvSgv9nLx6sT6sD83s7umBypgg+OIBOBbEUiJXrfpnp9j0mRhYYdzp9uqq3lA=="],
 
     "@istanbuljs/load-nyc-config": ["@istanbuljs/load-nyc-config@1.1.0", "", { "dependencies": { "camelcase": "^5.3.1", "find-up": "^4.1.0", "get-package-type": "^0.1.0", "js-yaml": "^3.13.1", "resolve-from": "^5.0.0" } }, "sha512-VjeHSlIzpv/NyD3N0YuHfXOPDIixcA1q2ZV98wsMqcYlPmv2n3Yb2lYP9XMElnaFVXg5A7YLTeLu6V84uQDjmQ=="],
@@ -340,6 +320,26 @@
     "@jridgewell/sourcemap-codec": ["@jridgewell/sourcemap-codec@1.5.5", "", {}, "sha512-cYQ9310grqxueWbl+WuIUIaiUaDcj7WOq5fVhEljNVgRfOUhY9fy2zTvfoqWsnebh8Sl70VScFbICvJnLKB0Og=="],
 
     "@jridgewell/trace-mapping": ["@jridgewell/trace-mapping@0.3.31", "", { "dependencies": { "@jridgewell/resolve-uri": "^3.1.0", "@jridgewell/sourcemap-codec": "^1.4.14" } }, "sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw=="],
+
+    "@litemetrics/client": ["@litemetrics/client@workspace:packages/client"],
+
+    "@litemetrics/core": ["@litemetrics/core@workspace:packages/core"],
+
+    "@litemetrics/dashboard": ["@litemetrics/dashboard@workspace:apps/dashboard"],
+
+    "@litemetrics/example-express": ["@litemetrics/example-express@workspace:examples/express"],
+
+    "@litemetrics/example-react": ["@litemetrics/example-react@workspace:examples/react-app"],
+
+    "@litemetrics/node": ["@litemetrics/node@workspace:packages/node"],
+
+    "@litemetrics/react": ["@litemetrics/react@workspace:packages/react"],
+
+    "@litemetrics/react-native": ["@litemetrics/react-native@workspace:packages/react-native"],
+
+    "@litemetrics/server": ["@litemetrics/server@workspace:apps/server"],
+
+    "@litemetrics/tracker": ["@litemetrics/tracker@workspace:packages/tracker"],
 
     "@mongodb-js/saslprep": ["@mongodb-js/saslprep@1.4.5", "", { "dependencies": { "sparse-bitfield": "^3.0.3" } }, "sha512-k64Lbyb7ycCSXHSLzxVdb2xsKGPMvYZfCICXvDsI8Z65CeWQzTEKS4YmGbnqw+U9RBvLPTsB6UCmwkgsDTGWIw=="],
 
@@ -1369,8 +1369,6 @@
 
     "d3-scale/d3-array/internmap": ["internmap@2.0.3", "", {}, "sha512-5Hh7Y1wQbvY5ooGgPbDaL5iYLAPzMTUrjMulskHLH6wnv/A+1q5rgEaiuqEjB+oxGXIVZs1FF+R/KPN3ZSQYYg=="],
 
-    "d3-scale/d3-interpolate/d3-color": ["d3-color@3.1.0", "", {}, "sha512-zg/chbXyeBtMQ1LbD/WSoW2DpC3I0mpmPdW+ynRTj/x2DAWYrIY7qeZIHidozwV24m4iavr15lNwIwLxRmOxhA=="],
-
     "d3-time/d3-array/internmap": ["internmap@2.0.3", "", {}, "sha512-5Hh7Y1wQbvY5ooGgPbDaL5iYLAPzMTUrjMulskHLH6wnv/A+1q5rgEaiuqEjB+oxGXIVZs1FF+R/KPN3ZSQYYg=="],
 
     "form-data/mime-types/mime-db": ["mime-db@1.52.0", "", {}, "sha512-sPU4uV7dYlvtWJxwwxHD0PuihVNiE7TyAbQ5SWxDCB9mUYvOgroQOwYQQOKPJ8CIbE+1ETVlOoK1UC2nU3gYvg=="],
@@ -1386,8 +1384,6 @@
     "tailwindcss/chokidar/readdirp": ["readdirp@3.6.0", "", { "dependencies": { "picomatch": "^2.2.1" } }, "sha512-hOS089on8RduqdbhvQ5Z37A0ESjsqz6qnRcffsMU3495FuTdqSm+7bhJ29JvIOsBDEEnan5DPu9t3To9VRlMzA=="],
 
     "victory-vendor/d3-array/internmap": ["internmap@2.0.3", "", {}, "sha512-5Hh7Y1wQbvY5ooGgPbDaL5iYLAPzMTUrjMulskHLH6wnv/A+1q5rgEaiuqEjB+oxGXIVZs1FF+R/KPN3ZSQYYg=="],
-
-    "victory-vendor/d3-interpolate/d3-color": ["d3-color@3.1.0", "", {}, "sha512-zg/chbXyeBtMQ1LbD/WSoW2DpC3I0mpmPdW+ynRTj/x2DAWYrIY7qeZIHidozwV24m4iavr15lNwIwLxRmOxhA=="],
 
     "vite/esbuild/@esbuild/aix-ppc64": ["@esbuild/aix-ppc64@0.25.12", "", { "os": "aix", "cpu": "ppc64" }, "sha512-Hhmwd6CInZ3dwpuGTF8fJG6yoWmsToE+vYgD4nytZVxcu1ulHpUQRAB1UJ8+N1Am3Mz4+xOByoQoSZf4D+CpkA=="],
 

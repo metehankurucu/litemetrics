@@ -1,12 +1,12 @@
 # Self-Hosting
 
-Insayt ships as a single Docker image. It bundles the server, dashboard, tracker script, and all API endpoints.
+Litemetrics ships as a single Docker image. It bundles the server, dashboard, tracker script, and all API endpoints.
 
 ## Quick Deploy
 
 ### Railway (one click)
 
-[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/template/insayt?referralCode=insayt)
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/template/litemetrics?referralCode=litemetrics)
 
 1. Click the button, add a ClickHouse service (or MongoDB)
 2. Set `CLICKHOUSE_URL` (or `MONGODB_URL`) and `ADMIN_SECRET` env vars
@@ -15,21 +15,21 @@ Insayt ships as a single Docker image. It bundles the server, dashboard, tracker
 ### Docker Compose (recommended)
 
 ```bash
-git clone https://github.com/metehankurucu/insayt.git
-cd insayt
+git clone https://github.com/metehankurucu/litemetrics.git
+cd litemetrics
 ADMIN_SECRET=your-secret docker compose up -d
 ```
 
-This starts ClickHouse and Insayt together with healthchecks and persistent volumes.
+This starts ClickHouse and Litemetrics together with healthchecks and persistent volumes.
 
 ### Docker (standalone)
 
 ```bash
-docker build -t insayt .
+docker build -t litemetrics .
 docker run -p 3002:3002 \
   -e CLICKHOUSE_URL=http://your-clickhouse:8123 \
   -e ADMIN_SECRET=your-secret \
-  insayt
+  litemetrics
 ```
 
 Open `http://localhost:3002` for the dashboard.
@@ -40,7 +40,7 @@ Open `http://localhost:3002` for the dashboard.
 |------|-------------|
 | `/` | Dashboard UI |
 | `/tracker.js` | Browser tracker script |
-| `/insayt.js` | Same tracker (alias) |
+| `/litemetrics.js` | Same tracker (alias) |
 | `/api/collect` | Event ingestion |
 | `/api/stats` | Query analytics |
 | `/api/events` | List events |
@@ -54,13 +54,13 @@ Open `http://localhost:3002` for the dashboard.
 |----------|-------------|---------|
 | `DB_ADAPTER` | Database adapter (`clickhouse` or `mongodb`) | `clickhouse` |
 | `CLICKHOUSE_URL` | ClickHouse connection URL | `http://localhost:8123` |
-| `MONGODB_URL` | MongoDB connection string (when using mongodb adapter) | `mongodb://localhost:27017/insayt` |
+| `MONGODB_URL` | MongoDB connection string (when using mongodb adapter) | `mongodb://localhost:27017/litemetrics` |
 | `ADMIN_SECRET` | Secret for admin login and site management | _(none)_ |
 | `PORT` | Server port | `3002` |
 | `GEOIP` | Enable GeoIP lookup | `true` |
 | `TRUST_PROXY` | Trust X-Forwarded-For headers | `true` |
 
-`DATABASE_URL` and `INSAYT_ADMIN_SECRET` also work as aliases.
+`DATABASE_URL` and `LITEMETRICS_ADMIN_SECRET` also work as aliases.
 
 ## Using MongoDB Instead
 
@@ -69,9 +69,9 @@ To use MongoDB instead of ClickHouse, set `DB_ADAPTER=mongodb`:
 ```bash
 docker run -p 3002:3002 \
   -e DB_ADAPTER=mongodb \
-  -e MONGODB_URL=mongodb://your-mongo:27017/insayt \
+  -e MONGODB_URL=mongodb://your-mongo:27017/litemetrics \
   -e ADMIN_SECRET=your-secret \
-  insayt
+  litemetrics
 ```
 
 Or with Docker Compose, use the mongodb profile:

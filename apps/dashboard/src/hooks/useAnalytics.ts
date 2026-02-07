@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
-import { createClient, type QueryResult, type Metric, type Period } from '@insayt/client';
+import { createClient, type QueryResult, type Metric, type Period } from '@litemetrics/client';
 
 const client = createClient({
-  baseUrl: import.meta.env.VITE_INSAYT_URL || '',
-  siteId: import.meta.env.VITE_INSAYT_SITE_ID || 'demo',
+  baseUrl: import.meta.env.VITE_LITEMETRICS_URL || '',
+  siteId: import.meta.env.VITE_LITEMETRICS_SITE_ID || 'demo',
 });
 
 export function useStats(metric: Metric, period: Period = '7d') {
@@ -61,7 +61,7 @@ export function useOverview(period: Period = '7d') {
 
 export function useSiteId() {
   const [siteId, setSiteIdState] = useState(
-    import.meta.env.VITE_INSAYT_SITE_ID || 'demo',
+    import.meta.env.VITE_LITEMETRICS_SITE_ID || 'demo',
   );
 
   const setSiteId = useCallback((id: string) => {

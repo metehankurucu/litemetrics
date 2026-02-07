@@ -1,5 +1,5 @@
 {
-  "name": "@insayt/example-express",
+  "name": "@litemetrics/example-express",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -7,8 +7,8 @@
     "start": "bun run server.ts"
   },
   "dependencies": {
-    "@insayt/node": "workspace:*",
-    "@insayt/tracker": "workspace:*",
+    "@litemetrics/node": "workspace:*",
+    "@litemetrics/tracker": "workspace:*",
     "cors": "^2.8.6",
     "express": "^5"
   },

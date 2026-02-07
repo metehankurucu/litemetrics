@@ -1,12 +1,12 @@
 """
-Flask proxy for Insayt analytics.
+Flask proxy for Litemetrics analytics.
 
-Forwards browser tracker events to your Insayt server.
-Useful when your main app is Python but you run Insayt as a separate service.
+Forwards browser tracker events to your Litemetrics server.
+Useful when your main app is Python but you run Litemetrics as a separate service.
 
 Usage:
     pip install flask requests
-    INSAYT_URL=http://localhost:3002 flask run
+    LITEMETRICS_URL=http://localhost:3002 flask run
 """
 
 import os
@@ -15,17 +15,17 @@ from flask import Flask, request, jsonify
 
 app = Flask(__name__)
 
-INSAYT_URL = os.environ.get("INSAYT_URL", "http://localhost:3002")
+LITEMETRICS_URL = os.environ.get("LITEMETRICS_URL", "http://localhost:3002")
 
 
 @app.route("/api/collect", methods=["POST", "OPTIONS"])
 def collect():
-    """Proxy tracker events to Insayt server."""
+    """Proxy tracker events to Litemetrics server."""
     if request.method == "OPTIONS":
         return _cors_preflight()
 
     resp = requests.post(
-        f"{INSAYT_URL}/api/collect",
+        f"{LITEMETRICS_URL}/api/collect",
         json=request.json,
         headers={"Content-Type": "application/json"},
     )
@@ -38,16 +38,16 @@ def collect():
 
 @app.route("/api/stats", methods=["GET", "OPTIONS"])
 def stats():
-    """Proxy stats queries to Insayt server."""
+    """Proxy stats queries to Litemetrics server."""
     if request.method == "OPTIONS":
         return _cors_preflight()
 
     headers = {"Content-Type": "application/json"}
-    if "X-Insayt-Secret" in request.headers:
-        headers["X-Insayt-Secret"] = request.headers["X-Insayt-Secret"]
+    if "X-Litemetrics-Secret" in request.headers:
+        headers["X-Litemetrics-Secret"] = request.headers["X-Litemetrics-Secret"]
 
     resp = requests.get(
-        f"{INSAYT_URL}/api/stats",
+        f"{LITEMETRICS_URL}/api/stats",
         params=request.args,
         headers=headers,
     )
@@ -62,7 +62,7 @@ def _cors_preflight():
     response = app.make_default_options_response()
     response.headers["Access-Control-Allow-Origin"] = "*"
     response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
-    response.headers["Access-Control-Allow-Headers"] = "Content-Type, X-Insayt-Secret"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, X-Litemetrics-Secret"
     return response
 
 
