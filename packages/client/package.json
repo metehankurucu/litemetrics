@@ -1,6 +1,6 @@
 {
   "name": "@litemetrics/client",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Client-side SDK for querying Litemetrics analytics data",
   "license": "MIT",
   "author": "Metehan Kurucu",
@@ -9,7 +9,13 @@
     "url": "https://github.com/metehankurucu/litemetrics",
     "directory": "packages/client"
   },
-  "keywords": ["analytics", "litemetrics", "client", "dashboard", "query"],
+  "keywords": [
+    "analytics",
+    "litemetrics",
+    "client",
+    "dashboard",
+    "query"
+  ],
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -21,7 +27,9 @@
       "require": "./dist/index.cjs"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "publishConfig": {
     "access": "public"
   },

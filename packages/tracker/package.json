@@ -1,6 +1,6 @@
 {
   "name": "@litemetrics/tracker",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Lightweight browser analytics tracker (<3KB gzipped)",
   "license": "MIT",
   "author": "Metehan Kurucu",
@@ -9,7 +9,13 @@
     "url": "https://github.com/metehankurucu/litemetrics",
     "directory": "packages/tracker"
   },
-  "keywords": ["analytics", "tracking", "litemetrics", "browser", "pageview"],
+  "keywords": [
+    "analytics",
+    "tracking",
+    "litemetrics",
+    "browser",
+    "pageview"
+  ],
   "type": "module",
   "main": "./dist/litemetrics.cjs",
   "module": "./dist/litemetrics.js",
@@ -22,7 +28,9 @@
     },
     "./script": "./dist/litemetrics.global.js"
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "publishConfig": {
     "access": "public"
   },

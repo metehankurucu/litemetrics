@@ -1,6 +1,6 @@
 {
   "name": "@litemetrics/node",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Node.js analytics collector with DB adapters and query API",
   "license": "MIT",
   "author": "Metehan Kurucu",
@@ -9,7 +9,14 @@
     "url": "https://github.com/metehankurucu/litemetrics",
     "directory": "packages/node"
   },
-  "keywords": ["analytics", "tracking", "litemetrics", "node", "collector", "mongodb"],
+  "keywords": [
+    "analytics",
+    "tracking",
+    "litemetrics",
+    "node",
+    "collector",
+    "mongodb"
+  ],
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -21,7 +28,9 @@
       "require": "./dist/index.cjs"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "publishConfig": {
     "access": "public"
   },
