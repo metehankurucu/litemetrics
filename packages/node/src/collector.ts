@@ -80,6 +80,7 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
     if (allowed) {
       res.setHeader?.('Access-Control-Allow-Origin', origin || '*');
       res.setHeader?.('Access-Control-Allow-Methods', methods);
+      res.setHeader?.('Access-Control-Allow-Credentials', 'true');
       const headers = ['Content-Type', extraHeaders].filter(Boolean).join(', ');
       res.setHeader?.('Access-Control-Allow-Headers', headers);
     }
