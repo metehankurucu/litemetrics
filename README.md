@@ -6,7 +6,7 @@
 
 <p align="center">Open-source, self-hosted analytics SDK for Node.js. Runs inside your existing server with ClickHouse or MongoDB.</p>
 
-[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/template/litemetrics?referralCode=litemetrics)
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/template/OQI8lX?referralCode=LpQIoM)
 
 ## What it does
 
