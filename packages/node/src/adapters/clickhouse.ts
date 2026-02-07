@@ -59,6 +59,12 @@ CREATE TABLE IF NOT EXISTS ${SITES_TABLE} (
   SETTINGS index_granularity = 8192
 `;
 
+/** Convert JS date/ISO string to ClickHouse DateTime64 format: '2026-02-07 14:22:08.339' */
+function toCHDateTime(d: string | Date): string {
+  const iso = typeof d === 'string' ? d : d.toISOString();
+  return iso.replace('T', ' ').replace('Z', '');
+}
+
 export class ClickHouseAdapter implements DBAdapter {
   private client: ClickHouseClient;
 
@@ -88,7 +94,7 @@ export class ClickHouseAdapter implements DBAdapter {
     const rows = events.map((e) => ({
       site_id: e.siteId,
       type: e.type,
-      timestamp: new Date(e.timestamp).toISOString(),
+      timestamp: toCHDateTime(new Date(e.timestamp)),
       session_id: e.sessionId,
       visitor_id: e.visitorId,
       url: e.url ?? null,
@@ -132,8 +138,8 @@ export class ClickHouseAdapter implements DBAdapter {
 
     const params = {
       siteId,
-      from: dateRange.from,
-      to: dateRange.to,
+      from: toCHDateTime(dateRange.from),
+      to: toCHDateTime(dateRange.to),
       limit,
     };
 
@@ -404,8 +410,8 @@ export class ClickHouseAdapter implements DBAdapter {
 
     const rows = await this.queryRows<{ bucket: string; value: string }>(sql, {
       siteId: params.siteId,
-      from: dateRange.from,
-      to: dateRange.to,
+      from: toCHDateTime(dateRange.from),
+      to: toCHDateTime(dateRange.to),
     });
 
     // Convert ClickHouse bucket format to match the dateFormat used by fillBuckets
@@ -478,7 +484,7 @@ export class ClickHouseAdapter implements DBAdapter {
       GROUP BY visitor_id`,
       {
         siteId: params.siteId,
-        since: startDate.toISOString(),
+        since: toCHDateTime(startDate),
       },
     );
 
@@ -560,8 +566,8 @@ export class ClickHouseAdapter implements DBAdapter {
         dateTo: params.dateTo,
       });
       conditions.push(`timestamp >= {from:String} AND timestamp <= {to:String}`);
-      queryParams.from = dateRange.from;
-      queryParams.to = dateRange.to;
+      queryParams.from = toCHDateTime(dateRange.from);
+      queryParams.to = toCHDateTime(dateRange.to);
     }
 
     const where = conditions.join(' AND ');
@@ -682,15 +688,17 @@ export class ClickHouseAdapter implements DBAdapter {
   // ─── Site Management ──────────────────────────────────────
 
   async createSite(data: CreateSiteRequest): Promise<Site> {
-    const now = new Date().toISOString();
+    const now = new Date();
+    const nowISO = now.toISOString();
+    const nowCH = toCHDateTime(now);
     const site: Site = {
       siteId: generateSiteId(),
       secretKey: generateSecretKey(),
       name: data.name,
       domain: data.domain,
       allowedOrigins: data.allowedOrigins,
-      createdAt: now,
-      updatedAt: now,
+      createdAt: nowISO,
+      updatedAt: nowISO,
     };
 
     await this.client.insert({
@@ -701,8 +709,8 @@ export class ClickHouseAdapter implements DBAdapter {
         name: site.name,
         domain: site.domain ?? null,
         allowed_origins: site.allowedOrigins ? JSON.stringify(site.allowedOrigins) : null,
-        created_at: now,
-        updated_at: now,
+        created_at: nowCH,
+        updated_at: nowCH,
         version: 1,
         is_deleted: 0,
       }],
@@ -754,7 +762,9 @@ export class ClickHouseAdapter implements DBAdapter {
     if (currentRows.length === 0) return null;
 
     const current = currentRows[0];
-    const now = new Date().toISOString();
+    const now = new Date();
+    const nowISO = now.toISOString();
+    const nowCH = toCHDateTime(now);
     const newVersion = Number(current.version) + 1;
 
     const newName = data.name !== undefined ? data.name : String(current.name);
@@ -771,8 +781,8 @@ export class ClickHouseAdapter implements DBAdapter {
         name: newName,
         domain: newDomain,
         allowed_origins: newOrigins,
-        created_at: String(current.created_at),
-        updated_at: now,
+        created_at: toCHDateTime(String(current.created_at)),
+        updated_at: nowCH,
         version: newVersion,
         is_deleted: 0,
       }],
@@ -786,7 +796,7 @@ export class ClickHouseAdapter implements DBAdapter {
       domain: newDomain ?? undefined,
       allowedOrigins: newOrigins ? JSON.parse(newOrigins) : undefined,
       createdAt: String(current.created_at),
-      updatedAt: now,
+      updatedAt: nowISO,
     };
   }
 
@@ -800,7 +810,7 @@ export class ClickHouseAdapter implements DBAdapter {
     if (currentRows.length === 0) return false;
 
     const current = currentRows[0];
-    const now = new Date().toISOString();
+    const nowCH = toCHDateTime(new Date());
 
     await this.client.insert({
       table: SITES_TABLE,
@@ -810,8 +820,8 @@ export class ClickHouseAdapter implements DBAdapter {
         name: String(current.name),
         domain: current.domain ? String(current.domain) : null,
         allowed_origins: current.allowed_origins ? String(current.allowed_origins) : null,
-        created_at: String(current.created_at),
-        updated_at: now,
+        created_at: toCHDateTime(String(current.created_at)),
+        updated_at: nowCH,
         version: Number(current.version) + 1,
         is_deleted: 1,
       }],
@@ -831,7 +841,9 @@ export class ClickHouseAdapter implements DBAdapter {
     if (currentRows.length === 0) return null;
 
     const current = currentRows[0];
-    const now = new Date().toISOString();
+    const now = new Date();
+    const nowISO = now.toISOString();
+    const nowCH = toCHDateTime(now);
     const newSecret = generateSecretKey();
 
     await this.client.insert({
@@ -842,8 +854,8 @@ export class ClickHouseAdapter implements DBAdapter {
         name: String(current.name),
         domain: current.domain ? String(current.domain) : null,
         allowed_origins: current.allowed_origins ? String(current.allowed_origins) : null,
-        created_at: String(current.created_at),
-        updated_at: now,
+        created_at: toCHDateTime(String(current.created_at)),
+        updated_at: nowCH,
         version: Number(current.version) + 1,
         is_deleted: 0,
       }],
@@ -857,7 +869,7 @@ export class ClickHouseAdapter implements DBAdapter {
       domain: current.domain ? String(current.domain) : undefined,
       allowedOrigins: current.allowed_origins ? JSON.parse(String(current.allowed_origins)) : undefined,
       createdAt: String(current.created_at),
-      updatedAt: now,
+      updatedAt: nowISO,
     };
   }
 
