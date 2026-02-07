@@ -127,6 +127,16 @@ For MongoDB instead: `db: { adapter: 'mongodb', url: 'mongodb://localhost:27017/
 | [`@litemetrics/dashboard`](./apps/dashboard) | Analytics dashboard (React + Vite + Tailwind) |
 | [`@litemetrics/server`](./apps/server) | Self-hosted server (serves dashboard + API) |
 
+## Agent Skill
+
+Install the Litemetrics skill for AI coding agents (Claude Code, Cursor, Windsurf, etc.):
+
+```bash
+npx skills add metehankurucu/litemetrics
+```
+
+This gives your AI agent full knowledge of Litemetrics integration patterns for Express, React, React Native, Next.js, Vue, and more.
+
 ## Metrics
 
 `pageviews` `visitors` `sessions` `events` `top_pages` `top_referrers` `top_countries` `top_cities` `top_events` `top_devices` `top_browsers` `top_os` `timeseries` `retention`

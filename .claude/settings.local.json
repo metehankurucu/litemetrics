@@ -3,7 +3,8 @@
     "allow": [
       "Bash(bun:*)",
       "Bash(gzip:*)",
-      "Bash(kill:*)"
+      "Bash(kill:*)",
+      "Bash(bunx vite:*)"
     ]
   }
 }
