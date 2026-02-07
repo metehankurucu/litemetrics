@@ -78,7 +78,11 @@ const navItems: NavItem[] = [
 export function App() {
   const { isAuthenticated, login, logout, client } = useAuth();
   const navigate = useNavigate();
-  const [siteId, setSiteId] = useState(import.meta.env.VITE_LITEMETRICS_SITE_ID || 'demo');
+  const [siteId, setSiteId] = useState(() => localStorage.getItem('lm_site_id') || import.meta.env.VITE_LITEMETRICS_SITE_ID || 'demo');
+  const handleSiteChange = (id: string) => {
+    setSiteId(id);
+    localStorage.setItem('lm_site_id', id);
+  };
   const [period, setPeriod] = useState<Period>('7d');
   const [userVisitorId, setUserVisitorId] = useState<string | null>(null);
 
@@ -102,7 +106,7 @@ export function App() {
 
         {/* Site selector */}
         <div className="px-3 py-3 border-b border-zinc-100">
-          <SiteSelector siteId={siteId} onChange={setSiteId} />
+          <SiteSelector siteId={siteId} onChange={handleSiteChange} />
         </div>
 
         {/* Navigation */}

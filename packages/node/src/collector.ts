@@ -21,6 +21,7 @@ import { ClickHouseAdapter } from './adapters/clickhouse';
 import { MongoDBAdapter } from './adapters/mongodb';
 import { initGeoIP, resolveGeo } from './geoip';
 import { parseUserAgent } from './useragent';
+import { isBot } from './botfilter';
 
 export interface Collector {
   handler(): (req: any, res: any) => void | Promise<void>;
@@ -136,8 +137,15 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
           return;
         }
 
-        const ip = extractIp(req);
         const userAgent = req.headers?.['user-agent'] || '';
+
+        // Bot check - silent drop
+        if (isBot(userAgent)) {
+          sendJson(res, 200, { ok: true });
+          return;
+        }
+
+        const ip = extractIp(req);
         const enriched = enrichEvents(payload.events, ip, userAgent);
 
         await db.insertEvents(enriched);

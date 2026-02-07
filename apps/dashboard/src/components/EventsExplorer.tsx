@@ -1,5 +1,7 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import type { LitemetricsClient, EventListItem, EventType, Period } from '@litemetrics/client';
+import { queryKeys } from '../hooks/useAnalytics';
 import { getBrowserIcon, getOSIcon, getDeviceIcon } from './icons';
 import { ExportButton } from './ExportButton';
 
@@ -25,11 +27,6 @@ const periodFilters: { value: Period; label: string }[] = [
 ];
 
 export function EventsExplorer({ siteId, client, onUserClick }: EventsExplorerProps) {
-  const [events, setEvents] = useState<EventListItem[]>([]);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
   // Filters
   const [typeFilter, setTypeFilter] = useState<EventType | ''>('');
   const [eventNameFilter, setEventNameFilter] = useState('');
@@ -39,12 +36,10 @@ export function EventsExplorer({ siteId, client, onUserClick }: EventsExplorerPr
 
   const limit = 30;
 
-  const fetchEvents = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    client.setSiteId(siteId);
-
-    try {
+  const { data, isLoading: loading, error } = useQuery({
+    queryKey: queryKeys.events(siteId, { type: typeFilter, eventName: eventNameFilter, period, page }),
+    queryFn: async () => {
+      client.setSiteId(siteId);
       const result = await client.getEventsList({
         type: typeFilter || undefined,
         eventName: eventNameFilter || undefined,
@@ -52,24 +47,19 @@ export function EventsExplorer({ siteId, client, onUserClick }: EventsExplorerPr
         limit,
         offset: page * limit,
       });
-      setEvents(result.events);
-      setTotal(result.total);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch events');
-    } finally {
-      setLoading(false);
-    }
-  }, [siteId, typeFilter, eventNameFilter, period, page]);
+      return { events: result.events, total: result.total };
+    },
+    placeholderData: (prev) => prev,
+  });
 
-  useEffect(() => {
-    fetchEvents();
-  }, [fetchEvents]);
-
-  useEffect(() => {
-    setPage(0);
-  }, [typeFilter, eventNameFilter, period]);
-
+  const events = data?.events ?? [];
+  const total = data?.total ?? 0;
   const totalPages = Math.ceil(total / limit);
+
+  // Reset page when filters change
+  const handleTypeChange = (v: EventType | '') => { setTypeFilter(v); setPage(0); };
+  const handleNameChange = (v: string) => { setEventNameFilter(v); setPage(0); };
+  const handlePeriodChange = (v: Period) => { setPeriod(v); setPage(0); };
 
   return (
     <div className="space-y-4">
@@ -78,7 +68,7 @@ export function EventsExplorer({ siteId, client, onUserClick }: EventsExplorerPr
         {/* Type filter */}
         <select
           value={typeFilter}
-          onChange={(e) => setTypeFilter(e.target.value as EventType | '')}
+          onChange={(e) => handleTypeChange(e.target.value as EventType | '')}
           className="bg-white border border-zinc-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-indigo-500"
         >
           {typeFilters.map((f) => (
@@ -91,7 +81,7 @@ export function EventsExplorer({ siteId, client, onUserClick }: EventsExplorerPr
           type="text"
           placeholder="Filter by event name..."
           value={eventNameFilter}
-          onChange={(e) => setEventNameFilter(e.target.value)}
+          onChange={(e) => handleNameChange(e.target.value)}
           className="bg-white border border-zinc-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-indigo-500 w-48"
         />
 
@@ -100,7 +90,7 @@ export function EventsExplorer({ siteId, client, onUserClick }: EventsExplorerPr
           {periodFilters.map((p) => (
             <button
               key={p.value}
-              onClick={() => setPeriod(p.value)}
+              onClick={() => handlePeriodChange(p.value)}
               className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
                 period === p.value
                   ? 'bg-white text-zinc-900 shadow-sm'
@@ -132,7 +122,7 @@ export function EventsExplorer({ siteId, client, onUserClick }: EventsExplorerPr
       {/* Error */}
       {error && (
         <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-red-600 text-sm">
-          {error}
+          {error instanceof Error ? error.message : 'Failed to fetch events'}
         </div>
       )}
 

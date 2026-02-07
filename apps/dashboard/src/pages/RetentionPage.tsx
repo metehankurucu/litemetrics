@@ -1,5 +1,7 @@
-import { useState, useEffect, useCallback } from 'react';
-import type { LitemetricsClient, RetentionCohort, Period } from '@litemetrics/client';
+import { useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import type { LitemetricsClient, Period } from '@litemetrics/client';
+import { queryKeys } from '../hooks/useAnalytics';
 import { PeriodSelector } from '../components/PeriodSelector';
 import { ExportButton } from '../components/ExportButton';
 
@@ -9,30 +11,18 @@ interface RetentionPageProps {
 }
 
 export function RetentionPage({ siteId, client }: RetentionPageProps) {
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [cohorts, setCohorts] = useState<RetentionCohort[]>([]);
+  const queryClient = useQueryClient();
   const [period, setPeriod] = useState<Period>('90d');
   const [weeks, setWeeks] = useState(8);
 
-  const fetchRetention = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    client.setSiteId(siteId);
-
-    try {
+  const { data: cohorts = [], isLoading: loading, error } = useQuery({
+    queryKey: queryKeys.retention(siteId, period, weeks),
+    queryFn: async () => {
+      client.setSiteId(siteId);
       const result = await client.getRetention({ period, weeks });
-      setCohorts(result.cohorts);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch retention');
-    } finally {
-      setLoading(false);
-    }
-  }, [client, siteId, period, weeks]);
-
-  useEffect(() => {
-    fetchRetention();
-  }, [fetchRetention]);
+      return result.cohorts;
+    },
+  });
 
   // Max retention columns across all cohorts
   const maxCols = cohorts.reduce((max, c) => Math.max(max, c.retention.length), 0);
@@ -67,7 +57,7 @@ export function RetentionPage({ siteId, client }: RetentionPageProps) {
         <div className="flex items-center gap-2">
           <ExportButton data={exportData} filename={`retention-${siteId}-${period}`} />
           <button
-            onClick={fetchRetention}
+            onClick={() => queryClient.invalidateQueries({ queryKey: queryKeys.retention(siteId, period, weeks) })}
             className="p-2 rounded-lg bg-white border border-zinc-200 text-zinc-500 hover:text-zinc-700 hover:border-zinc-300 transition-colors"
             title="Refresh"
           >
@@ -80,7 +70,7 @@ export function RetentionPage({ siteId, client }: RetentionPageProps) {
 
       {error && (
         <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl text-red-600 text-sm">
-          {error}
+          {error instanceof Error ? error.message : 'Failed to fetch retention'}
         </div>
       )}
 

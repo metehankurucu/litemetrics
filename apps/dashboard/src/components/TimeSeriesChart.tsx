@@ -1,6 +1,8 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import type { LitemetricsClient, Period, TimeSeriesPoint } from '@litemetrics/client';
+import { queryKeys } from '../hooks/useAnalytics';
 
 interface TimeSeriesChartProps {
   client: LitemetricsClient;
@@ -34,25 +36,15 @@ function formatTooltipDate(iso: string, period: Period): string {
 
 export function TimeSeriesChart({ client, siteId, period }: TimeSeriesChartProps) {
   const [metric, setMetric] = useState<ChartMetric>('pageviews');
-  const [data, setData] = useState<TimeSeriesPoint[]>([]);
-  const [loading, setLoading] = useState(true);
 
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    client.setSiteId(siteId);
-    try {
+  const { data = [], isLoading: loading } = useQuery({
+    queryKey: queryKeys.timeSeries(siteId, period, metric),
+    queryFn: async () => {
+      client.setSiteId(siteId);
       const result = await client.getTimeSeries(metric, { period });
-      setData(result.data);
-    } catch {
-      setData([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [client, siteId, period, metric]);
-
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+      return result.data;
+    },
+  });
 
   return (
     <div className="rounded-xl bg-white border border-zinc-200 p-6 mb-6">

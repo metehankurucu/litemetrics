@@ -1,5 +1,7 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import type { LitemetricsClient, UserDetail, EventListItem } from '@litemetrics/client';
+import { queryKeys } from '../hooks/useAnalytics';
 import { getBrowserIcon, getOSIcon, getDeviceIcon } from './icons';
 import { ExportButton } from './ExportButton';
 
@@ -38,44 +40,30 @@ export function UsersExplorer({ siteId, client, initialVisitorId, onBack }: User
 // ─── Users List ───────────────────────────────────────────
 
 function UsersList({ siteId, client, onSelect }: { siteId: string; client: LitemetricsClient; onSelect: (id: string) => void }) {
-  const [users, setUsers] = useState<UserDetail[]>([]);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(0);
 
   const limit = 30;
 
-  const fetchUsers = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    client.setSiteId(siteId);
-
-    try {
+  const { data, isLoading: loading, error } = useQuery({
+    queryKey: queryKeys.users(siteId, { search, page }),
+    queryFn: async () => {
+      client.setSiteId(siteId);
       const result = await client.getUsers({
         search: search || undefined,
         limit,
         offset: page * limit,
       });
-      setUsers(result.users);
-      setTotal(result.total);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch users');
-    } finally {
-      setLoading(false);
-    }
-  }, [siteId, search, page]);
+      return { users: result.users, total: result.total };
+    },
+    placeholderData: (prev) => prev,
+  });
 
-  useEffect(() => {
-    fetchUsers();
-  }, [fetchUsers]);
-
-  useEffect(() => {
-    setPage(0);
-  }, [search]);
-
+  const users = data?.users ?? [];
+  const total = data?.total ?? 0;
   const totalPages = Math.ceil(total / limit);
+
+  const handleSearchChange = (v: string) => { setSearch(v); setPage(0); };
 
   return (
     <div className="space-y-4">
@@ -85,7 +73,7 @@ function UsersList({ siteId, client, onSelect }: { siteId: string; client: Litem
           type="text"
           placeholder="Search by visitor ID or user ID..."
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          onChange={(e) => handleSearchChange(e.target.value)}
           className="bg-white border border-zinc-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-indigo-500 w-80"
         />
         <span className="text-sm text-zinc-400 ml-auto">
@@ -109,7 +97,7 @@ function UsersList({ siteId, client, onSelect }: { siteId: string; client: Litem
 
       {error && (
         <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-red-600 text-sm">
-          {error}
+          {error instanceof Error ? error.message : 'Failed to fetch users'}
         </div>
       )}
 
@@ -221,48 +209,31 @@ function UsersList({ siteId, client, onSelect }: { siteId: string; client: Litem
 // ─── User Detail View ────────────────────────────────────
 
 function UserDetailView({ siteId, client, visitorId, onBack }: { siteId: string; client: LitemetricsClient; visitorId: string; onBack: () => void }) {
-  const [user, setUser] = useState<UserDetail | null>(null);
-  const [events, setEvents] = useState<EventListItem[]>([]);
-  const [eventsTotal, setEventsTotal] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [eventsLoading, setEventsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [eventsPage, setEventsPage] = useState(0);
-
   const eventsLimit = 30;
 
-  useEffect(() => {
-    client.setSiteId(siteId);
-    setLoading(true);
-    setError(null);
+  const { data: user, isLoading: loading, error } = useQuery({
+    queryKey: queryKeys.userDetail(siteId, visitorId),
+    queryFn: async () => {
+      client.setSiteId(siteId);
+      return client.getUserDetail(visitorId);
+    },
+  });
 
-    client.getUserDetail(visitorId)
-      .then((u) => setUser(u))
-      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to fetch user'))
-      .finally(() => setLoading(false));
-  }, [siteId, visitorId]);
-
-  const fetchEvents = useCallback(async () => {
-    setEventsLoading(true);
-    client.setSiteId(siteId);
-    try {
+  const { data: eventsData, isLoading: eventsLoading } = useQuery({
+    queryKey: queryKeys.userEvents(siteId, visitorId, { page: eventsPage }),
+    queryFn: async () => {
+      client.setSiteId(siteId);
       const result = await client.getUserEvents(visitorId, {
         limit: eventsLimit,
         offset: eventsPage * eventsLimit,
       });
-      setEvents(result.events);
-      setEventsTotal(result.total);
-    } catch {
-      // Silently handle event load errors
-    } finally {
-      setEventsLoading(false);
-    }
-  }, [siteId, visitorId, eventsPage]);
+      return { events: result.events, total: result.total };
+    },
+  });
 
-  useEffect(() => {
-    fetchEvents();
-  }, [fetchEvents]);
-
+  const events = eventsData?.events ?? [];
+  const eventsTotal = eventsData?.total ?? 0;
   const eventsTotalPages = Math.ceil(eventsTotal / eventsLimit);
 
   if (loading) {
@@ -281,7 +252,7 @@ function UserDetailView({ siteId, client, visitorId, onBack }: { siteId: string;
           &larr; Back to users
         </button>
         <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-red-600 text-sm">
-          {error || 'User not found'}
+          {error instanceof Error ? error.message : 'User not found'}
         </div>
       </div>
     );

@@ -1,63 +1,35 @@
-import { useState, useEffect, useCallback } from 'react';
-import { createClient, type QueryResult, type Metric, type Period } from '@litemetrics/client';
+import { useState, useCallback } from 'react';
+import { createClient } from '@litemetrics/client';
 
 const client = createClient({
   baseUrl: import.meta.env.VITE_LITEMETRICS_URL || '',
   siteId: import.meta.env.VITE_LITEMETRICS_SITE_ID || 'demo',
 });
 
-export function useStats(metric: Metric, period: Period = '7d') {
-  const [data, setData] = useState<QueryResult | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+export { client };
 
-  const refetch = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await client.getStats(metric, { period });
-      setData(result);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch');
-    } finally {
-      setLoading(false);
-    }
-  }, [metric, period]);
-
-  useEffect(() => {
-    refetch();
-  }, [refetch]);
-
-  return { data, loading, error, refetch };
-}
-
-export function useOverview(period: Period = '7d') {
-  const [data, setData] = useState<Record<string, QueryResult> | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const refetch = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await client.getOverview(
-        ['pageviews', 'visitors', 'sessions', 'events'],
-        { period },
-      );
-      setData(result);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch');
-    } finally {
-      setLoading(false);
-    }
-  }, [period]);
-
-  useEffect(() => {
-    refetch();
-  }, [refetch]);
-
-  return { data, loading, error, refetch };
-}
+// Query key factory - all query keys in one place
+export const queryKeys = {
+  analytics: (siteId: string, period: string, dateFrom?: string, dateTo?: string) =>
+    ['analytics', siteId, period, dateFrom, dateTo] as const,
+  timeSeries: (siteId: string, period: string, metric: string) =>
+    ['timeSeries', siteId, period, metric] as const,
+  worldMap: (siteId: string, period: string) =>
+    ['worldMap', siteId, period] as const,
+  events: (siteId: string, filters: Record<string, unknown>) =>
+    ['events', siteId, filters] as const,
+  users: (siteId: string, filters: Record<string, unknown>) =>
+    ['users', siteId, filters] as const,
+  userDetail: (siteId: string, visitorId: string) =>
+    ['userDetail', siteId, visitorId] as const,
+  userEvents: (siteId: string, visitorId: string, filters: Record<string, unknown>) =>
+    ['userEvents', siteId, visitorId, filters] as const,
+  retention: (siteId: string, period: string, weeks: number) =>
+    ['retention', siteId, period, weeks] as const,
+  realtime: (siteId: string) =>
+    ['realtime', siteId] as const,
+  sites: () => ['sites'] as const,
+};
 
 export function useSiteId() {
   const [siteId, setSiteIdState] = useState(

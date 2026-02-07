@@ -1,5 +1,7 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { QueryResult, Period, LitemetricsClient } from '@litemetrics/client';
+import { queryKeys } from '../hooks/useAnalytics';
 import { StatCard } from '../components/StatCard';
 import { TopList } from '../components/TopList';
 import { TimeSeriesChart } from '../components/TimeSeriesChart';
@@ -27,10 +29,7 @@ interface AnalyticsPageProps {
 }
 
 export function AnalyticsPage({ siteId, client, period, onPeriodChange }: AnalyticsPageProps) {
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [overview, setOverview] = useState<Record<string, QueryResult>>({});
-  const [tops, setTops] = useState<Record<string, QueryResult>>({});
+  const queryClient = useQueryClient();
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
 
@@ -39,36 +38,30 @@ export function AnalyticsPage({ siteId, client, period, onPeriodChange }: Analyt
     ? { period, dateFrom: new Date(dateFrom).toISOString(), dateTo: new Date(dateTo + 'T23:59:59').toISOString() }
     : { period };
 
-  const fetchAll = useCallback(async () => {
-    if (period === 'custom' && (!dateFrom || !dateTo)) return;
-
-    setLoading(true);
-    setError(null);
-    client.setSiteId(siteId);
-
-    try {
+  const { data, isLoading: loading, error } = useQuery({
+    queryKey: queryKeys.analytics(siteId, period, dateFrom, dateTo),
+    queryFn: async () => {
+      client.setSiteId(siteId);
       const [overviewResults, ...topResults] = await Promise.all([
         client.getOverview(['pageviews', 'visitors', 'sessions', 'events'], { ...statsOptions, compare: true }),
         ...topMetrics.map((t) => client.getStats(t.metric, { ...statsOptions, limit: 10 })),
       ]);
 
-      setOverview(overviewResults as unknown as Record<string, QueryResult>);
-
       const topMap: Record<string, QueryResult> = {};
       topMetrics.forEach((t, i) => {
         topMap[t.metric] = topResults[i];
       });
-      setTops(topMap);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch analytics');
-    } finally {
-      setLoading(false);
-    }
-  }, [client, siteId, period, dateFrom, dateTo]);
 
-  useEffect(() => {
-    fetchAll();
-  }, [fetchAll]);
+      return {
+        overview: overviewResults as unknown as Record<string, QueryResult>,
+        tops: topMap,
+      };
+    },
+    enabled: period !== 'custom' || (!!dateFrom && !!dateTo),
+  });
+
+  const overview = data?.overview ?? {};
+  const tops = data?.tops ?? {};
 
   // Build pie chart data from top lists
   const browserPieData = (tops.top_browsers?.data ?? []).map((d) => ({ name: d.key, value: d.value }));
@@ -94,7 +87,7 @@ export function AnalyticsPage({ siteId, client, period, onPeriodChange }: Analyt
         <div className="flex items-center gap-2">
           <ExportButton data={exportData} filename={`analytics-${siteId}-${period}`} />
           <button
-            onClick={fetchAll}
+            onClick={() => queryClient.invalidateQueries({ queryKey: queryKeys.analytics(siteId, period, dateFrom, dateTo) })}
             className="p-2 rounded-lg bg-white border border-zinc-200 text-zinc-500 hover:text-zinc-700 hover:border-zinc-300 transition-colors"
             title="Refresh"
           >
@@ -107,7 +100,7 @@ export function AnalyticsPage({ siteId, client, period, onPeriodChange }: Analyt
 
       {error && (
         <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl text-red-600 text-sm">
-          {error}
+          {error instanceof Error ? error.message : 'Failed to fetch analytics'}
         </div>
       )}
 

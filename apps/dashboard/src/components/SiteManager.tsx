@@ -1,16 +1,143 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useMemo } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { createSitesClient, type Site } from '@litemetrics/client';
+import { queryKeys } from '../hooks/useAnalytics';
 import { useAuth } from '../auth';
+
+type Platform = 'html' | 'react' | 'react-native' | 'nextjs' | 'node';
+
+const PLATFORMS: { key: Platform; label: string }[] = [
+  { key: 'html', label: 'HTML' },
+  { key: 'react', label: 'React' },
+  { key: 'react-native', label: 'React Native' },
+  { key: 'nextjs', label: 'Next.js' },
+  { key: 'node', label: 'Node.js' },
+];
+
+function getSetupSnippet(platform: Platform, siteId: string, secretKey: string, serverUrl: string): string {
+  switch (platform) {
+    case 'html':
+      return `<!-- Add before </head> or </body> -->
+<script src="${serverUrl}/litemetrics.js"></script>
+<script>
+  Litemetrics.createTracker({
+    siteId: '${siteId}',
+    endpoint: '${serverUrl}/api/collect',
+  });
+</script>`;
+    case 'react':
+      return `// 1. Install: bun add @litemetrics/react
+
+import { LitemetricsProvider } from '@litemetrics/react';
+
+function App() {
+  return (
+    <LitemetricsProvider
+      siteId="${siteId}"
+      endpoint="${serverUrl}/api/collect"
+    >
+      <YourApp />
+    </LitemetricsProvider>
+  );
+}
+
+// Track custom events:
+import { useTrackEvent } from '@litemetrics/react';
+
+function SignupButton() {
+  const track = useTrackEvent();
+  return (
+    <button onClick={() => track('Signup', { plan: 'pro' })}>
+      Sign Up
+    </button>
+  );
+}`;
+    case 'react-native':
+      return `// 1. Install: bun add @litemetrics/react-native
+
+import { LitemetricsProvider } from '@litemetrics/react-native';
+
+function App() {
+  return (
+    <LitemetricsProvider
+      siteId="${siteId}"
+      endpoint="${serverUrl}/api/collect"
+    >
+      <YourApp />
+    </LitemetricsProvider>
+  );
+}
+
+// With React Navigation (auto screen tracking):
+import { useNavigationTracking } from '@litemetrics/react-native';
+
+function AppNavigator() {
+  const navigationRef = useNavigationTracking();
+  return <NavigationContainer ref={navigationRef}>...</NavigationContainer>;
+}`;
+    case 'nextjs':
+      return `// 1. Install: bun add @litemetrics/react
+
+// app/providers.tsx (App Router)
+'use client';
+import { LitemetricsProvider } from '@litemetrics/react';
+
+export function Providers({ children }: { children: React.ReactNode }) {
+  return (
+    <LitemetricsProvider
+      siteId="${siteId}"
+      endpoint="${serverUrl}/api/collect"
+    >
+      {children}
+    </LitemetricsProvider>
+  );
+}
+
+// app/layout.tsx
+import { Providers } from './providers';
+
+export default function RootLayout({ children }) {
+  return (
+    <html><body>
+      <Providers>{children}</Providers>
+    </body></html>
+  );
+}`;
+    case 'node':
+      return `// Read analytics data from your backend
+// Install: bun add @litemetrics/client
+
+import { createClient } from '@litemetrics/client';
+
+const client = createClient({
+  baseUrl: '${serverUrl}',
+  siteId: '${siteId}',
+  secretKey: '${secretKey}',
+});
+
+// Get stats
+const pageviews = await client.getStats({ metric: 'pageviews', period: '7d' });
+const visitors = await client.getStats({ metric: 'visitors', period: '30d' });
+const topPages = await client.getStats({ metric: 'top_pages', period: '7d', limit: 10 });
+
+// Get time series
+const timeseries = await client.getTimeSeries({
+  metric: 'pageviews',
+  period: '30d',
+  granularity: 'day',
+});`;
+  }
+}
 
 export function SiteManager() {
   const { adminSecret } = useAuth();
+  const queryClient = useQueryClient();
   const sitesClient = useMemo(() => createSitesClient({
     baseUrl: import.meta.env.VITE_LITEMETRICS_URL || '',
     adminSecret: adminSecret || '',
   }), [adminSecret]);
-  const [sites, setSites] = useState<Site[]>([]);
+
   const [selected, setSelected] = useState<Site | null>(null);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   // Create form
@@ -18,62 +145,75 @@ export function SiteManager() {
   const [newName, setNewName] = useState('');
   const [newDomain, setNewDomain] = useState('');
 
-  const fetchSites = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
+  const { data: sites = [], isLoading: loading } = useQuery({
+    queryKey: queryKeys.sites(),
+    queryFn: async () => {
       const { sites } = await sitesClient.listSites();
-      setSites(sites);
-      if (selected) {
-        const updated = sites.find((s) => s.siteId === selected.siteId);
-        setSelected(updated ?? null);
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch sites');
-    } finally {
-      setLoading(false);
-    }
-  }, [selected]);
+      return sites;
+    },
+  });
 
-  useEffect(() => { fetchSites(); }, []);
-
-  const handleCreate = async () => {
-    if (!newName.trim()) return;
-    try {
-      const { site } = await sitesClient.createSite({
-        name: newName.trim(),
-        domain: newDomain.trim() || undefined,
-      });
+  const createMutation = useMutation({
+    mutationFn: async ({ name, domain }: { name: string; domain?: string }) => {
+      const { site } = await sitesClient.createSite({ name, domain });
+      return site;
+    },
+    onSuccess: (site) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.sites() });
       setShowCreate(false);
       setNewName('');
       setNewDomain('');
-      setSites((prev) => [site, ...prev]);
       setSelected(site);
-    } catch (err) {
+      setError(null);
+    },
+    onError: (err) => {
       setError(err instanceof Error ? err.message : 'Failed to create site');
-    }
-  };
+    },
+  });
 
-  const handleDelete = async (siteId: string) => {
-    if (!confirm('Are you sure you want to delete this site?')) return;
-    try {
+  const deleteMutation = useMutation({
+    mutationFn: async (siteId: string) => {
       await sitesClient.deleteSite(siteId);
-      setSites((prev) => prev.filter((s) => s.siteId !== siteId));
+      return siteId;
+    },
+    onSuccess: (siteId) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.sites() });
       if (selected?.siteId === siteId) setSelected(null);
-    } catch (err) {
+      setError(null);
+    },
+    onError: (err) => {
       setError(err instanceof Error ? err.message : 'Failed to delete site');
-    }
+    },
+  });
+
+  const regenerateMutation = useMutation({
+    mutationFn: async (siteId: string) => {
+      const { site } = await sitesClient.regenerateSecret(siteId);
+      return site;
+    },
+    onSuccess: (site) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.sites() });
+      setSelected(site);
+      setError(null);
+    },
+    onError: (err) => {
+      setError(err instanceof Error ? err.message : 'Failed to regenerate secret');
+    },
+  });
+
+  const handleCreate = () => {
+    if (!newName.trim()) return;
+    createMutation.mutate({ name: newName.trim(), domain: newDomain.trim() || undefined });
   };
 
-  const handleRegenerate = async (siteId: string) => {
+  const handleDelete = (siteId: string) => {
+    if (!confirm('Are you sure you want to delete this site?')) return;
+    deleteMutation.mutate(siteId);
+  };
+
+  const handleRegenerate = (siteId: string) => {
     if (!confirm('Regenerate secret key? The old key will stop working immediately.')) return;
-    try {
-      const { site } = await sitesClient.regenerateSecret(siteId);
-      setSites((prev) => prev.map((s) => (s.siteId === siteId ? site : s)));
-      setSelected(site);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to regenerate secret');
-    }
+    regenerateMutation.mutate(siteId);
   };
 
   const copyToClipboard = (text: string) => {
@@ -190,36 +330,78 @@ export function SiteManager() {
               <Field label="Updated" value={new Date(selected.updatedAt).toLocaleString()} />
             </div>
 
-            {/* Integration snippet */}
-            <div>
-              <h3 className="text-sm font-medium text-zinc-500 mb-2">Tracker Integration</h3>
-              <pre className="bg-zinc-50 border border-zinc-200 rounded-lg p-4 text-xs text-zinc-700 overflow-x-auto">
-{`<script src="YOUR_SERVER/litemetrics.js"></script>
-<script>
-  Litemetrics.init({
-    siteId: '${selected.siteId}',
-    endpoint: 'YOUR_SERVER/api/collect',
-  });
-</script>`}
-              </pre>
-            </div>
-
-            <div>
-              <h3 className="text-sm font-medium text-zinc-500 mb-2">Client SDK</h3>
-              <pre className="bg-zinc-50 border border-zinc-200 rounded-lg p-4 text-xs text-zinc-700 overflow-x-auto">
-{`import { createClient } from '@litemetrics/client';
-
-const client = createClient({
-  baseUrl: 'YOUR_SERVER',
-  siteId: '${selected.siteId}',
-  secretKey: '${selected.secretKey}',
-});
-
-const stats = await client.getPageviews({ period: '7d' });`}
-              </pre>
-            </div>
+            {/* Setup Guide */}
+            <SetupGuide site={selected} />
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+function SetupGuide({ site }: { site: Site }) {
+  const [platform, setPlatform] = useState<Platform>('html');
+  const [copied, setCopied] = useState(false);
+  const [autoUrl, setAutoUrl] = useState(true);
+  const [customUrl, setCustomUrl] = useState('https://');
+  const serverUrl = autoUrl ? window.location.origin : customUrl.replace(/\/+$/, '');
+  const snippet = getSetupSnippet(platform, site.siteId, site.secretKey, serverUrl);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(snippet);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-medium text-zinc-500">Setup Guide</h3>
+        <div className="flex gap-1">
+          {PLATFORMS.map((p) => (
+            <button
+              key={p.key}
+              onClick={() => setPlatform(p.key)}
+              className={`text-xs px-2.5 py-1 rounded-md transition-colors ${
+                platform === p.key
+                  ? 'bg-indigo-600 text-white'
+                  : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
+              }`}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="flex items-center gap-2 mb-3">
+        <span className="text-xs text-zinc-400">Server URL:</span>
+        <button
+          onClick={() => setAutoUrl(!autoUrl)}
+          className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${autoUrl ? 'bg-indigo-600' : 'bg-zinc-300'}`}
+        >
+          <span className={`inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform ${autoUrl ? 'translate-x-4.5' : 'translate-x-0.5'}`} />
+        </button>
+        {autoUrl ? (
+          <span className="text-xs font-mono text-zinc-600">{window.location.origin}</span>
+        ) : (
+          <input
+            value={customUrl}
+            onChange={(e) => setCustomUrl(e.target.value)}
+            placeholder="https://your-server.com"
+            className="flex-1 text-xs font-mono bg-white border border-zinc-300 rounded px-2 py-1 focus:outline-none focus:border-indigo-500"
+          />
+        )}
+      </div>
+      <div className="relative">
+        <pre className="bg-zinc-50 border border-zinc-200 rounded-lg p-4 text-xs text-zinc-700 overflow-x-auto whitespace-pre-wrap">
+          {snippet}
+        </pre>
+        <button
+          onClick={handleCopy}
+          className="absolute top-2 right-2 text-xs bg-white border border-zinc-200 hover:border-zinc-300 text-zinc-500 hover:text-zinc-700 px-2 py-1 rounded transition-colors"
+        >
+          {copied ? 'Copied!' : 'Copy'}
+        </button>
       </div>
     </div>
   );

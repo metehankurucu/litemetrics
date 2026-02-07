@@ -1,6 +1,8 @@
-import { useState, useEffect, useCallback, memo } from 'react';
+import { useState, memo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { ComposableMap, Geographies, Geography, ZoomableGroup } from 'react-simple-maps';
 import type { LitemetricsClient, Period } from '@litemetrics/client';
+import { queryKeys } from '../hooks/useAnalytics';
 
 const geoUrl = 'https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json';
 
@@ -15,30 +17,20 @@ interface CountryData {
 }
 
 export const WorldMap = memo(function WorldMap({ client, siteId, period }: WorldMapProps) {
-  const [countryData, setCountryData] = useState<CountryData>({});
   const [tooltip, setTooltip] = useState<{ name: string; value: number; x: number; y: number } | null>(null);
-  const [loading, setLoading] = useState(true);
 
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    client.setSiteId(siteId);
-    try {
+  const { data: countryData = {}, isLoading: loading } = useQuery({
+    queryKey: queryKeys.worldMap(siteId, period),
+    queryFn: async () => {
+      client.setSiteId(siteId);
       const result = await client.getTopCountries({ period, limit: 200 });
       const map: CountryData = {};
       for (const d of result.data) {
         map[d.key] = d.value;
       }
-      setCountryData(map);
-    } catch {
-      setCountryData({});
-    } finally {
-      setLoading(false);
-    }
-  }, [client, siteId, period]);
-
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+      return map;
+    },
+  });
 
   const maxValue = Math.max(...Object.values(countryData), 1);
 

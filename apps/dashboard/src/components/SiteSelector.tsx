@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { createSitesClient, type Site } from '@litemetrics/client';
+import { queryKeys } from '../hooks/useAnalytics';
 import { useAuth } from '../auth';
 
 interface SiteSelectorProps {
@@ -9,18 +11,21 @@ interface SiteSelectorProps {
 
 export function SiteSelector({ siteId, onChange }: SiteSelectorProps) {
   const { adminSecret } = useAuth();
-  const [sites, setSites] = useState<Site[]>([]);
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (!adminSecret) return;
-    const client = createSitesClient({
-      baseUrl: import.meta.env.VITE_LITEMETRICS_URL || '',
-      adminSecret,
-    });
-    client.listSites().then(({ sites }) => setSites(sites)).catch(() => {});
-  }, [adminSecret]);
+  const { data: sites = [] } = useQuery({
+    queryKey: queryKeys.sites(),
+    queryFn: async () => {
+      const client = createSitesClient({
+        baseUrl: import.meta.env.VITE_LITEMETRICS_URL || '',
+        adminSecret: adminSecret!,
+      });
+      const result = await client.listSites();
+      return result.sites;
+    },
+    enabled: !!adminSecret,
+  });
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {

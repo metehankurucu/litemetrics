@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
-import type { LitemetricsClient, EventListItem } from '@litemetrics/client';
-import { getBrowserIcon, getOSIcon, getDeviceIcon } from '../components/icons';
+import { useQuery } from '@tanstack/react-query';
+import type { LitemetricsClient } from '@litemetrics/client';
+import { queryKeys } from '../hooks/useAnalytics';
+import { getBrowserIcon, getDeviceIcon } from '../components/icons';
 
 interface RealtimePageProps {
   siteId: string;
@@ -8,38 +9,28 @@ interface RealtimePageProps {
 }
 
 export function RealtimePage({ siteId, client }: RealtimePageProps) {
-  const [activeVisitors, setActiveVisitors] = useState(0);
-  const [recentEvents, setRecentEvents] = useState<EventListItem[]>([]);
-  const [activePages, setActivePages] = useState<{ url: string; count: number }[]>([]);
-  const [loading, setLoading] = useState(true);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  const fetchRealtime = useCallback(async () => {
-    client.setSiteId(siteId);
-    try {
+  const { data, isLoading: loading } = useQuery({
+    queryKey: queryKeys.realtime(siteId),
+    queryFn: async () => {
+      client.setSiteId(siteId);
       const [visitorsResult, eventsResult, pagesResult] = await Promise.all([
         client.getStats('visitors', { period: '1h' }),
         client.getEventsList({ period: '1h', limit: 30 }),
         client.getStats('top_pages', { period: '1h', limit: 10 }),
       ]);
 
-      setActiveVisitors(visitorsResult.total);
-      setRecentEvents(eventsResult.events);
-      setActivePages(pagesResult.data.map((d) => ({ url: d.key, count: d.value })));
-    } catch {
-      // silently fail on polling errors
-    } finally {
-      setLoading(false);
-    }
-  }, [client, siteId]);
+      return {
+        activeVisitors: visitorsResult.total,
+        recentEvents: eventsResult.events,
+        activePages: pagesResult.data.map((d) => ({ url: d.key, count: d.value })),
+      };
+    },
+    refetchInterval: 10_000,
+  });
 
-  useEffect(() => {
-    fetchRealtime();
-    intervalRef.current = setInterval(fetchRealtime, 10000);
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    };
-  }, [fetchRealtime]);
+  const activeVisitors = data?.activeVisitors ?? 0;
+  const recentEvents = data?.recentEvents ?? [];
+  const activePages = data?.activePages ?? [];
 
   return (
     <div className="space-y-6">
