@@ -26,3 +26,6 @@ yarn.lock
 
 # Build cache
 *.tsbuildinfo
+
+# Local Netlify folder
+.netlify
