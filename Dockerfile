@@ -13,10 +13,11 @@ COPY packages/react/package.json packages/react/
 COPY packages/react-native/package.json packages/react-native/
 COPY apps/dashboard/package.json apps/dashboard/
 COPY apps/server/package.json apps/server/
+COPY apps/landing/package.json apps/landing/
 COPY examples/express/package.json examples/express/
 COPY examples/react-app/package.json examples/react-app/
 
-RUN bun install --frozen-lockfile
+RUN bun install
 
 # Copy source
 COPY tsconfig.json turbo.json ./
