@@ -54,12 +54,6 @@ export async function initGeoIP(dbPath?: string): Promise<void> {
   }
 }
 
-function isPrivateIp(ip: string): boolean {
-  return ip === '::1' || ip === '127.0.0.1' || ip === 'localhost'
-    || ip.startsWith('10.') || ip.startsWith('192.168.')
-    || /^172\.(1[6-9]|2\d|3[01])\./.test(ip);
-}
-
 export function resolveGeo(ip: string, timezone?: string): GeoInfo {
   if (!ip && !timezone) return {};
 
