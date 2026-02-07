@@ -11,11 +11,13 @@ COPY packages/node/package.json packages/node/
 COPY packages/client/package.json packages/client/
 COPY packages/react/package.json packages/react/
 COPY packages/react-native/package.json packages/react-native/
+COPY packages/ui/package.json packages/ui/
 COPY apps/dashboard/package.json apps/dashboard/
 COPY apps/server/package.json apps/server/
 COPY apps/landing/package.json apps/landing/
 COPY examples/express/package.json examples/express/
 COPY examples/react-app/package.json examples/react-app/
+COPY examples/ui-demo/package.json examples/ui-demo/
 
 RUN bun install
 
@@ -25,8 +27,8 @@ COPY packages/ packages/
 COPY apps/ apps/
 COPY examples/ examples/
 
-# Build everything (turbo handles dependency order)
-RUN bun run build
+# Build only what's needed for production (server + dashboard)
+RUN bun run build --filter=@litemetrics/server --filter=@litemetrics/dashboard
 
 # ── Stage 2: Runtime ──────────────────────────────────────
 FROM oven/bun:1-slim
