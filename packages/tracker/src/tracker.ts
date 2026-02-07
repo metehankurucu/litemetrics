@@ -13,6 +13,17 @@ import { AutoTracker, initOutboundTracking, initFileDownloadTracking, initScroll
 import { parseUTM, now } from './utils';
 import { initAttributeTracking } from './attributes';
 
+function filterSelfReferrer(ref: string | undefined): string | undefined {
+  if (!ref) return undefined;
+  try {
+    const refHost = new URL(ref).hostname;
+    const curHost = typeof window !== 'undefined' ? window.location.hostname : '';
+    return refHost === curHost ? undefined : ref;
+  } catch {
+    return ref;
+  }
+}
+
 export interface LitemetricsInstance {
   track(name: string, properties?: Record<string, unknown>): void;
   identify(userId: string, traits?: Record<string, unknown>): void;
@@ -107,7 +118,7 @@ export function createTracker(config: TrackerConfig): LitemetricsInstance {
       sessionId: session.sessionId,
       visitorId,
       url: url || (typeof location !== 'undefined' ? location.href : ''),
-      referrer: referrer || (typeof document !== 'undefined' ? document.referrer : undefined),
+      referrer: filterSelfReferrer(referrer || (typeof document !== 'undefined' ? document.referrer : undefined)),
       title: title || (typeof document !== 'undefined' ? document.title : undefined),
       ...getContext(),
     };

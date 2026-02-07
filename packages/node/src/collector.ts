@@ -118,7 +118,15 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
 
   function handler(): (req: any, res: any) => void | Promise<void> {
     return async (req: any, res: any) => {
-      if (setCors(req, res, 'POST, OPTIONS')) return;
+      // Collect endpoint is public — always allow cross-origin
+      res.setHeader?.('Access-Control-Allow-Origin', '*');
+      res.setHeader?.('Access-Control-Allow-Methods', 'POST, OPTIONS');
+      res.setHeader?.('Access-Control-Allow-Headers', 'Content-Type');
+      if (req.method === 'OPTIONS') {
+        res.writeHead?.(204);
+        res.end?.();
+        return;
+      }
 
       if (req.method !== 'POST') {
         sendJson(res, 405, { ok: false, error: 'Method not allowed' });
@@ -515,7 +523,11 @@ function createAdapter(config: CollectorConfig['db']): DBAdapter {
 }
 
 async function parseBody(req: any): Promise<unknown> {
-  if (req.body) return req.body;
+  // Already parsed by middleware (e.g. express.json())
+  if (req.body && typeof req.body === 'object') return req.body;
+  // Raw string body (e.g. express.text() or text/plain content-type)
+  if (typeof req.body === 'string') return JSON.parse(req.body);
+  // Manual stream parsing
   return new Promise((resolve, reject) => {
     let data = '';
     req.on('data', (chunk: Buffer) => { data += chunk.toString(); });

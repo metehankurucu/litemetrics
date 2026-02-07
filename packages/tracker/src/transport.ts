@@ -59,9 +59,10 @@ export class Transport {
     if (typeof fetch !== 'undefined') {
       fetch(this.endpoint, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'text/plain' },
         body,
         keepalive: true,
+        credentials: 'omit',
       }).catch(() => {
         // Retry once with sendBeacon
         this._beacon(body);
@@ -73,7 +74,7 @@ export class Transport {
 
   private _beacon(body: string): void {
     if (typeof navigator !== 'undefined' && navigator.sendBeacon) {
-      const blob = new Blob([body], { type: 'application/json' });
+      const blob = new Blob([body], { type: 'text/plain' });
       navigator.sendBeacon(this.endpoint, blob);
     }
   }

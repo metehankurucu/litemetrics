@@ -48,9 +48,8 @@ export class AutoTracker {
     setTimeout(() => {
       const current = location.href;
       if (current !== this.lastUrl) {
-        const referrer = this.lastUrl;
         this.lastUrl = current;
-        this.onPage(current, referrer);
+        this.onPage(current, undefined);
       }
     }, 0);
   }
