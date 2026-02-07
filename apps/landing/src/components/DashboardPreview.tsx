@@ -6,10 +6,10 @@ export function DashboardPreview() {
         <div className="text-center mb-12">
           <p className="text-sm font-medium text-brand-400 uppercase tracking-wider mb-3">Dashboard</p>
           <h2 className="font-display text-4xl sm:text-5xl text-white tracking-tight mb-4">
-            Beautiful analytics,<br />out of the box
+            This is what your<br />users get
           </h2>
           <p className="text-lg text-zinc-400 max-w-xl mx-auto">
-            Real-time dashboard with interactive charts, world map, event explorer, and user profiles — included for free.
+            Embed this dashboard in your product. Fully themeable, dark mode included. No iframe — native React components.
           </p>
         </div>
 
@@ -24,7 +24,7 @@ export function DashboardPreview() {
             </div>
             <div className="flex-1 flex justify-center">
               <div className="bg-zinc-800 rounded-md px-4 py-1 text-xs text-zinc-500 font-mono">
-                localhost:3000/dashboard
+                your-app.com/analytics
               </div>
             </div>
           </div>

@@ -19,9 +19,9 @@ export function Hero() {
           className="font-display text-5xl sm:text-6xl md:text-7xl lg:text-8xl tracking-tight leading-[0.95] mb-6 animate-fade-up"
           style={{ animationDelay: '0.1s', opacity: 0 }}
         >
-          Analytics that
+          Analytics for
           <br />
-          <span className="text-gradient">respect your users</span>
+          <span className="text-gradient">your product</span>
         </h1>
 
         {/* Subtitle */}
@@ -29,9 +29,9 @@ export function Hero() {
           className="text-lg sm:text-xl text-zinc-400 max-w-2xl mx-auto mb-10 leading-relaxed animate-fade-up"
           style={{ animationDelay: '0.25s', opacity: 0 }}
         >
-          Open-source, self-hosted web analytics SDK.
-          Drop-in tracker under <span className="text-white font-medium">3.5KB</span>.
-          No cookies, no third parties, full control.
+          Open-source analytics SDK you can embed in your app.
+          White-label, themeable, multi-tenant.{' '}
+          <span className="text-white font-medium">5 lines of code</span>.
         </p>
 
         {/* CTAs */}
@@ -67,9 +67,9 @@ export function Hero() {
           style={{ animationDelay: '0.55s', opacity: 0 }}
         >
           <span className="text-brand-400 text-sm font-mono">$</span>
-          <code className="text-zinc-300 text-sm font-mono">npm install @litemetrics/tracker</code>
+          <code className="text-zinc-300 text-sm font-mono">npm install @litemetrics/ui</code>
           <button
-            onClick={() => navigator.clipboard.writeText('npm install @litemetrics/tracker')}
+            onClick={() => navigator.clipboard.writeText('npm install @litemetrics/ui')}
             className="text-zinc-500 hover:text-zinc-300 transition-colors ml-1"
             title="Copy"
           >

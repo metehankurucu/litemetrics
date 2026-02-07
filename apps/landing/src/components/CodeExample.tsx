@@ -1,24 +1,29 @@
 import { useState, useMemo } from 'react';
 
-type Tab = 'html' | 'react' | 'nextjs' | 'node';
+type Tab = 'embed' | 'react' | 'html' | 'node';
 
 const tabs: { key: Tab; label: string }[] = [
-  { key: 'html', label: 'HTML' },
+  { key: 'embed', label: 'Embed Dashboard' },
   { key: 'react', label: 'React' },
-  { key: 'nextjs', label: 'Next.js' },
+  { key: 'html', label: 'HTML' },
   { key: 'node', label: 'Node.js' },
 ];
 
 const snippets: Record<Tab, { code: string; lang: string }> = {
-  html: {
-    lang: 'html',
-    code: `<script src="https://your-server.com/litemetrics.js"></script>
-<script>
-  Litemetrics.createTracker({
-    siteId: 'your-site-id',
-    endpoint: 'https://your-server.com/api/collect',
-  });
-</script>`,
+  embed: {
+    lang: 'tsx',
+    code: `import { LitemetricsProvider, AnalyticsDashboard } from '@litemetrics/ui';
+
+function CustomerDashboard({ customerId }) {
+  return (
+    <LitemetricsProvider
+      baseUrl="/api/stats"
+      siteId={customerId}
+    >
+      <AnalyticsDashboard theme="midnight" />
+    </LitemetricsProvider>
+  );
+}`,
   },
   react: {
     lang: 'tsx',
@@ -35,22 +40,15 @@ function App() {
   );
 }`,
   },
-  nextjs: {
-    lang: 'tsx',
-    code: `// app/providers.tsx
-'use client';
-import { LitemetricsProvider } from '@litemetrics/react';
-
-export function Providers({ children }) {
-  return (
-    <LitemetricsProvider
-      siteId="your-site-id"
-      endpoint="/api/collect"
-    >
-      {children}
-    </LitemetricsProvider>
-  );
-}`,
+  html: {
+    lang: 'html',
+    code: `<script src="https://your-server.com/litemetrics.js"></script>
+<script>
+  Litemetrics.createTracker({
+    siteId: 'your-site-id',
+    endpoint: 'https://your-server.com/api/collect',
+  });
+</script>`,
   },
   node: {
     lang: 'ts',
@@ -217,7 +215,7 @@ function HighlightedCode({ code }: { code: string }) {
 }
 
 export function CodeExample() {
-  const [active, setActive] = useState<Tab>('html');
+  const [active, setActive] = useState<Tab>('embed');
   const [copied, setCopied] = useState(false);
 
   const handleCopy = () => {
@@ -232,10 +230,10 @@ export function CodeExample() {
         <div className="text-center mb-12">
           <p className="text-sm font-medium text-brand-400 uppercase tracking-wider mb-3">Setup</p>
           <h2 className="font-display text-4xl sm:text-5xl text-white tracking-tight mb-4">
-            Three lines. That's it.
+            Five lines. That's it.
           </h2>
           <p className="text-lg text-zinc-400">
-            Add Litemetrics to any project in under a minute.
+            Embed a full analytics dashboard in under a minute.
           </p>
         </div>
 

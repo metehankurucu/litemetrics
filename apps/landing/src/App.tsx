@@ -1,6 +1,7 @@
 import { Navbar } from './components/Navbar';
 import { Hero } from './components/Hero';
 import { StatsBar } from './components/StatsBar';
+import { EmbedShowcase } from './components/EmbedShowcase';
 import { Features } from './components/Features';
 import { CodeExample } from './components/CodeExample';
 import { DashboardPreview } from './components/DashboardPreview';
@@ -13,6 +14,7 @@ export function App() {
       <Navbar />
       <Hero />
       <StatsBar />
+      <EmbedShowcase />
       <Features />
       <CodeExample />
       <DashboardPreview />

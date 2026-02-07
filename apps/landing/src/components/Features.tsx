@@ -2,14 +2,50 @@ const features = [
   {
     icon: (
       <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zm0 8a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zm10 0a1 1 0 011-1h4a1 1 0 011 1v6a1 1 0 01-1 1h-4a1 1 0 01-1-1v-6z" />
       </svg>
     ),
-    title: 'Privacy First',
-    description: 'No cookies. Respects Do Not Track. All data stays on your server. GDPR-compliant by design.',
+    title: 'Embeddable Dashboard',
+    description: 'Drop a full analytics dashboard into your React app. Charts, maps, tables — all pre-built. Your customers get analytics without you building anything.',
+    color: 'from-brand-500/20 to-brand-500/0',
+    border: 'group-hover:border-brand-500/20',
+    iconColor: 'text-brand-400',
+  },
+  {
+    icon: (
+      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
+      </svg>
+    ),
+    title: 'White-Label Theming',
+    description: '10 built-in presets. CSS custom properties for full control. Your brand colors, your dashboard. Dark mode included.',
+    color: 'from-violet-500/20 to-violet-500/0',
+    border: 'group-hover:border-violet-500/20',
+    iconColor: 'text-violet-400',
+  },
+  {
+    icon: (
+      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+      </svg>
+    ),
+    title: 'Multi-Tenant',
+    description: 'Each customer gets their own isolated analytics. One database, zero cross-contamination. Built-in site_id isolation.',
     color: 'from-emerald-500/20 to-emerald-500/0',
     border: 'group-hover:border-emerald-500/20',
     iconColor: 'text-emerald-400',
+  },
+  {
+    icon: (
+      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+      </svg>
+    ),
+    title: 'Multi-Platform',
+    description: 'First-class SDKs for React, React Native, Next.js, Vue, and plain HTML. One API everywhere.',
+    color: 'from-blue-500/20 to-blue-500/0',
+    border: 'group-hover:border-blue-500/20',
+    iconColor: 'text-blue-400',
   },
   {
     icon: (
@@ -18,46 +54,10 @@ const features = [
       </svg>
     ),
     title: 'Lightweight',
-    description: '3.5KB gzipped. Zero performance impact. Loads async, batches events, never blocks your UI.',
+    description: '3.5KB gzipped tracker. Zero performance impact. Loads async, batches events, never blocks your UI.',
     color: 'from-amber-500/20 to-amber-500/0',
     border: 'group-hover:border-amber-500/20',
     iconColor: 'text-amber-400',
-  },
-  {
-    icon: (
-      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122" />
-      </svg>
-    ),
-    title: 'Auto-Tracking',
-    description: 'Pageviews, SPA navigation, outbound links, file downloads, scroll depth, and rage clicks — all automatic.',
-    color: 'from-blue-500/20 to-blue-500/0',
-    border: 'group-hover:border-blue-500/20',
-    iconColor: 'text-blue-400',
-  },
-  {
-    icon: (
-      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zm0 8a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zm10 0a1 1 0 011-1h4a1 1 0 011 1v6a1 1 0 01-1 1h-4a1 1 0 01-1-1v-6z" />
-      </svg>
-    ),
-    title: 'Multi-Platform',
-    description: 'First-class SDKs for HTML, React, Next.js, React Native, and Node.js. One API everywhere.',
-    color: 'from-violet-500/20 to-violet-500/0',
-    border: 'group-hover:border-violet-500/20',
-    iconColor: 'text-violet-400',
-  },
-  {
-    icon: (
-      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-      </svg>
-    ),
-    title: 'Real-Time Dashboard',
-    description: 'Live visitors, world map, interactive charts, event explorer, user profiles — all built-in.',
-    color: 'from-rose-500/20 to-rose-500/0',
-    border: 'group-hover:border-rose-500/20',
-    iconColor: 'text-rose-400',
   },
   {
     icon: (
@@ -66,7 +66,7 @@ const features = [
       </svg>
     ),
     title: 'Self-Hosted',
-    description: 'ClickHouse or MongoDB. Deploy on your infra. One command setup. No vendor lock-in.',
+    description: 'ClickHouse or MongoDB. Deploy on your infra. No cookies, no third parties, GDPR-compliant by design.',
     color: 'from-cyan-500/20 to-cyan-500/0',
     border: 'group-hover:border-cyan-500/20',
     iconColor: 'text-cyan-400',
@@ -84,7 +84,7 @@ export function Features() {
             Everything you need,<br />nothing you don't
           </h2>
           <p className="text-lg text-zinc-400 max-w-xl mx-auto">
-            Built for developers who care about performance and privacy.
+            Built for developers who ship analytics to their customers.
           </p>
         </div>
 

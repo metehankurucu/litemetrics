@@ -16,7 +16,7 @@ export function OpenSource() {
           Built in the open
         </h2>
         <p className="text-lg text-zinc-400 max-w-lg mx-auto mb-8 leading-relaxed">
-          Litemetrics is open source and MIT licensed. Inspect every line of code, contribute features, or fork it entirely. Your analytics, your rules.
+          Litemetrics is open source and MIT licensed. Built for SaaS developers who want to offer analytics to their customers without building from scratch. Inspect every line, contribute, or fork it entirely.
         </p>
 
         <div className="flex flex-col sm:flex-row items-center justify-center gap-4">

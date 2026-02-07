@@ -4,19 +4,88 @@
 
 <h1 align="center">Litemetrics</h1>
 
-<p align="center">Open-source, self-hosted analytics SDK for Node.js. Runs inside your existing server with ClickHouse or MongoDB.</p>
+<p align="center">Open-source analytics SDK you can embed in your product. Give your users a beautiful analytics dashboard in 5 minutes.</p>
 
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/template/OQI8lX?referralCode=LpQIoM)
 
-## What it does
+## Why Litemetrics?
 
-Collects pageviews, custom events, and user identities from websites and apps. Stores everything in ClickHouse (default) or MongoDB. Provides a query API and a dashboard to view the data.
+### Embed in your product
 
-## Who it's for
+Drop a full analytics dashboard into your React app with `@litemetrics/ui`. Charts, maps, tables — all pre-built. Your customers get analytics without you building anything.
 
-- Developers who want analytics without third-party services
-- SaaS platforms that need per-customer analytics (multi-tenant)
-- Anyone who wants to keep analytics data in their own database
+```tsx
+import { LitemetricsProvider, AnalyticsDashboard } from '@litemetrics/ui';
+
+function CustomerDashboard({ customerId }) {
+  return (
+    <LitemetricsProvider baseUrl="/api/stats" siteId={customerId}>
+      <AnalyticsDashboard theme="midnight" />
+    </LitemetricsProvider>
+  );
+}
+```
+
+### Your brand, your colors
+
+10 built-in theme presets. CSS custom properties for full control. Dark mode included. Ship analytics that look like they belong in your app — not some third-party widget.
+
+### Multi-tenant ready
+
+Each customer gets their own isolated analytics via `site_id`. One database, zero cross-contamination. Built for SaaS from day one.
+
+## Quick Start
+
+### Embed a dashboard (recommended)
+
+```bash
+npm install @litemetrics/ui
+```
+
+```tsx
+import { LitemetricsProvider, AnalyticsDashboard } from '@litemetrics/ui';
+
+<LitemetricsProvider baseUrl="https://your-server.com/api/stats" siteId="customer-123">
+  <AnalyticsDashboard />
+</LitemetricsProvider>
+```
+
+### Add tracking to your site
+
+```html
+<script src="https://your-server.com/litemetrics.js"></script>
+<script>
+  Litemetrics.createTracker({
+    siteId: 'your-site-id',
+    endpoint: 'https://your-server.com/api/collect'
+  });
+</script>
+```
+
+### Add to your Express server
+
+```bash
+npm install @litemetrics/node
+```
+
+```ts
+import express from 'express';
+import { createCollector } from '@litemetrics/node';
+
+const app = express();
+app.use(express.json());
+
+const collector = await createCollector({
+  db: { url: 'http://localhost:8123' },
+});
+
+app.all('/api/collect', (req, res) => collector.handler()(req, res));
+app.all('/api/stats', (req, res) => collector.queryHandler()(req, res));
+
+app.listen(3002);
+```
+
+For MongoDB instead: `db: { adapter: 'mongodb', url: 'mongodb://localhost:27017/myapp' }`
 
 ## Deploy
 
@@ -74,56 +143,17 @@ Browser / App                    Your Server                    Dashboard
 
 The tracker handles session management, visitor IDs, batching, and SPA detection client-side. The server stores events and runs queries. The Docker image bundles everything into a single container.
 
-## Quick Start (embed in your own server)
-
-If you prefer to add Litemetrics to your existing Express app instead of running the standalone server:
-
-```bash
-bun add @litemetrics/node
-```
-
-```ts
-import express from 'express';
-import { createCollector } from '@litemetrics/node';
-
-const app = express();
-app.use(express.json());
-
-const collector = await createCollector({
-  db: { url: 'http://localhost:8123' },
-});
-
-app.all('/api/collect', (req, res) => collector.handler()(req, res));
-app.all('/api/stats', (req, res) => collector.queryHandler()(req, res));
-
-app.listen(3002);
-```
-
-For MongoDB instead: `db: { adapter: 'mongodb', url: 'mongodb://localhost:27017/myapp' }`
-
-## Tracker
-
-```html
-<script src="https://your-server.com/litemetrics.js"></script>
-<script>
-  Litemetrics.createTracker({
-    siteId: 'your-site-id',
-    endpoint: 'https://your-server.com/api/collect'
-  });
-</script>
-```
-
 ## Packages
 
 | Package | Description |
 |---------|-------------|
+| [`@litemetrics/ui`](./packages/ui) | Embeddable React dashboard components (10 themes, dark mode, CSS variables) |
 | [`@litemetrics/core`](./packages/core) | Shared types and constants |
 | [`@litemetrics/tracker`](./packages/tracker) | Browser tracker (~3KB gzipped) |
 | [`@litemetrics/node`](./packages/node) | Server collector, ClickHouse/MongoDB adapters, query API |
 | [`@litemetrics/react`](./packages/react) | React provider and hooks |
 | [`@litemetrics/react-native`](./packages/react-native) | React Native / Expo provider |
 | [`@litemetrics/client`](./packages/client) | Typed client for reading analytics data |
-| [`@litemetrics/ui`](./packages/ui) | Themeable React dashboard components (dark mode, CSS variables) |
 | [`@litemetrics/dashboard`](./apps/dashboard) | Analytics dashboard (React + Vite + Tailwind) |
 | [`@litemetrics/server`](./apps/server) | Self-hosted server (serves dashboard + API) |
 

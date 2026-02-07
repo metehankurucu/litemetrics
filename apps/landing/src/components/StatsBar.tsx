@@ -1,8 +1,8 @@
 const stats = [
-  { value: '<3.5KB', label: 'Gzipped' },
-  { value: '12', label: 'Built-in Metrics' },
-  { value: '5', label: 'SDK Platforms' },
-  { value: '0', label: 'Cookies' },
+  { value: '5 Lines', label: 'To Embed' },
+  { value: '10', label: 'Theme Presets' },
+  { value: 'Multi', label: 'Tenant' },
+  { value: '<3.5KB', label: 'Tracker' },
 ];
 
 export function StatsBar() {
