@@ -1,0 +1,28 @@
+node_modules
+dist
+.turbo
+*.tsbuildinfo
+.DS_Store
+.env
+
+# Logs
+*.log
+
+# Coverage
+coverage/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+Thumbs.db
+
+# Lock files (bun.lock tracked, but others not)
+package-lock.json
+yarn.lock
+
+# Build cache
+*.tsbuildinfo

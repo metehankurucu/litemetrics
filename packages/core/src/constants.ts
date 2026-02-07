@@ -1,0 +1,10 @@
+export const DEFAULT_BATCH_SIZE = 10;
+export const DEFAULT_FLUSH_INTERVAL = 5000;
+export const SESSION_TIMEOUT = 30 * 60 * 1000; // 30 minutes
+export const STORAGE_KEY_SESSION = '__insayt_sid';
+export const STORAGE_KEY_VISITOR = '__insayt_vid';
+export const STORAGE_KEY_QUEUE = '__insayt_q';
+export const STORAGE_KEY_OPTOUT = '__insayt_optout';
+export const STORAGE_KEY_USER = '__insayt_uid';
+export const STORAGE_KEY_LAST_ACTIVE = '__insayt_la';
+export const COLLECT_PATH = '/api/collect';

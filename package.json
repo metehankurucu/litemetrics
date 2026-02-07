@@ -1,0 +1,21 @@
+{
+  "name": "insayt",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "examples/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build": "turbo build",
+    "dev": "turbo dev",
+    "test": "turbo test",
+    "clean": "turbo clean",
+    "typecheck": "turbo typecheck"
+  },
+  "packageManager": "bun@1.2.1",
+  "devDependencies": {
+    "turbo": "^2",
+    "typescript": "^5.7"
+  }
+}

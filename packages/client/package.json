@@ -1,0 +1,42 @@
+{
+  "name": "@insayt/client",
+  "version": "0.1.0",
+  "description": "Client-side SDK for querying Insayt analytics data",
+  "license": "MIT",
+  "author": "Metehan Kurucu",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/metehankurucu/insayt",
+    "directory": "packages/client"
+  },
+  "keywords": ["analytics", "insayt", "client", "dashboard", "query"],
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": ["dist"],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@insayt/core": "workspace:*",
+    "axios": "^1.13.4"
+  },
+  "devDependencies": {
+    "tsup": "^8",
+    "typescript": "^5.7"
+  }
+}

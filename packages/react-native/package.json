@@ -1,0 +1,47 @@
+{
+  "name": "@insayt/react-native",
+  "version": "0.1.0",
+  "description": "React Native / Expo bindings for Insayt analytics",
+  "license": "MIT",
+  "author": "Metehan Kurucu",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/metehankurucu/insayt",
+    "directory": "packages/react-native"
+  },
+  "keywords": ["analytics", "insayt", "react-native", "expo", "tracking"],
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": ["dist"],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@insayt/core": "workspace:*"
+  },
+  "peerDependencies": {
+    "react": ">=18",
+    "react-native": ">=0.72"
+  },
+  "devDependencies": {
+    "@types/react": "^19",
+    "react": "^19",
+    "tsup": "^8",
+    "typescript": "^5.7"
+  }
+}

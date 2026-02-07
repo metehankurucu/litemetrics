@@ -1,0 +1,42 @@
+{
+  "name": "@insayt/tracker",
+  "version": "0.1.0",
+  "description": "Lightweight browser analytics tracker (<3KB gzipped)",
+  "license": "MIT",
+  "author": "Metehan Kurucu",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/metehankurucu/insayt",
+    "directory": "packages/tracker"
+  },
+  "keywords": ["analytics", "tracking", "insayt", "browser", "pageview"],
+  "type": "module",
+  "main": "./dist/insayt.cjs",
+  "module": "./dist/insayt.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/insayt.js",
+      "require": "./dist/insayt.cjs"
+    },
+    "./script": "./dist/insayt.global.js"
+  },
+  "files": ["dist"],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@insayt/core": "workspace:*"
+  },
+  "devDependencies": {
+    "tsup": "^8",
+    "typescript": "^5.7"
+  }
+}

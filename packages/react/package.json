@@ -1,0 +1,46 @@
+{
+  "name": "@insayt/react",
+  "version": "0.1.0",
+  "description": "React bindings for Insayt analytics (hooks + provider)",
+  "license": "MIT",
+  "author": "Metehan Kurucu",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/metehankurucu/insayt",
+    "directory": "packages/react"
+  },
+  "keywords": ["analytics", "insayt", "react", "hooks", "tracking"],
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": ["dist"],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@insayt/tracker": "workspace:*"
+  },
+  "peerDependencies": {
+    "react": ">=18"
+  },
+  "devDependencies": {
+    "@types/react": "^19",
+    "react": "^19",
+    "tsup": "^8",
+    "typescript": "^5.7"
+  }
+}

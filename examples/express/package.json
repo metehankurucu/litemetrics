@@ -1,0 +1,20 @@
+{
+  "name": "@insayt/example-express",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "bun run server.ts"
+  },
+  "dependencies": {
+    "@insayt/node": "workspace:*",
+    "@insayt/tracker": "workspace:*",
+    "cors": "^2.8.6",
+    "express": "^5"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5",
+    "typescript": "^5.7"
+  }
+}

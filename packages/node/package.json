@@ -1,0 +1,46 @@
+{
+  "name": "@insayt/node",
+  "version": "0.1.0",
+  "description": "Node.js analytics collector with DB adapters and query API",
+  "license": "MIT",
+  "author": "Metehan Kurucu",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/metehankurucu/insayt",
+    "directory": "packages/node"
+  },
+  "keywords": ["analytics", "tracking", "insayt", "node", "collector", "mongodb"],
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": ["dist"],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@clickhouse/client": "^1.17.0",
+    "@insayt/core": "workspace:*",
+    "maxmind": "^4.3",
+    "mongodb": "^6",
+    "ua-parser-js": "^2"
+  },
+  "devDependencies": {
+    "@types/ua-parser-js": "^0.7",
+    "tsup": "^8",
+    "typescript": "^5.7"
+  }
+}

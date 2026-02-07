@@ -1,0 +1,12 @@
+node_modules
+**/node_modules
+**/dist
+.git
+.gitignore
+**/.env
+**/.env.*
+*.md
+LICENSE
+.vscode
+.idea
+.DS_Store

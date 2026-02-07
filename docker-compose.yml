@@ -1,0 +1,60 @@
+services:
+  clickhouse:
+    image: clickhouse/clickhouse-server:24-alpine
+    ports:
+      - '8123:8123'
+      - '9000:9000'
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - clickhouse_logs:/var/log/clickhouse-server
+    environment:
+      CLICKHOUSE_DB: insayt
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    cap_add:
+      - SYS_NICE
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    healthcheck:
+      test: ["CMD", "clickhouse-client", "--query", "SELECT 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  insayt:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - '3002:3002'
+    environment:
+      PORT: 3002
+      DB_ADAPTER: clickhouse
+      CLICKHOUSE_URL: http://clickhouse:8123
+      ADMIN_SECRET: ${ADMIN_SECRET:-admin}
+      GEOIP: ${GEOIP:-true}
+      TRUST_PROXY: 'true'
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Optional: use MongoDB instead of ClickHouse
+  # Start with: docker compose --profile mongodb up -d
+  mongodb:
+    image: mongo:7
+    ports:
+      - '27017:27017'
+    volumes:
+      - mongodb_data:/data/db
+    profiles:
+      - mongodb
+    restart: unless-stopped
+
+volumes:
+  clickhouse_data:
+  clickhouse_logs:
+  mongodb_data:
