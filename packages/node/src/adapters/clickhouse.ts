@@ -18,6 +18,13 @@ CREATE TABLE IF NOT EXISTS ${EVENTS_TABLE} (
     title          Nullable(String),
     event_name     Nullable(String),
     properties     Nullable(String),
+    event_source   LowCardinality(Nullable(String)),
+    event_subtype  LowCardinality(Nullable(String)),
+    page_path      Nullable(String),
+    target_url_path Nullable(String),
+    element_selector Nullable(String),
+    element_text   Nullable(String),
+    scroll_depth_pct Nullable(UInt8),
     user_id        Nullable(String),
     traits         Nullable(String),
     country        LowCardinality(Nullable(String)),
@@ -66,6 +73,40 @@ function toCHDateTime(d: string | Date): string {
   return iso.replace('T', ' ').replace('Z', '');
 }
 
+function buildFilterConditions(filters?: Record<string, string>): { conditions: string[]; params: Record<string, unknown> } {
+  if (!filters) return { conditions: [], params: {} };
+  const map: Record<string, string> = {
+    'geo.country': 'country',
+    'geo.city': 'city',
+    'geo.region': 'region',
+    'language': 'language',
+    'device.type': 'device_type',
+    'device.browser': 'browser',
+    'device.os': 'os',
+    'utm.source': 'utm_source',
+    'utm.medium': 'utm_medium',
+    'utm.campaign': 'utm_campaign',
+    'utm.term': 'utm_term',
+    'utm.content': 'utm_content',
+    'referrer': 'referrer',
+    'event_source': 'event_source',
+    'event_subtype': 'event_subtype',
+    'page_path': 'page_path',
+    'target_url_path': 'target_url_path',
+    'event_name': 'event_name',
+    'type': 'type',
+  };
+  const conditions: string[] = [];
+  const params: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(filters)) {
+    if (!value || !map[key]) continue;
+    const paramKey = `f_${key.replace(/[^a-zA-Z0-9]/g, '_')}`;
+    conditions.push(`${map[key]} = {${paramKey}:String}`);
+    params[paramKey] = value;
+  }
+  return { conditions, params };
+}
+
 export class ClickHouseAdapter implements DBAdapter {
   private client: ClickHouseClient;
 
@@ -81,6 +122,13 @@ export class ClickHouseAdapter implements DBAdapter {
   async init(): Promise<void> {
     await this.client.command({ query: CREATE_EVENTS_TABLE });
     await this.client.command({ query: CREATE_SITES_TABLE });
+    await this.client.command({ query: `ALTER TABLE ${EVENTS_TABLE} ADD COLUMN IF NOT EXISTS event_source LowCardinality(Nullable(String))` });
+    await this.client.command({ query: `ALTER TABLE ${EVENTS_TABLE} ADD COLUMN IF NOT EXISTS event_subtype LowCardinality(Nullable(String))` });
+    await this.client.command({ query: `ALTER TABLE ${EVENTS_TABLE} ADD COLUMN IF NOT EXISTS page_path Nullable(String)` });
+    await this.client.command({ query: `ALTER TABLE ${EVENTS_TABLE} ADD COLUMN IF NOT EXISTS target_url_path Nullable(String)` });
+    await this.client.command({ query: `ALTER TABLE ${EVENTS_TABLE} ADD COLUMN IF NOT EXISTS element_selector Nullable(String)` });
+    await this.client.command({ query: `ALTER TABLE ${EVENTS_TABLE} ADD COLUMN IF NOT EXISTS element_text Nullable(String)` });
+    await this.client.command({ query: `ALTER TABLE ${EVENTS_TABLE} ADD COLUMN IF NOT EXISTS scroll_depth_pct Nullable(UInt8)` });
     await this.client.command({
       query: `ALTER TABLE ${SITES_TABLE} ADD COLUMN IF NOT EXISTS conversion_events Nullable(String)`,
     });
@@ -106,6 +154,13 @@ export class ClickHouseAdapter implements DBAdapter {
       title: e.title ?? null,
       event_name: e.name ?? null,
       properties: e.properties ? JSON.stringify(e.properties) : null,
+      event_source: e.eventSource ?? null,
+      event_subtype: e.eventSubtype ?? null,
+      page_path: e.pagePath ?? null,
+      target_url_path: e.targetUrlPath ?? null,
+      element_selector: e.elementSelector ?? null,
+      element_text: e.elementText ?? null,
+      scroll_depth_pct: e.scrollDepthPct ?? null,
       user_id: e.userId ?? null,
       traits: e.traits ? JSON.stringify(e.traits) : null,
       country: e.geo?.country ?? null,
@@ -146,6 +201,8 @@ export class ClickHouseAdapter implements DBAdapter {
       to: toCHDateTime(dateRange.to),
       limit,
     };
+    const filter = buildFilterConditions(q.filters);
+    const filterSql = filter.conditions.length > 0 ? ` AND ${filter.conditions.join(' AND ')}` : '';
 
     let data: QueryDataPoint[] = [];
     let total = 0;
@@ -157,8 +214,8 @@ export class ClickHouseAdapter implements DBAdapter {
            WHERE site_id = {siteId:String}
              AND timestamp >= {from:String}
              AND timestamp <= {to:String}
-             AND type = 'pageview'`,
-          params,
+             AND type = 'pageview'${filterSql}`,
+          { ...params, ...filter.params },
         );
         total = Number(rows[0]?.value ?? 0);
         data = [{ key: 'pageviews', value: total }];
@@ -170,8 +227,8 @@ export class ClickHouseAdapter implements DBAdapter {
           `SELECT uniq(visitor_id) AS value FROM ${EVENTS_TABLE}
            WHERE site_id = {siteId:String}
              AND timestamp >= {from:String}
-             AND timestamp <= {to:String}`,
-          params,
+             AND timestamp <= {to:String}${filterSql}`,
+          { ...params, ...filter.params },
         );
         total = Number(rows[0]?.value ?? 0);
         data = [{ key: 'visitors', value: total }];
@@ -183,8 +240,8 @@ export class ClickHouseAdapter implements DBAdapter {
           `SELECT uniq(session_id) AS value FROM ${EVENTS_TABLE}
            WHERE site_id = {siteId:String}
              AND timestamp >= {from:String}
-             AND timestamp <= {to:String}`,
-          params,
+             AND timestamp <= {to:String}${filterSql}`,
+          { ...params, ...filter.params },
         );
         total = Number(rows[0]?.value ?? 0);
         data = [{ key: 'sessions', value: total }];
@@ -197,8 +254,8 @@ export class ClickHouseAdapter implements DBAdapter {
            WHERE site_id = {siteId:String}
              AND timestamp >= {from:String}
              AND timestamp <= {to:String}
-             AND type = 'event'`,
-          params,
+             AND type = 'event'${filterSql}`,
+          { ...params, ...filter.params },
         );
         total = Number(rows[0]?.value ?? 0);
         data = [{ key: 'events', value: total }];
@@ -217,8 +274,8 @@ export class ClickHouseAdapter implements DBAdapter {
              AND timestamp >= {from:String}
              AND timestamp <= {to:String}
              AND type = 'event'
-             AND event_name IN {eventNames:Array(String)}`,
-          { ...params, eventNames: conversionEvents },
+             AND event_name IN {eventNames:Array(String)}${filterSql}`,
+          { ...params, eventNames: conversionEvents, ...filter.params },
         );
         total = Number(rows[0]?.value ?? 0);
         data = [{ key: 'conversions', value: total }];
@@ -232,11 +289,11 @@ export class ClickHouseAdapter implements DBAdapter {
              AND timestamp >= {from:String}
              AND timestamp <= {to:String}
              AND type = 'pageview'
-             AND url IS NOT NULL
+             AND url IS NOT NULL${filterSql}
            GROUP BY url
            ORDER BY value DESC
            LIMIT {limit:UInt32}`,
-          params,
+          { ...params, ...filter.params },
         );
         data = rows.map((r) => ({ key: r.key, value: Number(r.value) }));
         total = data.reduce((sum, d) => sum + d.value, 0);
@@ -251,11 +308,11 @@ export class ClickHouseAdapter implements DBAdapter {
              AND timestamp <= {to:String}
              AND type = 'pageview'
              AND referrer IS NOT NULL
-             AND referrer != ''
+             AND referrer != ''${filterSql}
            GROUP BY referrer
            ORDER BY value DESC
            LIMIT {limit:UInt32}`,
-          params,
+          { ...params, ...filter.params },
         );
         data = rows.map((r) => ({ key: r.key, value: Number(r.value) }));
         total = data.reduce((sum, d) => sum + d.value, 0);
@@ -268,11 +325,11 @@ export class ClickHouseAdapter implements DBAdapter {
            WHERE site_id = {siteId:String}
              AND timestamp >= {from:String}
              AND timestamp <= {to:String}
-             AND country IS NOT NULL
+             AND country IS NOT NULL${filterSql}
            GROUP BY country
            ORDER BY value DESC
            LIMIT {limit:UInt32}`,
-          params,
+          { ...params, ...filter.params },
         );
         data = rows.map((r) => ({ key: r.key, value: Number(r.value) }));
         total = data.reduce((sum, d) => sum + d.value, 0);
@@ -285,11 +342,11 @@ export class ClickHouseAdapter implements DBAdapter {
            WHERE site_id = {siteId:String}
              AND timestamp >= {from:String}
              AND timestamp <= {to:String}
-             AND city IS NOT NULL
+             AND city IS NOT NULL${filterSql}
            GROUP BY city
            ORDER BY value DESC
            LIMIT {limit:UInt32}`,
-          params,
+          { ...params, ...filter.params },
         );
         data = rows.map((r) => ({ key: r.key, value: Number(r.value) }));
         total = data.reduce((sum, d) => sum + d.value, 0);
@@ -304,10 +361,11 @@ export class ClickHouseAdapter implements DBAdapter {
              AND timestamp <= {to:String}
              AND type = 'event'
              AND event_name IS NOT NULL
+             ${filterSql}
            GROUP BY event_name
            ORDER BY value DESC
            LIMIT {limit:UInt32}`,
-          params,
+          { ...params, ...filter.params },
         );
         data = rows.map((r) => ({ key: r.key, value: Number(r.value) }));
         total = data.reduce((sum, d) => sum + d.value, 0);
@@ -327,10 +385,108 @@ export class ClickHouseAdapter implements DBAdapter {
              AND timestamp <= {to:String}
              AND type = 'event'
              AND event_name IN {eventNames:Array(String)}
+             ${filterSql}
            GROUP BY event_name
            ORDER BY value DESC
            LIMIT {limit:UInt32}`,
-          { ...params, eventNames: conversionEvents },
+          { ...params, eventNames: conversionEvents, ...filter.params },
+        );
+        data = rows.map((r) => ({ key: r.key, value: Number(r.value) }));
+        total = data.reduce((sum, d) => sum + d.value, 0);
+        break;
+      }
+      case 'top_exit_pages': {
+        const rows = await this.queryRows<{ key: string; value: string }>(
+          `SELECT url AS key, count() AS value FROM (
+             SELECT session_id, argMax(url, timestamp) AS url
+             FROM ${EVENTS_TABLE}
+             WHERE site_id = {siteId:String}
+               AND timestamp >= {from:String}
+               AND timestamp <= {to:String}
+               AND type = 'pageview'
+               AND url IS NOT NULL${filterSql}
+             GROUP BY session_id
+           )
+           GROUP BY url
+           ORDER BY value DESC
+           LIMIT {limit:UInt32}`,
+          { ...params, ...filter.params },
+        );
+        data = rows.map((r) => ({ key: r.key, value: Number(r.value) }));
+        total = data.reduce((sum, d) => sum + d.value, 0);
+        break;
+      }
+      case 'top_transitions': {
+        const rows = await this.queryRows<{ key: string; value: string }>(
+          `SELECT concat(prev_url, ' → ', url) AS key, count() AS value FROM (
+             SELECT session_id, url,
+                    lag(url) OVER (PARTITION BY session_id ORDER BY timestamp) AS prev_url
+             FROM ${EVENTS_TABLE}
+             WHERE site_id = {siteId:String}
+               AND timestamp >= {from:String}
+               AND timestamp <= {to:String}
+               AND type = 'pageview'
+               AND url IS NOT NULL${filterSql}
+           )
+           WHERE prev_url IS NOT NULL
+           GROUP BY key
+           ORDER BY value DESC
+           LIMIT {limit:UInt32}`,
+          { ...params, ...filter.params },
+        );
+        data = rows.map((r) => ({ key: r.key, value: Number(r.value) }));
+        total = data.reduce((sum, d) => sum + d.value, 0);
+        break;
+      }
+      case 'top_scroll_pages': {
+        const rows = await this.queryRows<{ key: string; value: string }>(
+          `SELECT page_path AS key, count() AS value FROM ${EVENTS_TABLE}
+           WHERE site_id = {siteId:String}
+             AND timestamp >= {from:String}
+             AND timestamp <= {to:String}
+             AND type = 'event'
+             AND event_subtype = 'scroll_depth'
+             AND page_path IS NOT NULL${filterSql}
+           GROUP BY page_path
+           ORDER BY value DESC
+           LIMIT {limit:UInt32}`,
+          { ...params, ...filter.params },
+        );
+        data = rows.map((r) => ({ key: r.key, value: Number(r.value) }));
+        total = data.reduce((sum, d) => sum + d.value, 0);
+        break;
+      }
+      case 'top_button_clicks': {
+        const rows = await this.queryRows<{ key: string; value: string }>(
+          `SELECT ifNull(element_text, element_selector) AS key, count() AS value FROM ${EVENTS_TABLE}
+           WHERE site_id = {siteId:String}
+             AND timestamp >= {from:String}
+             AND timestamp <= {to:String}
+             AND type = 'event'
+             AND event_subtype = 'button_click'
+             AND (element_text IS NOT NULL OR element_selector IS NOT NULL)${filterSql}
+           GROUP BY key
+           ORDER BY value DESC
+           LIMIT {limit:UInt32}`,
+          { ...params, ...filter.params },
+        );
+        data = rows.map((r) => ({ key: r.key, value: Number(r.value) }));
+        total = data.reduce((sum, d) => sum + d.value, 0);
+        break;
+      }
+      case 'top_link_targets': {
+        const rows = await this.queryRows<{ key: string; value: string }>(
+          `SELECT target_url_path AS key, count() AS value FROM ${EVENTS_TABLE}
+           WHERE site_id = {siteId:String}
+             AND timestamp >= {from:String}
+             AND timestamp <= {to:String}
+             AND type = 'event'
+             AND event_subtype IN ('link_click','outbound_click')
+             AND target_url_path IS NOT NULL${filterSql}
+           GROUP BY target_url_path
+           ORDER BY value DESC
+           LIMIT {limit:UInt32}`,
+          { ...params, ...filter.params },
         );
         data = rows.map((r) => ({ key: r.key, value: Number(r.value) }));
         total = data.reduce((sum, d) => sum + d.value, 0);
@@ -344,10 +500,11 @@ export class ClickHouseAdapter implements DBAdapter {
              AND timestamp >= {from:String}
              AND timestamp <= {to:String}
              AND device_type IS NOT NULL
+             ${filterSql}
            GROUP BY device_type
            ORDER BY value DESC
            LIMIT {limit:UInt32}`,
-          params,
+          { ...params, ...filter.params },
         );
         data = rows.map((r) => ({ key: r.key, value: Number(r.value) }));
         total = data.reduce((sum, d) => sum + d.value, 0);
@@ -361,10 +518,11 @@ export class ClickHouseAdapter implements DBAdapter {
              AND timestamp >= {from:String}
              AND timestamp <= {to:String}
              AND browser IS NOT NULL
+             ${filterSql}
            GROUP BY browser
            ORDER BY value DESC
            LIMIT {limit:UInt32}`,
-          params,
+          { ...params, ...filter.params },
         );
         data = rows.map((r) => ({ key: r.key, value: Number(r.value) }));
         total = data.reduce((sum, d) => sum + d.value, 0);
@@ -378,10 +536,11 @@ export class ClickHouseAdapter implements DBAdapter {
              AND timestamp >= {from:String}
              AND timestamp <= {to:String}
              AND os IS NOT NULL
+             ${filterSql}
            GROUP BY os
            ORDER BY value DESC
            LIMIT {limit:UInt32}`,
-          params,
+          { ...params, ...filter.params },
         );
         data = rows.map((r) => ({ key: r.key, value: Number(r.value) }));
         total = data.reduce((sum, d) => sum + d.value, 0);
@@ -427,7 +586,14 @@ export class ClickHouseAdapter implements DBAdapter {
     const bucketFn = this.granularityToClickHouseFunc(granularity);
     const dateFormat = granularityToDateFormat(granularity);
 
+    const filter = buildFilterConditions(params.filters);
+    const filterSql = filter.conditions.length > 0 ? ` AND ${filter.conditions.join(' AND ')}` : '';
     const typeFilter = params.metric === 'pageviews' ? `AND type = 'pageview'` : '';
+    const eventsFilter = params.metric === 'events' ? `AND type = 'event'` : '';
+    const conversionsFilter = params.metric === 'conversions'
+      ? `AND type = 'event' AND event_name IN {eventNames:Array(String)}`
+      : '';
+    const extraFilters = [typeFilter, eventsFilter, conversionsFilter, filterSql].filter(Boolean).join(' ');
 
     let sql: string;
     if (params.metric === 'visitors' || params.metric === 'sessions') {
@@ -438,7 +604,7 @@ export class ClickHouseAdapter implements DBAdapter {
         WHERE site_id = {siteId:String}
           AND timestamp >= {from:String}
           AND timestamp <= {to:String}
-          ${typeFilter}
+          ${extraFilters}
         GROUP BY bucket
         ORDER BY bucket ASC
       `;
@@ -449,7 +615,7 @@ export class ClickHouseAdapter implements DBAdapter {
         WHERE site_id = {siteId:String}
           AND timestamp >= {from:String}
           AND timestamp <= {to:String}
-          ${typeFilter}
+          ${extraFilters}
         GROUP BY bucket
         ORDER BY bucket ASC
       `;
@@ -459,6 +625,8 @@ export class ClickHouseAdapter implements DBAdapter {
       siteId: params.siteId,
       from: toCHDateTime(dateRange.from),
       to: toCHDateTime(dateRange.to),
+      eventNames: params.conversionEvents ?? [],
+      ...filter.params,
     });
 
     // Convert ClickHouse bucket format to match the dateFormat used by fillBuckets
@@ -597,6 +765,10 @@ export class ClickHouseAdapter implements DBAdapter {
       conditions.push(`event_name = {eventName:String}`);
       queryParams.eventName = params.eventName;
     }
+    if (params.eventSource) {
+      conditions.push(`event_source = {eventSource:String}`);
+      queryParams.eventSource = params.eventSource;
+    }
     if (params.eventNames && params.eventNames.length > 0) {
       conditions.push(`event_name IN {eventNames:Array(String)}`);
       queryParams.eventNames = params.eventNames;
@@ -626,7 +798,9 @@ export class ClickHouseAdapter implements DBAdapter {
     const [events, countRows] = await Promise.all([
       this.queryRows<Record<string, unknown>>(
         `SELECT event_id, type, timestamp, session_id, visitor_id, url, referrer, title,
-                event_name, properties, user_id, traits, country, city, region,
+                event_name, properties, event_source, event_subtype, page_path, target_url_path,
+                element_selector, element_text, scroll_depth_pct,
+                user_id, traits, country, city, region,
                 device_type, browser, os, language,
                 utm_source, utm_medium, utm_campaign, utm_term, utm_content
          FROM ${EVENTS_TABLE}
@@ -678,13 +852,22 @@ export class ClickHouseAdapter implements DBAdapter {
           countIf(type = 'pageview') AS totalPageviews,
           uniq(session_id) AS totalSessions,
           anyLast(url) AS lastUrl,
+          anyLast(referrer) AS referrer,
           anyLast(device_type) AS device_type,
           anyLast(browser) AS browser,
           anyLast(os) AS os,
           anyLast(country) AS country,
           anyLast(city) AS city,
           anyLast(region) AS region,
-          anyLast(language) AS language
+          anyLast(language) AS language,
+          anyLast(timezone) AS timezone,
+          anyLast(screen_width) AS screen_width,
+          anyLast(screen_height) AS screen_height,
+          anyLast(utm_source) AS utm_source,
+          anyLast(utm_medium) AS utm_medium,
+          anyLast(utm_campaign) AS utm_campaign,
+          anyLast(utm_term) AS utm_term,
+          anyLast(utm_content) AS utm_content
         FROM ${EVENTS_TABLE}
         WHERE ${where}
         GROUP BY visitor_id
@@ -713,9 +896,19 @@ export class ClickHouseAdapter implements DBAdapter {
       totalPageviews: Number(u.totalPageviews),
       totalSessions: Number(u.totalSessions),
       lastUrl: u.lastUrl ? String(u.lastUrl) : undefined,
+      referrer: u.referrer ? String(u.referrer) : undefined,
       device: u.device_type ? { type: String(u.device_type), browser: String(u.browser ?? ''), os: String(u.os ?? '') } : undefined,
       geo: u.country ? { country: String(u.country), city: u.city ? String(u.city) : undefined, region: u.region ? String(u.region) : undefined } : undefined,
       language: u.language ? String(u.language) : undefined,
+      timezone: u.timezone ? String(u.timezone) : undefined,
+      screen: (u.screen_width || u.screen_height) ? { width: Number(u.screen_width ?? 0), height: Number(u.screen_height ?? 0) } : undefined,
+      utm: u.utm_source ? {
+        source: String(u.utm_source),
+        medium: u.utm_medium ? String(u.utm_medium) : undefined,
+        campaign: u.utm_campaign ? String(u.utm_campaign) : undefined,
+        term: u.utm_term ? String(u.utm_term) : undefined,
+        content: u.utm_content ? String(u.utm_content) : undefined,
+      } : undefined,
     }));
 
     return {
@@ -970,6 +1163,13 @@ export class ClickHouseAdapter implements DBAdapter {
       title: row.title ? String(row.title) : undefined,
       name: row.event_name ? String(row.event_name) : undefined,
       properties: this.parseJSON(row.properties as string | null),
+      eventSource: row.event_source ? String(row.event_source) as EventListItem['eventSource'] : undefined,
+      eventSubtype: row.event_subtype ? String(row.event_subtype) as EventListItem['eventSubtype'] : undefined,
+      pagePath: row.page_path ? String(row.page_path) : undefined,
+      targetUrlPath: row.target_url_path ? String(row.target_url_path) : undefined,
+      elementSelector: row.element_selector ? String(row.element_selector) : undefined,
+      elementText: row.element_text ? String(row.element_text) : undefined,
+      scrollDepthPct: row.scroll_depth_pct !== null && row.scroll_depth_pct !== undefined ? Number(row.scroll_depth_pct) : undefined,
       userId: row.user_id ? String(row.user_id) : undefined,
       traits: this.parseJSON(row.traits as string | null),
       geo: row.country ? {

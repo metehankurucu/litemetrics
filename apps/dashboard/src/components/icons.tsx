@@ -19,7 +19,7 @@ export function getBrowserIcon(browser: string): React.ReactNode {
 export function getOSIcon(os: string): React.ReactNode {
   const o = os.toLowerCase();
   if (o.includes('windows')) return <FaWindows className={`${iconClass} text-[#0078D4]`} />;
-  if (o.includes('mac') || o.includes('ios')) return <SiApple className={`${iconClass} text-zinc-700`} />;
+  if (o.includes('mac') || o.includes('ios')) return <SiApple className={`${iconClass} text-zinc-700 dark:text-zinc-300`} />;
   if (o.includes('linux')) return <SiLinux className={`${iconClass} text-[#FCC624]`} />;
   if (o.includes('android')) return <SiAndroid className={`${iconClass} text-[#34A853]`} />;
   return <HiOutlineDesktopComputer className={`${iconClass} text-zinc-400`} />;
@@ -36,14 +36,14 @@ export function getReferrerIcon(referrer: string): React.ReactNode {
   const r = referrer.toLowerCase();
   if (r.includes('google')) return <SiGoogle className={`${iconClass} text-[#4285F4]`} />;
   if (r.includes('instagram')) return <SiInstagram className={`${iconClass} text-[#E4405F]`} />;
-  if (r.includes('twitter') || r.includes('t.co') || r.includes('x.com')) return <SiX className={`${iconClass} text-zinc-800`} />;
+  if (r.includes('twitter') || r.includes('t.co') || r.includes('x.com')) return <SiX className={`${iconClass} text-zinc-800 dark:text-zinc-200`} />;
   if (r.includes('facebook') || r.includes('fb.com')) return <SiFacebook className={`${iconClass} text-[#1877F2]`} />;
   if (r.includes('linkedin')) return <SiLinkedin className={`${iconClass} text-[#0A66C2]`} />;
   if (r.includes('youtube')) return <SiYoutube className={`${iconClass} text-[#FF0000]`} />;
-  if (r.includes('github')) return <SiGithub className={`${iconClass} text-zinc-800`} />;
+  if (r.includes('github')) return <SiGithub className={`${iconClass} text-zinc-800 dark:text-zinc-200`} />;
   if (r.includes('reddit')) return <SiReddit className={`${iconClass} text-[#FF4500]`} />;
   if (r.includes('pinterest')) return <SiPinterest className={`${iconClass} text-[#BD081C]`} />;
-  if (r.includes('tiktok')) return <SiTiktok className={`${iconClass} text-zinc-800`} />;
+  if (r.includes('tiktok')) return <SiTiktok className={`${iconClass} text-zinc-800 dark:text-zinc-200`} />;
   return <FaGlobe className={`${iconClass} text-zinc-400`} />;
 }
 

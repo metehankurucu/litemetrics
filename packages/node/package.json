@@ -1,6 +1,6 @@
 {
   "name": "@litemetrics/node",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Node.js analytics collector with DB adapters and query API",
   "license": "MIT",
   "author": "Metehan Kurucu",

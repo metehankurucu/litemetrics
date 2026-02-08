@@ -13,6 +13,13 @@ interface EventDocument {
   title: string | null;
   event_name: string | null;
   properties: Record<string, unknown> | null;
+  event_source: string | null;
+  event_subtype: string | null;
+  page_path: string | null;
+  target_url_path: string | null;
+  element_selector: string | null;
+  element_text: string | null;
+  scroll_depth_pct: number | null;
   user_id: string | null;
   traits: Record<string, unknown> | null;
   country: string | null;
@@ -47,6 +54,37 @@ interface SiteDocument {
 
 const EVENTS_COLLECTION = 'litemetrics_events';
 const SITES_COLLECTION = 'litemetrics_sites';
+
+function buildFilterMatch(filters?: Record<string, string>): Record<string, unknown> {
+  if (!filters) return {};
+  const map: Record<string, string> = {
+    'geo.country': 'country',
+    'geo.city': 'city',
+    'geo.region': 'region',
+    'language': 'language',
+    'device.type': 'device_type',
+    'device.browser': 'browser',
+    'device.os': 'os',
+    'utm.source': 'utm_source',
+    'utm.medium': 'utm_medium',
+    'utm.campaign': 'utm_campaign',
+    'utm.term': 'utm_term',
+    'utm.content': 'utm_content',
+    'referrer': 'referrer',
+    'event_source': 'event_source',
+    'event_subtype': 'event_subtype',
+    'page_path': 'page_path',
+    'target_url_path': 'target_url_path',
+    'event_name': 'event_name',
+    'type': 'type',
+  };
+  const match: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(filters)) {
+    if (!value || !map[key]) continue;
+    match[map[key]] = value;
+  }
+  return match;
+}
 
 export class MongoDBAdapter implements DBAdapter {
   private client: MongoClient;
@@ -88,6 +126,13 @@ export class MongoDBAdapter implements DBAdapter {
       title: e.title ?? null,
       event_name: e.name ?? null,
       properties: e.properties ?? null,
+      event_source: e.eventSource ?? null,
+      event_subtype: e.eventSubtype ?? null,
+      page_path: e.pagePath ?? null,
+      target_url_path: e.targetUrlPath ?? null,
+      element_selector: e.elementSelector ?? null,
+      element_text: e.elementText ?? null,
+      scroll_depth_pct: e.scrollDepthPct ?? null,
       user_id: e.userId ?? null,
       traits: e.traits ?? null,
       country: e.geo?.country ?? null,
@@ -121,6 +166,7 @@ export class MongoDBAdapter implements DBAdapter {
       site_id: siteId,
       timestamp: { $gte: new Date(dateRange.from), $lte: new Date(dateRange.to) },
     };
+    const filterMatch = buildFilterMatch(q.filters);
 
     let data: QueryDataPoint[] = [];
     let total = 0;
@@ -128,7 +174,7 @@ export class MongoDBAdapter implements DBAdapter {
     switch (q.metric) {
       case 'pageviews': {
         const [result] = await this.collection.aggregate<{ count: number }>([
-          { $match: { ...baseMatch, type: 'pageview' } },
+          { $match: { ...baseMatch, ...filterMatch, type: 'pageview' } },
           { $count: 'count' },
         ]).toArray();
         total = result?.count ?? 0;
@@ -138,7 +184,7 @@ export class MongoDBAdapter implements DBAdapter {
 
       case 'visitors': {
         const [result] = await this.collection.aggregate<{ count: number }>([
-          { $match: baseMatch },
+          { $match: { ...baseMatch, ...filterMatch } },
           { $group: { _id: '$visitor_id' } },
           { $count: 'count' },
         ]).toArray();
@@ -149,7 +195,7 @@ export class MongoDBAdapter implements DBAdapter {
 
       case 'sessions': {
         const [result] = await this.collection.aggregate<{ count: number }>([
-          { $match: baseMatch },
+          { $match: { ...baseMatch, ...filterMatch } },
           { $group: { _id: '$session_id' } },
           { $count: 'count' },
         ]).toArray();
@@ -160,7 +206,7 @@ export class MongoDBAdapter implements DBAdapter {
 
       case 'events': {
         const [result] = await this.collection.aggregate<{ count: number }>([
-          { $match: { ...baseMatch, type: 'event' } },
+          { $match: { ...baseMatch, ...filterMatch, type: 'event' } },
           { $count: 'count' },
         ]).toArray();
         total = result?.count ?? 0;
@@ -175,7 +221,7 @@ export class MongoDBAdapter implements DBAdapter {
           break;
         }
         const [result] = await this.collection.aggregate<{ count: number }>([
-          { $match: { ...baseMatch, type: 'event', event_name: { $in: conversionEvents } } },
+          { $match: { ...baseMatch, ...filterMatch, type: 'event', event_name: { $in: conversionEvents } } },
           { $count: 'count' },
         ]).toArray();
         total = result?.count ?? 0;
@@ -185,7 +231,7 @@ export class MongoDBAdapter implements DBAdapter {
 
       case 'top_pages': {
         const rows = await this.collection.aggregate<{ _id: string; value: number }>([
-          { $match: { ...baseMatch, type: 'pageview', url: { $ne: null } } },
+          { $match: { ...baseMatch, ...filterMatch, type: 'pageview', url: { $ne: null } } },
           { $group: { _id: '$url', value: { $sum: 1 } } },
           { $sort: { value: -1 } },
           { $limit: limit },
@@ -197,7 +243,7 @@ export class MongoDBAdapter implements DBAdapter {
 
       case 'top_referrers': {
         const rows = await this.collection.aggregate<{ _id: string; value: number }>([
-          { $match: { ...baseMatch, type: 'pageview', referrer: { $nin: [null, ''] } } },
+          { $match: { ...baseMatch, ...filterMatch, type: 'pageview', referrer: { $nin: [null, ''] } } },
           { $group: { _id: '$referrer', value: { $sum: 1 } } },
           { $sort: { value: -1 } },
           { $limit: limit },
@@ -209,7 +255,7 @@ export class MongoDBAdapter implements DBAdapter {
 
       case 'top_countries': {
         const rows = await this.collection.aggregate<{ _id: string; value: number }>([
-          { $match: { ...baseMatch, country: { $ne: null } } },
+          { $match: { ...baseMatch, ...filterMatch, country: { $ne: null } } },
           { $group: { _id: '$country', value: { $addToSet: '$visitor_id' } } },
           { $project: { _id: 1, value: { $size: '$value' } } },
           { $sort: { value: -1 } },
@@ -222,7 +268,7 @@ export class MongoDBAdapter implements DBAdapter {
 
       case 'top_cities': {
         const rows = await this.collection.aggregate<{ _id: string; value: number }>([
-          { $match: { ...baseMatch, city: { $ne: null } } },
+          { $match: { ...baseMatch, ...filterMatch, city: { $ne: null } } },
           { $group: { _id: '$city', value: { $addToSet: '$visitor_id' } } },
           { $project: { _id: 1, value: { $size: '$value' } } },
           { $sort: { value: -1 } },
@@ -235,7 +281,7 @@ export class MongoDBAdapter implements DBAdapter {
 
       case 'top_events': {
         const rows = await this.collection.aggregate<{ _id: string; value: number }>([
-          { $match: { ...baseMatch, type: 'event', event_name: { $ne: null } } },
+          { $match: { ...baseMatch, ...filterMatch, type: 'event', event_name: { $ne: null } } },
           { $group: { _id: '$event_name', value: { $sum: 1 } } },
           { $sort: { value: -1 } },
           { $limit: limit },
@@ -252,8 +298,91 @@ export class MongoDBAdapter implements DBAdapter {
           break;
         }
         const rows = await this.collection.aggregate<{ _id: string; value: number }>([
-          { $match: { ...baseMatch, type: 'event', event_name: { $in: conversionEvents } } },
+          { $match: { ...baseMatch, ...filterMatch, type: 'event', event_name: { $in: conversionEvents } } },
           { $group: { _id: '$event_name', value: { $sum: 1 } } },
+          { $sort: { value: -1 } },
+          { $limit: limit },
+        ]).toArray();
+        data = rows.map((r) => ({ key: r._id, value: r.value }));
+        total = data.reduce((sum, d) => sum + d.value, 0);
+        break;
+      }
+      case 'top_exit_pages': {
+        const rows = await this.collection.aggregate<{ _id: string; value: number }>([
+          { $match: { ...baseMatch, ...filterMatch, type: 'pageview', url: { $ne: null } } },
+          { $sort: { timestamp: 1 } },
+          { $group: { _id: '$session_id', url: { $last: '$url' } } },
+          { $group: { _id: '$url', value: { $sum: 1 } } },
+          { $sort: { value: -1 } },
+          { $limit: limit },
+        ]).toArray();
+        data = rows.map((r) => ({ key: r._id, value: r.value }));
+        total = data.reduce((sum, d) => sum + d.value, 0);
+        break;
+      }
+      case 'top_transitions': {
+        const rows = await this.collection.aggregate<{ _id: string; value: number }>([
+          { $match: { ...baseMatch, ...filterMatch, type: 'pageview', url: { $ne: null } } },
+          {
+            $setWindowFields: {
+              partitionBy: '$session_id',
+              sortBy: { timestamp: 1 },
+              output: {
+                prev_url: { $shift: { output: '$url', by: -1 } },
+              },
+            },
+          },
+          { $match: { prev_url: { $ne: null } } },
+          { $group: { _id: { $concat: ['$prev_url', ' → ', '$url'] }, value: { $sum: 1 } } },
+          { $sort: { value: -1 } },
+          { $limit: limit },
+        ]).toArray();
+        data = rows.map((r) => ({ key: r._id, value: r.value }));
+        total = data.reduce((sum, d) => sum + d.value, 0);
+        break;
+      }
+      case 'top_scroll_pages': {
+        const rows = await this.collection.aggregate<{ _id: string; value: number }>([
+          { $match: { ...baseMatch, ...filterMatch, type: 'event', event_subtype: 'scroll_depth', page_path: { $ne: null } } },
+          { $group: { _id: '$page_path', value: { $sum: 1 } } },
+          { $sort: { value: -1 } },
+          { $limit: limit },
+        ]).toArray();
+        data = rows.map((r) => ({ key: r._id, value: r.value }));
+        total = data.reduce((sum, d) => sum + d.value, 0);
+        break;
+      }
+      case 'top_button_clicks': {
+        const rows = await this.collection.aggregate<{ _id: string; value: number }>([
+          {
+            $match: {
+              ...baseMatch,
+              ...filterMatch,
+              type: 'event',
+              event_subtype: 'button_click',
+              $or: [{ element_text: { $ne: null } }, { element_selector: { $ne: null } }],
+            },
+          },
+          { $group: { _id: { $ifNull: ['$element_text', '$element_selector'] }, value: { $sum: 1 } } },
+          { $sort: { value: -1 } },
+          { $limit: limit },
+        ]).toArray();
+        data = rows.map((r) => ({ key: r._id, value: r.value }));
+        total = data.reduce((sum, d) => sum + d.value, 0);
+        break;
+      }
+      case 'top_link_targets': {
+        const rows = await this.collection.aggregate<{ _id: string; value: number }>([
+          {
+            $match: {
+              ...baseMatch,
+              ...filterMatch,
+              type: 'event',
+              event_subtype: { $in: ['link_click', 'outbound_click'] },
+              target_url_path: { $ne: null },
+            },
+          },
+          { $group: { _id: '$target_url_path', value: { $sum: 1 } } },
           { $sort: { value: -1 } },
           { $limit: limit },
         ]).toArray();
@@ -264,7 +393,7 @@ export class MongoDBAdapter implements DBAdapter {
 
       case 'top_devices': {
         const rows = await this.collection.aggregate<{ _id: string; value: number }>([
-          { $match: { ...baseMatch, device_type: { $ne: null } } },
+          { $match: { ...baseMatch, ...filterMatch, device_type: { $ne: null } } },
           { $group: { _id: '$device_type', value: { $addToSet: '$visitor_id' } } },
           { $project: { _id: 1, value: { $size: '$value' } } },
           { $sort: { value: -1 } },
@@ -277,7 +406,7 @@ export class MongoDBAdapter implements DBAdapter {
 
       case 'top_browsers': {
         const rows = await this.collection.aggregate<{ _id: string; value: number }>([
-          { $match: { ...baseMatch, browser: { $ne: null } } },
+          { $match: { ...baseMatch, ...filterMatch, browser: { $ne: null } } },
           { $group: { _id: '$browser', value: { $addToSet: '$visitor_id' } } },
           { $project: { _id: 1, value: { $size: '$value' } } },
           { $sort: { value: -1 } },
@@ -290,7 +419,7 @@ export class MongoDBAdapter implements DBAdapter {
 
       case 'top_os': {
         const rows = await this.collection.aggregate<{ _id: string; value: number }>([
-          { $match: { ...baseMatch, os: { $ne: null } } },
+          { $match: { ...baseMatch, ...filterMatch, os: { $ne: null } } },
           { $group: { _id: '$os', value: { $addToSet: '$visitor_id' } } },
           { $project: { _id: 1, value: { $size: '$value' } } },
           { $sort: { value: -1 } },
@@ -342,9 +471,28 @@ export class MongoDBAdapter implements DBAdapter {
       site_id: params.siteId,
       timestamp: { $gte: new Date(dateRange.from), $lte: new Date(dateRange.to) },
     };
+    const filterMatch = buildFilterMatch(params.filters);
 
     if (params.metric === 'pageviews') {
       baseMatch.type = 'pageview';
+    }
+    if (params.metric === 'events') {
+      baseMatch.type = 'event';
+    }
+    if (params.metric === 'conversions') {
+      baseMatch.type = 'event';
+      const conversionEvents = params.conversionEvents ?? [];
+      if (conversionEvents.length === 0) {
+        const data = fillBuckets(
+          new Date(dateRange.from),
+          new Date(dateRange.to),
+          granularity,
+          granularityToDateFormat(granularity),
+          [],
+        );
+        return { metric: params.metric, granularity, data };
+      }
+      baseMatch.event_name = { $in: conversionEvents };
     }
 
     const dateFormat = granularityToDateFormat(granularity);
@@ -354,7 +502,7 @@ export class MongoDBAdapter implements DBAdapter {
     if (params.metric === 'visitors' || params.metric === 'sessions') {
       const groupField = params.metric === 'visitors' ? '$visitor_id' : '$session_id';
       pipeline = [
-        { $match: baseMatch },
+        { $match: { ...baseMatch, ...filterMatch } },
         {
           $group: {
             _id: {
@@ -373,7 +521,7 @@ export class MongoDBAdapter implements DBAdapter {
       ];
     } else {
       pipeline = [
-        { $match: baseMatch },
+        { $match: { ...baseMatch, ...filterMatch } },
         {
           $group: {
             _id: { $dateToString: { format: dateFormat, date: '$timestamp' } },
@@ -481,6 +629,7 @@ export class MongoDBAdapter implements DBAdapter {
     } else if (params.eventNames && params.eventNames.length > 0) {
       match.event_name = { $in: params.eventNames };
     }
+    if (params.eventSource) match.event_source = params.eventSource;
     if (params.visitorId) match.visitor_id = params.visitorId;
     if (params.userId) match.user_id = params.userId;
 
@@ -528,6 +677,7 @@ export class MongoDBAdapter implements DBAdapter {
 
     const pipeline: object[] = [
       { $match: match },
+      { $sort: { timestamp: 1 } },
       {
         $group: {
           _id: '$visitor_id',
@@ -539,6 +689,7 @@ export class MongoDBAdapter implements DBAdapter {
           totalPageviews: { $sum: { $cond: [{ $eq: ['$type', 'pageview'] }, 1, 0] } },
           sessions: { $addToSet: '$session_id' },
           lastUrl: { $last: '$url' },
+          referrer: { $last: '$referrer' },
           device_type: { $last: '$device_type' },
           browser: { $last: '$browser' },
           os: { $last: '$os' },
@@ -546,6 +697,14 @@ export class MongoDBAdapter implements DBAdapter {
           city: { $last: '$city' },
           region: { $last: '$region' },
           language: { $last: '$language' },
+          timezone: { $last: '$timezone' },
+          screen_width: { $last: '$screen_width' },
+          screen_height: { $last: '$screen_height' },
+          utm_source: { $last: '$utm_source' },
+          utm_medium: { $last: '$utm_medium' },
+          utm_campaign: { $last: '$utm_campaign' },
+          utm_term: { $last: '$utm_term' },
+          utm_content: { $last: '$utm_content' },
         },
       },
       { $sort: { lastSeen: -1 } },
@@ -568,6 +727,7 @@ export class MongoDBAdapter implements DBAdapter {
         totalPageviews: number;
         sessions: string[];
         lastUrl: string | null;
+        referrer: string | null;
         device_type: string | null;
         browser: string | null;
         os: string | null;
@@ -575,6 +735,14 @@ export class MongoDBAdapter implements DBAdapter {
         city: string | null;
         region: string | null;
         language: string | null;
+        timezone: string | null;
+        screen_width: number | null;
+        screen_height: number | null;
+        utm_source: string | null;
+        utm_medium: string | null;
+        utm_campaign: string | null;
+        utm_term: string | null;
+        utm_content: string | null;
       }>;
       count: Array<{ total: number }>;
     }>(pipeline).toArray();
@@ -589,9 +757,19 @@ export class MongoDBAdapter implements DBAdapter {
       totalPageviews: u.totalPageviews,
       totalSessions: u.sessions.length,
       lastUrl: u.lastUrl ?? undefined,
+      referrer: u.referrer ?? undefined,
       device: u.device_type ? { type: u.device_type, browser: u.browser ?? '', os: u.os ?? '' } : undefined,
       geo: u.country ? { country: u.country, city: u.city ?? undefined, region: u.region ?? undefined } : undefined,
       language: u.language ?? undefined,
+      timezone: u.timezone ?? undefined,
+      screen: (u.screen_width || u.screen_height) ? { width: u.screen_width ?? 0, height: u.screen_height ?? 0 } : undefined,
+      utm: u.utm_source ? {
+        source: u.utm_source ?? undefined,
+        medium: u.utm_medium ?? undefined,
+        campaign: u.utm_campaign ?? undefined,
+        term: u.utm_term ?? undefined,
+        content: u.utm_content ?? undefined,
+      } : undefined,
     }));
 
     return {
@@ -624,6 +802,13 @@ export class MongoDBAdapter implements DBAdapter {
       title: doc.title ?? undefined,
       name: doc.event_name ?? undefined,
       properties: doc.properties ?? undefined,
+      eventSource: doc.event_source ? (doc.event_source as EventListItem['eventSource']) : undefined,
+      eventSubtype: doc.event_subtype ? (doc.event_subtype as EventListItem['eventSubtype']) : undefined,
+      pagePath: doc.page_path ?? undefined,
+      targetUrlPath: doc.target_url_path ?? undefined,
+      elementSelector: doc.element_selector ?? undefined,
+      elementText: doc.element_text ?? undefined,
+      scrollDepthPct: doc.scroll_depth_pct ?? undefined,
       userId: doc.user_id ?? undefined,
       traits: doc.traits ?? undefined,
       geo: doc.country ? { country: doc.country, city: doc.city ?? undefined, region: doc.region ?? undefined } : undefined,

@@ -2,9 +2,11 @@ import { useState } from 'react';
 import { Routes, Route, NavLink, useNavigate, Navigate } from 'react-router';
 import type { Period } from '@litemetrics/client';
 import { useAuth } from './auth';
+import { useTheme } from './hooks/useTheme';
 import { LoginPage } from './components/LoginPage';
 import { SiteSelector } from './components/SiteSelector';
 import { AnalyticsPage } from './pages/AnalyticsPage';
+import { InsightsPage } from './pages/InsightsPage';
 import { EventsPage } from './pages/EventsPage';
 import { UsersPage } from './pages/UsersPage';
 import { RealtimePage } from './pages/RealtimePage';
@@ -24,6 +26,15 @@ const navItems: NavItem[] = [
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" />
+      </svg>
+    ),
+  },
+  {
+    to: '/insights',
+    label: 'Insights',
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 3v18h18M7 15l3-3 3 2 4-5" />
       </svg>
     ),
   },
@@ -77,6 +88,7 @@ const navItems: NavItem[] = [
 
 export function App() {
   const { isAuthenticated, login, logout, client } = useAuth();
+  const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
   const [siteId, setSiteId] = useState(() => localStorage.getItem('lm_site_id') || import.meta.env.VITE_LITEMETRICS_SITE_ID || 'demo');
   const handleSiteChange = (id: string) => {
@@ -85,6 +97,7 @@ export function App() {
   };
   const [period, setPeriod] = useState<Period>('7d');
   const [userVisitorId, setUserVisitorId] = useState<string | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   if (!isAuthenticated) {
     return <LoginPage onLogin={login} />;
@@ -95,22 +108,58 @@ export function App() {
     navigate('/users');
   };
 
+  const closeSidebar = () => setSidebarOpen(false);
+
   return (
-    <div className="min-h-screen bg-zinc-50 flex">
+    <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 flex">
+      {/* Mobile hamburger button */}
+      <button
+        onClick={() => setSidebarOpen(true)}
+        className="md:hidden fixed top-3 left-3 z-50 p-2 rounded-lg bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-zinc-100 shadow-sm"
+        aria-label="Open menu"
+      >
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+        </svg>
+      </button>
+
+      {/* Backdrop overlay (mobile) */}
+      {sidebarOpen && (
+        <div
+          className="md:hidden fixed inset-0 z-30 bg-black/40 backdrop-blur-sm"
+          onClick={closeSidebar}
+        />
+      )}
+
       {/* Sidebar */}
-      <aside className="w-56 bg-white border-r border-zinc-200 flex flex-col flex-shrink-0 fixed h-full">
+      <aside
+        className={`fixed inset-y-0 left-0 z-40 w-56 bg-white dark:bg-zinc-900 border-r border-zinc-200/60 dark:border-zinc-800 shadow-sm flex flex-col transform transition-transform duration-200 ease-in-out ${
+          sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+        } md:translate-x-0`}
+      >
+        {/* Mobile close button */}
+        <button
+          onClick={closeSidebar}
+          className="md:hidden absolute top-3 right-3 p-1 rounded-lg text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+          aria-label="Close menu"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+
         {/* Logo */}
-        <div className="px-5 py-4 flex items-center justify-center border-b border-zinc-100">
+        <div className="px-5 py-4 flex items-center justify-center border-b border-zinc-100 dark:border-zinc-800">
           <img src="/logo.png" alt="Litemetrics" className="h-9" />
         </div>
 
         {/* Site selector */}
-        <div className="px-3 py-3 border-b border-zinc-100">
+        <div className="px-3 py-3 border-b border-zinc-100 dark:border-zinc-800">
           <SiteSelector siteId={siteId} onChange={handleSiteChange} />
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 px-3 py-3 space-y-0.5">
+        <nav className="flex-1 px-3 py-3 space-y-0.5 overflow-y-auto">
           {navItems.map((item) => (
             <NavLink
               key={item.to}
@@ -118,12 +167,13 @@ export function App() {
               end={item.to === '/'}
               onClick={() => {
                 if (item.to !== '/users') setUserVisitorId(null);
+                closeSidebar();
               }}
               className={({ isActive }) =>
                 `w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
                   isActive
-                    ? 'bg-indigo-50 text-indigo-700 font-medium'
-                    : 'text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900'
+                    ? 'bg-indigo-50 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 font-medium'
+                    : 'text-zinc-600 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-800 hover:text-zinc-900 dark:hover:text-zinc-200'
                 }`
               }
             >
@@ -133,11 +183,26 @@ export function App() {
           ))}
         </nav>
 
-        {/* Logout */}
-        <div className="px-3 py-3 border-t border-zinc-100">
+        {/* Theme toggle + Logout */}
+        <div className="px-3 py-3 border-t border-zinc-100 dark:border-zinc-800 space-y-0.5">
+          <button
+            onClick={toggleTheme}
+            className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-zinc-500 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-800 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors"
+          >
+            {theme === 'dark' ? (
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 18.75V21m-4.773-4.227l-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z" />
+              </svg>
+            ) : (
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z" />
+              </svg>
+            )}
+            {theme === 'dark' ? 'Light Mode' : 'Dark Mode'}
+          </button>
           <button
             onClick={logout}
-            className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-zinc-500 hover:bg-zinc-50 hover:text-zinc-700 transition-colors"
+            className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-zinc-500 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-800 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9" />
@@ -148,13 +213,24 @@ export function App() {
       </aside>
 
       {/* Main content */}
-      <main className="flex-1 ml-56 p-6">
+      <main className="flex-1 md:ml-56 p-4 md:p-6 pt-14 md:pt-6">
         <div className="max-w-7xl mx-auto">
           <Routes>
             <Route
               path="/"
               element={
                 <AnalyticsPage
+                  siteId={siteId}
+                  client={client}
+                  period={period}
+                  onPeriodChange={setPeriod}
+                />
+              }
+            />
+            <Route
+              path="/insights"
+              element={
+                <InsightsPage
                   siteId={siteId}
                   client={client}
                   period={period}

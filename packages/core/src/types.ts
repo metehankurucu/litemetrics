@@ -1,6 +1,16 @@
 // ─── Event Types ────────────────────────────────────────────
 
 export type EventType = 'pageview' | 'event' | 'identify';
+export type EventSource = 'auto' | 'manual';
+export type EventSubtype =
+  | 'custom'
+  | 'attribute'
+  | 'link_click'
+  | 'outbound_click'
+  | 'file_download'
+  | 'scroll_depth'
+  | 'button_click'
+  | 'rage_click';
 
 export interface BaseEvent {
   type: EventType;
@@ -21,6 +31,13 @@ export interface CustomEvent extends BaseEvent {
   type: 'event';
   name: string;
   properties?: Record<string, unknown>;
+  eventSource?: EventSource;
+  eventSubtype?: EventSubtype;
+  pagePath?: string;
+  targetUrlPath?: string;
+  elementSelector?: string;
+  elementText?: string;
+  scrollDepthPct?: number;
 }
 
 export interface IdentifyEvent extends BaseEvent {
@@ -87,6 +104,13 @@ export interface EnrichedEvent extends ClientContext {
   // Custom event
   name?: string;
   properties?: Record<string, unknown>;
+  eventSource?: EventSource;
+  eventSubtype?: EventSubtype;
+  pagePath?: string;
+  targetUrlPath?: string;
+  elementSelector?: string;
+  elementText?: string;
+  scrollDepthPct?: number;
 
   // Identify
   userId?: string;
@@ -120,6 +144,8 @@ export interface TrackerConfig {
   autoFileDownloads?: boolean;
   autoScrollDepth?: boolean;
   autoRageClicks?: boolean;
+  autoLinkClicks?: boolean;
+  autoButtonClicks?: boolean;
   batchSize?: number;
   flushInterval?: number;
   respectDnt?: boolean;
@@ -216,6 +242,11 @@ export type Metric =
   | 'top_cities'
   | 'top_events'
   | 'top_conversions'
+  | 'top_exit_pages'
+  | 'top_transitions'
+  | 'top_scroll_pages'
+  | 'top_button_clicks'
+  | 'top_link_targets'
   | 'top_devices'
   | 'top_browsers'
   | 'top_os';
@@ -255,12 +286,13 @@ export type Granularity = 'hour' | 'day' | 'week' | 'month';
 
 export interface TimeSeriesParams {
   siteId: string;
-  metric: 'pageviews' | 'visitors' | 'sessions';
+  metric: 'pageviews' | 'visitors' | 'sessions' | 'events' | 'conversions';
   period?: Period;
   dateFrom?: string;
   dateTo?: string;
   granularity?: Granularity;
   filters?: Record<string, string>;
+  conversionEvents?: string[];
 }
 
 export interface TimeSeriesResult {
@@ -281,6 +313,7 @@ export interface EventListParams {
   type?: EventType;
   eventName?: string;
   eventNames?: string[];
+  eventSource?: EventSource;
   visitorId?: string;
   userId?: string;
   period?: Period;
@@ -301,6 +334,13 @@ export interface EventListItem {
   title?: string;
   name?: string;
   properties?: Record<string, unknown>;
+  eventSource?: EventSource;
+  eventSubtype?: EventSubtype;
+  pagePath?: string;
+  targetUrlPath?: string;
+  elementSelector?: string;
+  elementText?: string;
+  scrollDepthPct?: number;
   userId?: string;
   traits?: Record<string, unknown>;
   geo?: GeoInfo;
@@ -335,9 +375,13 @@ export interface UserDetail {
   totalPageviews: number;
   totalSessions: number;
   lastUrl?: string;
+  referrer?: string;
   device?: DeviceInfo;
   geo?: GeoInfo;
   language?: string;
+  timezone?: string;
+  screen?: { width: number; height: number };
+  utm?: UTMParams;
 }
 
 export interface UserListResult {

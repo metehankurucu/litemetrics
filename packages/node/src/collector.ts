@@ -223,7 +223,12 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
             dateFrom: params.dateFrom,
             dateTo: params.dateTo,
             granularity: q.granularity as TimeSeriesParams['granularity'],
+            filters: q.filters ? JSON.parse(q.filters as string) : undefined,
           };
+          if (tsParams.metric === 'conversions') {
+            const site = await db.getSite(params.siteId);
+            tsParams.conversionEvents = site?.conversionEvents ?? [];
+          }
           const result = await db.queryTimeSeries(tsParams);
           sendJson(res, 200, result);
           return;
@@ -371,6 +376,7 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
           type: q.type as EventListParams['type'],
           eventName: q.eventName as string | undefined,
           eventNames,
+          eventSource: q.eventSource as EventListParams['eventSource'],
           visitorId: q.visitorId as string | undefined,
           userId: q.userId as string | undefined,
           period: q.period as EventListParams['period'],
@@ -431,6 +437,7 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
             type: q.type as EventListParams['type'],
             eventName: q.eventName as string | undefined,
             eventNames,
+            eventSource: q.eventSource as EventListParams['eventSource'],
             period: q.period as EventListParams['period'],
             dateFrom: q.dateFrom as string | undefined,
             dateTo: q.dateTo as string | undefined,

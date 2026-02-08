@@ -47,10 +47,15 @@ When `autoTrack` is enabled (default), the tracker automatically captures:
 - **Pageviews** - Initial page load
 - **SPA Navigation** - Route changes via History API
 - **Data Attributes** - Clicks on `data-litemetrics-event="EventName"` elements
+- **Link Clicks** - Internal link clicks (path + link target path)
 - **Outbound Links** - Clicks on external links
 - **File Downloads** - Clicks on links to `.pdf`, `.zip`, `.doc`, `.csv`, etc.
+- **Button Clicks** - Button clicks (text + selector)
 - **Scroll Depth** - Milestones at 25%, 50%, 75%, 90%
 - **Rage Clicks** - 3+ rapid clicks in the same area
+
+Auto events are tagged with `eventSource=auto` and an `eventSubtype` (e.g. `scroll_depth`, `button_click`). This makes them easy to filter in the dashboard and API.
+Manual `track()` events default to `eventSource=manual` and `eventSubtype=custom`. Older events collected before this change may have `eventSource` set to `null`.
 
 ## Configuration
 
@@ -61,7 +66,9 @@ createTracker({
   autoTrack: true,                // Auto-track pageviews (default: true)
   autoSpa: true,                  // Auto-track SPA navigation (default: true)
   autoOutbound: true,             // Track outbound link clicks (default: true)
+  autoLinkClicks: true,           // Track internal link clicks (default: true)
   autoFileDownloads: true,        // Track file downloads (default: true)
+  autoButtonClicks: true,         // Track button clicks (default: true)
   autoScrollDepth: true,          // Track scroll depth milestones (default: true)
   autoRageClicks: true,           // Detect rage clicks (default: true)
   batchSize: 10,                  // Events per batch (default: 10)

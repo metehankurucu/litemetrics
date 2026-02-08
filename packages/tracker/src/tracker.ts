@@ -5,11 +5,12 @@ import type {
   CustomEvent,
   IdentifyEvent,
   ClientContext,
+  EventSubtype,
 } from '@litemetrics/core';
 import { STORAGE_KEY_OPTOUT } from '@litemetrics/core';
 import { SessionManager } from './session';
 import { Transport } from './transport';
-import { AutoTracker, initOutboundTracking, initFileDownloadTracking, initScrollDepthTracking, initRageClickTracking } from './auto';
+import { AutoTracker, initLinkClickTracking, initButtonClickTracking, initScrollDepthTracking, initRageClickTracking } from './auto';
 import { parseUTM, now } from './utils';
 import { initAttributeTracking } from './attributes';
 
@@ -25,7 +26,15 @@ function filterSelfReferrer(ref: string | undefined): string | undefined {
 }
 
 export interface LitemetricsInstance {
-  track(name: string, properties?: Record<string, unknown>): void;
+  track(name: string, properties?: Record<string, unknown>, options?: {
+    eventSource?: 'auto' | 'manual';
+    eventSubtype?: EventSubtype;
+    pagePath?: string;
+    targetUrlPath?: string;
+    elementSelector?: string;
+    elementText?: string;
+    scrollDepthPct?: number;
+  }): void;
   identify(userId: string, traits?: Record<string, unknown>): void;
   page(url?: string, title?: string): void;
   reset(): void;
@@ -63,6 +72,8 @@ export function createTracker(config: TrackerConfig): LitemetricsInstance {
     autoFileDownloads = true,
     autoScrollDepth = true,
     autoRageClicks = true,
+    autoLinkClicks = true,
+    autoButtonClicks = true,
   } = config;
 
   const session = new SessionManager();
@@ -139,7 +150,15 @@ export function createTracker(config: TrackerConfig): LitemetricsInstance {
   // We need a reference to the instance for attribute tracking
   // so we create it first then init attributes
   const instance: LitemetricsInstance = {
-    track(name: string, properties?: Record<string, unknown>): void {
+    track(name: string, properties?: Record<string, unknown>, options?: {
+      eventSource?: 'auto' | 'manual';
+      eventSubtype?: EventSubtype;
+      pagePath?: string;
+      targetUrlPath?: string;
+      elementSelector?: string;
+      elementText?: string;
+      scrollDepthPct?: number;
+    }): void {
       session.getVisitorId().then((visitorId) => {
         const event: CustomEvent & ClientContext = {
           type: 'event',
@@ -149,6 +168,13 @@ export function createTracker(config: TrackerConfig): LitemetricsInstance {
           visitorId,
           name,
           properties,
+          eventSource: options?.eventSource ?? 'manual',
+          eventSubtype: options?.eventSubtype ?? 'custom',
+          pagePath: options?.pagePath,
+          targetUrlPath: options?.targetUrlPath,
+          elementSelector: options?.elementSelector,
+          elementText: options?.elementText,
+          scrollDepthPct: options?.scrollDepthPct,
           ...getContext(),
         };
         sendEvent(event);
@@ -211,8 +237,14 @@ export function createTracker(config: TrackerConfig): LitemetricsInstance {
     cleanupAttributes = initAttributeTracking(instance);
 
     // Enhanced auto-tracking
-    if (autoOutbound) autoCleanups.push(initOutboundTracking(instance));
-    if (autoFileDownloads) autoCleanups.push(initFileDownloadTracking(instance));
+    if (autoLinkClicks || autoOutbound || autoFileDownloads) {
+      autoCleanups.push(initLinkClickTracking(instance, {
+        trackInternal: autoLinkClicks,
+        trackOutbound: autoLinkClicks || autoOutbound,
+        trackFileDownloads: autoFileDownloads,
+      }));
+    }
+    if (autoButtonClicks) autoCleanups.push(initButtonClickTracking(instance));
     if (autoScrollDepth) autoCleanups.push(initScrollDepthTracking(instance));
     if (autoRageClicks) autoCleanups.push(initRageClickTracking(instance));
   }

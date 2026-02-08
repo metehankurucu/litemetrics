@@ -44,10 +44,10 @@ export function SiteSelector({ siteId, onChange }: SiteSelectorProps) {
           const id = prompt('Enter Site ID:', siteId);
           if (id?.trim()) onChange(id.trim());
         }}
-        className="flex items-center gap-2 bg-white border border-zinc-200 rounded-lg px-3 py-1.5 text-sm hover:border-zinc-300 transition-colors"
+        className="w-full flex items-center gap-2 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg px-3 py-1.5 text-sm dark:text-zinc-200 hover:border-zinc-300 dark:hover:border-zinc-600 transition-colors"
       >
-        <span className="w-2 h-2 rounded-full bg-emerald-500" />
-        {siteId}
+        <span className="w-2 h-2 rounded-full bg-emerald-500 flex-shrink-0" />
+        <span className="truncate">{siteId}</span>
       </button>
     );
   }
@@ -56,27 +56,27 @@ export function SiteSelector({ siteId, onChange }: SiteSelectorProps) {
     <div ref={ref} className="relative">
       <button
         onClick={() => setOpen(!open)}
-        className="flex items-center gap-2 bg-white border border-zinc-200 rounded-lg px-3 py-1.5 text-sm hover:border-zinc-300 transition-colors"
+        className="w-full flex items-center gap-2 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg px-3 py-1.5 text-sm dark:text-zinc-200 hover:border-zinc-300 dark:hover:border-zinc-600 transition-colors"
       >
-        <span className="w-2 h-2 rounded-full bg-emerald-500" />
-        {currentSite?.name || siteId}
-        <svg className="w-3 h-3 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <span className="w-2 h-2 rounded-full bg-emerald-500 flex-shrink-0" />
+        <span className="truncate">{currentSite?.name || siteId}</span>
+        <svg className="w-3 h-3 text-zinc-400 ml-auto flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
         </svg>
       </button>
 
       {open && (
-        <div className="absolute top-full mt-1 left-0 w-56 bg-white border border-zinc-200 rounded-lg shadow-lg z-50 py-1 max-h-64 overflow-y-auto">
+        <div className="absolute top-full mt-1 left-0 w-full bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg shadow-lg z-50 py-1 max-h-64 overflow-y-auto">
           {sites.map((site) => (
             <button
               key={site.siteId}
               onClick={() => { onChange(site.siteId); setOpen(false); }}
-              className={`w-full text-left px-3 py-2 text-sm hover:bg-zinc-50 transition-colors ${
-                site.siteId === siteId ? 'text-indigo-600' : 'text-zinc-700'
+              className={`w-full text-left px-3 py-2 text-sm hover:bg-zinc-50 dark:hover:bg-zinc-700 transition-colors ${
+                site.siteId === siteId ? 'text-indigo-600 dark:text-indigo-400' : 'text-zinc-700 dark:text-zinc-300'
               }`}
             >
               <p className="truncate">{site.name}</p>
-              <p className="text-xs text-zinc-400 font-mono">{site.siteId}</p>
+              <p className="text-xs text-zinc-400 dark:text-zinc-500 font-mono">{site.siteId}</p>
             </button>
           ))}
         </div>

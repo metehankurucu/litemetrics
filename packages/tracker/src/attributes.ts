@@ -35,7 +35,8 @@ export function initAttributeTracking(instance: LitemetricsInstance): () => void
 
         instance.track(
           eventName,
-          Object.keys(properties).length > 0 ? properties : undefined
+          Object.keys(properties).length > 0 ? properties : undefined,
+          { eventSource: 'manual', eventSubtype: 'attribute' }
         );
         return;
       }

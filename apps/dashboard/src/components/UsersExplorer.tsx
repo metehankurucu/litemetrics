@@ -74,7 +74,7 @@ function UsersList({ siteId, client, onSelect }: { siteId: string; client: Litem
           placeholder="Search by visitor ID or user ID..."
           value={search}
           onChange={(e) => handleSearchChange(e.target.value)}
-          className="bg-white border border-zinc-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-indigo-500 w-80"
+          className="bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg px-3 py-1.5 text-sm dark:text-zinc-200 w-80"
         />
         <span className="text-sm text-zinc-400 ml-auto">
           {total.toLocaleString()} user{total !== 1 ? 's' : ''}
@@ -96,30 +96,30 @@ function UsersList({ siteId, client, onSelect }: { siteId: string; client: Litem
       </div>
 
       {error && (
-        <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-red-600 text-sm">
+        <div className="p-4 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 rounded-xl text-red-600 dark:text-red-400 text-sm">
           {error instanceof Error ? error.message : 'Failed to fetch users'}
         </div>
       )}
 
       {/* Users table */}
-      <div className="rounded-xl bg-white border border-zinc-200 overflow-hidden">
+      <div className="rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800 shadow-sm overflow-hidden">
         <table className="w-full">
           <thead>
-            <tr className="border-b border-zinc-100 text-left">
-              <th className="px-4 py-3 text-xs font-medium text-zinc-400 uppercase">User</th>
-              <th className="px-4 py-3 text-xs font-medium text-zinc-400 uppercase">Events</th>
-              <th className="px-4 py-3 text-xs font-medium text-zinc-400 uppercase">Pages</th>
-              <th className="px-4 py-3 text-xs font-medium text-zinc-400 uppercase">Sessions</th>
-              <th className="px-4 py-3 text-xs font-medium text-zinc-400 uppercase">Last Seen</th>
-              <th className="px-4 py-3 text-xs font-medium text-zinc-400 uppercase">Location</th>
+            <tr className="border-b border-zinc-100 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-800/50 text-left">
+              <th className="px-4 py-3 text-xs font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider">User</th>
+              <th className="px-4 py-3 text-xs font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider">Events</th>
+              <th className="px-4 py-3 text-xs font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider">Pages</th>
+              <th className="px-4 py-3 text-xs font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider">Sessions</th>
+              <th className="px-4 py-3 text-xs font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider">Last Seen</th>
+              <th className="px-4 py-3 text-xs font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider">Location</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               [...Array(8)].map((_, i) => (
-                <tr key={i} className="border-b border-zinc-50">
+                <tr key={i} className="border-b border-zinc-50 dark:border-zinc-800">
                   <td colSpan={6} className="px-4 py-3">
-                    <div className="h-5 bg-zinc-100 rounded animate-pulse" />
+                    <div className="h-5 bg-zinc-100 dark:bg-zinc-800 rounded animate-pulse" />
                   </td>
                 </tr>
               ))
@@ -133,7 +133,7 @@ function UsersList({ siteId, client, onSelect }: { siteId: string; client: Litem
               users.map((user) => (
                 <tr
                   key={user.visitorId}
-                  className="border-b border-zinc-50 hover:bg-zinc-50/50 cursor-pointer transition-colors"
+                  className="border-b border-zinc-50 dark:border-zinc-800 hover:bg-zinc-50/50 dark:hover:bg-zinc-800/50 cursor-pointer transition-colors"
                   onClick={() => onSelect(user.visitorId)}
                 >
                   <td className="px-4 py-2.5">
@@ -145,30 +145,30 @@ function UsersList({ siteId, client, onSelect }: { siteId: string; client: Litem
                         {(user.userId || user.visitorId).slice(0, 2).toUpperCase()}
                       </div>
                       <div>
-                        <div className="text-sm font-medium text-zinc-800">
+                        <div className="text-sm font-medium text-zinc-800 dark:text-zinc-200">
                           {user.userId || (
-                            <span className="text-zinc-400">Anonymous</span>
+                            <span className="text-zinc-400 dark:text-zinc-500">Anonymous</span>
                           )}
                         </div>
-                        <div className="text-xs text-zinc-400 font-mono truncate max-w-[140px]">
+                        <div className="text-xs text-zinc-400 dark:text-zinc-500 font-mono truncate max-w-[140px]">
                           {user.visitorId}
                         </div>
                       </div>
                     </div>
                   </td>
-                  <td className="px-4 py-2.5 text-sm text-zinc-700 tabular-nums">
+                  <td className="px-4 py-2.5 text-sm text-zinc-700 dark:text-zinc-300 tabular-nums">
                     {user.totalEvents.toLocaleString()}
                   </td>
-                  <td className="px-4 py-2.5 text-sm text-zinc-700 tabular-nums">
+                  <td className="px-4 py-2.5 text-sm text-zinc-700 dark:text-zinc-300 tabular-nums">
                     {user.totalPageviews.toLocaleString()}
                   </td>
-                  <td className="px-4 py-2.5 text-sm text-zinc-700 tabular-nums">
+                  <td className="px-4 py-2.5 text-sm text-zinc-700 dark:text-zinc-300 tabular-nums">
                     {user.totalSessions.toLocaleString()}
                   </td>
-                  <td className="px-4 py-2.5 text-sm text-zinc-500">
+                  <td className="px-4 py-2.5 text-sm text-zinc-500 dark:text-zinc-400">
                     {formatRelative(user.lastSeen)}
                   </td>
-                  <td className="px-4 py-2.5 text-sm text-zinc-500">
+                  <td className="px-4 py-2.5 text-sm text-zinc-500 dark:text-zinc-400">
                     {user.geo?.country ? (
                       <span>{countryToFlag(user.geo.country)} {[user.geo.city, user.geo.country].filter(Boolean).join(', ')}</span>
                     ) : '—'}
@@ -186,17 +186,17 @@ function UsersList({ siteId, client, onSelect }: { siteId: string; client: Litem
           <button
             onClick={() => setPage((p) => Math.max(0, p - 1))}
             disabled={page === 0}
-            className="px-3 py-1.5 text-sm border border-zinc-200 rounded-lg hover:border-zinc-300 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            className="px-3 py-1.5 text-sm font-medium border border-zinc-200 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800 shadow-sm hover:border-zinc-300 dark:hover:border-zinc-600 hover:shadow disabled:opacity-30 disabled:cursor-not-allowed transition-all text-zinc-700 dark:text-zinc-300"
           >
             Previous
           </button>
-          <span className="text-sm text-zinc-500">
+          <span className="text-sm text-zinc-500 dark:text-zinc-400">
             Page {page + 1} of {totalPages}
           </span>
           <button
             onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
             disabled={page >= totalPages - 1}
-            className="px-3 py-1.5 text-sm border border-zinc-200 rounded-lg hover:border-zinc-300 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            className="px-3 py-1.5 text-sm font-medium border border-zinc-200 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800 shadow-sm hover:border-zinc-300 dark:hover:border-zinc-600 hover:shadow disabled:opacity-30 disabled:cursor-not-allowed transition-all text-zinc-700 dark:text-zinc-300"
           >
             Next
           </button>
@@ -239,8 +239,8 @@ function UserDetailView({ siteId, client, visitorId, onBack }: { siteId: string;
   if (loading) {
     return (
       <div className="space-y-4">
-        <div className="h-8 w-48 bg-zinc-100 rounded animate-pulse" />
-        <div className="h-40 bg-zinc-100 rounded-xl animate-pulse" />
+        <div className="h-8 w-48 bg-zinc-100 dark:bg-zinc-800 rounded animate-pulse" />
+        <div className="h-40 bg-zinc-100 dark:bg-zinc-800 rounded-xl animate-pulse" />
       </div>
     );
   }
@@ -248,10 +248,10 @@ function UserDetailView({ siteId, client, visitorId, onBack }: { siteId: string;
   if (error || !user) {
     return (
       <div className="space-y-4">
-        <button onClick={onBack} className="text-sm text-indigo-600 hover:text-indigo-800">
+        <button onClick={onBack} className="text-sm text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300">
           &larr; Back to users
         </button>
-        <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-red-600 text-sm">
+        <div className="p-4 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 rounded-xl text-red-600 dark:text-red-400 text-sm">
           {error instanceof Error ? error.message : 'User not found'}
         </div>
       </div>
@@ -261,15 +261,15 @@ function UserDetailView({ siteId, client, visitorId, onBack }: { siteId: string;
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center gap-4">
-        <button onClick={onBack} className="text-sm text-indigo-600 hover:text-indigo-800">
+      <div>
+        <button onClick={onBack} className="text-sm text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300">
           &larr; Back
         </button>
-        <div>
-          <h2 className="text-lg font-semibold text-zinc-900">
+        <div className="mt-2">
+          <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">
             {user.userId || 'Anonymous User'}
           </h2>
-          <p className="text-xs text-zinc-400 font-mono">{user.visitorId}</p>
+          <p className="text-xs text-zinc-400 dark:text-zinc-500 font-mono">{user.visitorId}</p>
         </div>
       </div>
 
@@ -282,24 +282,32 @@ function UserDetailView({ siteId, client, visitorId, onBack }: { siteId: string;
       </div>
 
       {/* User profile */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Details */}
-        <div className="rounded-xl bg-white border border-zinc-200 p-5">
-          <h3 className="text-sm font-medium text-zinc-500 mb-4">Profile</h3>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {/* Profile */}
+        <div className="rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800 shadow-sm p-5 h-full">
+          <h3 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300 mb-4">Profile</h3>
           <div className="space-y-3">
             {user.userId && <ProfileField label="User ID" value={user.userId} />}
             <ProfileField label="Visitor ID" value={user.visitorId} mono />
             <ProfileField label="First Seen" value={new Date(user.firstSeen).toLocaleString()} />
             <ProfileField label="Last Seen" value={new Date(user.lastSeen).toLocaleString()} />
             {user.lastUrl && <ProfileField label="Last Page" value={user.lastUrl} />}
+            {user.referrer && <ProfileField label="Referrer" value={user.referrer} />}
+          </div>
+        </div>
+
+        {/* Environment */}
+        <div className="rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800 shadow-sm p-5 h-full">
+          <h3 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300 mb-4">Environment</h3>
+          <div className="space-y-3">
             {user.device && (
               <div>
-                <p className="text-xs text-zinc-400 mb-1">Device</p>
-                <div className="flex items-center gap-3 text-sm text-zinc-800">
+                <p className="text-xs text-zinc-400 dark:text-zinc-500 mb-1">Device</p>
+                <div className="flex items-center gap-3 text-sm text-zinc-800 dark:text-zinc-200 flex-wrap">
                   <span className="flex items-center gap-1">{getBrowserIcon(user.device.browser)} {user.device.browser}</span>
-                  <span className="text-zinc-300">|</span>
+                  <span className="text-zinc-300 dark:text-zinc-600">|</span>
                   <span className="flex items-center gap-1">{getOSIcon(user.device.os)} {user.device.os}</span>
-                  <span className="text-zinc-300">|</span>
+                  <span className="text-zinc-300 dark:text-zinc-600">|</span>
                   <span className="flex items-center gap-1">{getDeviceIcon(user.device.type)} {user.device.type}</span>
                 </div>
               </div>
@@ -307,43 +315,58 @@ function UserDetailView({ siteId, client, visitorId, onBack }: { siteId: string;
             {user.geo && (
               <ProfileField
                 label="Location"
-                value={[user.geo.city, user.geo.region, user.geo.country].filter(Boolean).join(', ')}
+                value={[countryToFlag(user.geo.country || ''), user.geo.city, user.geo.region, user.geo.country].filter(Boolean).join(' ')}
               />
             )}
             {user.language && <ProfileField label="Language" value={user.language} />}
+            {user.timezone && <ProfileField label="Timezone" value={user.timezone} />}
+            {user.screen && <ProfileField label="Screen" value={`${user.screen.width} × ${user.screen.height}`} />}
           </div>
         </div>
 
-        {/* Traits */}
-        <div className="rounded-xl bg-white border border-zinc-200 p-5">
-          <h3 className="text-sm font-medium text-zinc-500 mb-4">Traits</h3>
-          {user.traits && Object.keys(user.traits).length > 0 ? (
-            <div className="space-y-3">
-              {Object.entries(user.traits).map(([key, value]) => (
-                <ProfileField key={key} label={key} value={String(value)} />
-              ))}
-            </div>
-          ) : (
-            <p className="text-sm text-zinc-400">No traits set</p>
-          )}
+        {/* Attribution + Traits */}
+        <div className="rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800 shadow-sm p-5 h-full">
+          <h3 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300 mb-4">Attribution & Traits</h3>
+          <div className="space-y-3">
+            {user.utm ? (
+              <div className="space-y-2">
+                {user.utm.source && <ProfileField label="UTM Source" value={user.utm.source} />}
+                {user.utm.medium && <ProfileField label="UTM Medium" value={user.utm.medium} />}
+                {user.utm.campaign && <ProfileField label="UTM Campaign" value={user.utm.campaign} />}
+                {user.utm.term && <ProfileField label="UTM Term" value={user.utm.term} />}
+                {user.utm.content && <ProfileField label="UTM Content" value={user.utm.content} />}
+              </div>
+            ) : (
+              <p className="text-sm text-zinc-400 dark:text-zinc-500">No UTM data</p>
+            )}
+            {user.traits && Object.keys(user.traits).length > 0 ? (
+              <div className="space-y-2 pt-2 border-t border-zinc-100 dark:border-zinc-800">
+                {Object.entries(user.traits).map(([key, value]) => (
+                  <ProfileField key={key} label={key} value={String(value)} />
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-zinc-400 dark:text-zinc-500">No traits set</p>
+            )}
+          </div>
         </div>
       </div>
 
       {/* Event timeline */}
-      <div className="rounded-xl bg-white border border-zinc-200 p-5">
-        <h3 className="text-sm font-medium text-zinc-500 mb-4">
+      <div className="rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800 shadow-sm p-5">
+        <h3 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300 mb-4">
           Event Timeline
-          <span className="text-zinc-400 font-normal ml-2">({eventsTotal})</span>
+          <span className="text-zinc-400 dark:text-zinc-500 font-normal ml-2">({eventsTotal})</span>
         </h3>
 
         {eventsLoading ? (
           <div className="space-y-3">
             {[...Array(5)].map((_, i) => (
-              <div key={i} className="h-12 bg-zinc-100 rounded animate-pulse" />
+              <div key={i} className="h-12 bg-zinc-100 dark:bg-zinc-800 rounded animate-pulse" />
             ))}
           </div>
         ) : events.length === 0 ? (
-          <p className="text-sm text-zinc-400">No events</p>
+          <p className="text-sm text-zinc-400 dark:text-zinc-500">No events</p>
         ) : (
           <div className="space-y-0">
             {events.map((event, i) => (
@@ -354,21 +377,21 @@ function UserDetailView({ siteId, client, visitorId, onBack }: { siteId: string;
 
         {/* Pagination */}
         {eventsTotalPages > 1 && (
-          <div className="flex items-center justify-between mt-4 pt-4 border-t border-zinc-100">
+          <div className="flex items-center justify-between mt-4 pt-4 border-t border-zinc-100 dark:border-zinc-800">
             <button
               onClick={() => setEventsPage((p) => Math.max(0, p - 1))}
               disabled={eventsPage === 0}
-              className="px-3 py-1.5 text-sm border border-zinc-200 rounded-lg hover:border-zinc-300 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              className="px-3 py-1.5 text-sm font-medium border border-zinc-200 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800 shadow-sm hover:border-zinc-300 dark:hover:border-zinc-600 hover:shadow disabled:opacity-30 disabled:cursor-not-allowed transition-all text-zinc-700 dark:text-zinc-300"
             >
               Previous
             </button>
-            <span className="text-sm text-zinc-500">
+            <span className="text-sm text-zinc-500 dark:text-zinc-400">
               Page {eventsPage + 1} of {eventsTotalPages}
             </span>
             <button
               onClick={() => setEventsPage((p) => Math.min(eventsTotalPages - 1, p + 1))}
               disabled={eventsPage >= eventsTotalPages - 1}
-              className="px-3 py-1.5 text-sm border border-zinc-200 rounded-lg hover:border-zinc-300 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              className="px-3 py-1.5 text-sm font-medium border border-zinc-200 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800 shadow-sm hover:border-zinc-300 dark:hover:border-zinc-600 hover:shadow disabled:opacity-30 disabled:cursor-not-allowed transition-all text-zinc-700 dark:text-zinc-300"
             >
               Next
             </button>
@@ -383,9 +406,9 @@ function UserDetailView({ siteId, client, visitorId, onBack }: { siteId: string;
 
 function InfoCard({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-xl bg-white border border-zinc-200 p-4">
-      <p className="text-xs text-zinc-400 mb-1">{label}</p>
-      <p className="text-xl font-semibold text-zinc-900 tabular-nums">{value}</p>
+    <div className="rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800 shadow-sm p-4">
+      <p className="text-xs font-medium text-zinc-400 dark:text-zinc-500 uppercase tracking-wider mb-1">{label}</p>
+      <p className="text-xl font-bold text-zinc-900 dark:text-zinc-100 tabular-nums">{value}</p>
     </div>
   );
 }
@@ -393,8 +416,8 @@ function InfoCard({ label, value }: { label: string; value: string }) {
 function ProfileField({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
     <div>
-      <p className="text-xs text-zinc-400 mb-0.5">{label}</p>
-      <p className={`text-sm text-zinc-800 break-all ${mono ? 'font-mono' : ''}`}>{value}</p>
+      <p className="text-xs text-zinc-400 dark:text-zinc-500 mb-0.5">{label}</p>
+      <p className={`text-sm text-zinc-800 dark:text-zinc-200 break-all ${mono ? 'font-mono' : ''}`}>{value}</p>
     </div>
   );
 }
@@ -426,25 +449,25 @@ function TimelineEvent({ event, isLast }: { event: EventListItem; isLast: boolea
       {/* Timeline line + dot */}
       <div className="flex flex-col items-center w-4 flex-shrink-0">
         <div className={`w-2.5 h-2.5 rounded-full mt-1.5 ${config.dot}`} />
-        {!isLast && <div className="w-px flex-1 bg-zinc-200 my-1" />}
+        {!isLast && <div className="w-px flex-1 bg-zinc-200 dark:bg-zinc-700 my-1" />}
       </div>
 
       {/* Content */}
       <div className={`flex-1 pb-4 ${isLast ? '' : ''}`}>
         <div className="flex items-baseline gap-2">
-          <span className="text-sm font-medium text-zinc-700">{config.label}</span>
+          <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">{config.label}</span>
           {detail && (
-            <span className="text-sm text-zinc-500 truncate max-w-xs" title={detail}>{detail}</span>
+            <span className="text-sm text-zinc-500 dark:text-zinc-400 truncate max-w-xs" title={detail}>{detail}</span>
           )}
-          <span className="text-xs text-zinc-400 ml-auto flex-shrink-0">{dateStr} {timeStr}</span>
+          <span className="text-xs text-zinc-400 dark:text-zinc-500 ml-auto flex-shrink-0">{dateStr} {timeStr}</span>
         </div>
         {event.properties && Object.keys(event.properties).length > 0 && (
-          <div className="mt-1.5 text-xs text-zinc-500 bg-zinc-50 rounded px-2 py-1 font-mono">
+          <div className="mt-1.5 text-xs text-zinc-500 dark:text-zinc-400 bg-zinc-50 dark:bg-zinc-800 rounded px-2 py-1 font-mono">
             {Object.entries(event.properties).map(([k, v]) => `${k}: ${JSON.stringify(v)}`).join(', ')}
           </div>
         )}
         {event.traits && Object.keys(event.traits).length > 0 && (
-          <div className="mt-1.5 text-xs text-zinc-500 bg-zinc-50 rounded px-2 py-1 font-mono">
+          <div className="mt-1.5 text-xs text-zinc-500 dark:text-zinc-400 bg-zinc-50 dark:bg-zinc-800 rounded px-2 py-1 font-mono">
             {Object.entries(event.traits).map(([k, v]) => `${k}: ${JSON.stringify(v)}`).join(', ')}
           </div>
         )}

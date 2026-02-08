@@ -51,20 +51,20 @@ export function TopList({ title, data, loading, type }: TopListProps) {
   const totalValue = data ? data.reduce((sum, d) => sum + d.value, 0) : 0;
 
   return (
-    <div className="rounded-xl bg-white border border-zinc-200 p-5 hover:shadow-sm transition-all duration-200">
-      <h3 className="text-xs font-medium text-zinc-400 uppercase tracking-wide mb-4">{title}</h3>
+    <div className="rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800 shadow-sm p-5 h-full flex flex-col hover:shadow-md transition-all duration-200">
+      <h3 className="text-xs font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider mb-4">{title}</h3>
       {loading ? (
-        <div className="space-y-3">
+        <div className="space-y-2.5 flex-1">
           {[...Array(5)].map((_, i) => (
-            <div key={i} className="h-7 bg-zinc-50 rounded animate-pulse" />
+            <div key={i} className="h-8 bg-zinc-50 dark:bg-zinc-800 rounded-lg animate-pulse" />
           ))}
         </div>
       ) : !data || data.length === 0 ? (
-        <div className="py-8 text-center">
-          <p className="text-zinc-300 text-sm">No data yet</p>
+        <div className="flex-1 flex items-center justify-center py-8">
+          <p className="text-zinc-300 dark:text-zinc-600 text-sm">No data yet</p>
         </div>
       ) : (
-        <div className="space-y-1">
+        <div className="space-y-1 flex-1">
           {data.map((item) => {
             const pct = totalValue > 0 ? Math.round((item.value / totalValue) * 100) : 0;
             const icon = getIcon(type, item.key);
@@ -79,19 +79,19 @@ export function TopList({ title, data, loading, type }: TopListProps) {
                 onMouseLeave={() => setTooltip(null)}
               >
                 <div
-                  className="absolute inset-0 bg-indigo-50 rounded transition-all group-hover:bg-indigo-100"
+                  className="absolute inset-0 bg-indigo-50/80 dark:bg-indigo-500/10 rounded-lg transition-all group-hover:bg-indigo-100/80 dark:group-hover:bg-indigo-500/20"
                   style={{ width: `${(item.value / maxValue) * 100}%` }}
                 />
-                <div className="relative flex items-center justify-between px-2.5 py-1.5 text-sm">
+                <div className="relative flex items-center justify-between px-2.5 py-2 text-sm">
                   <div className="flex items-center gap-2 truncate mr-3">
                     {icon}
-                    <span className="truncate text-zinc-700">{item.key || '(direct)'}</span>
+                    <span className="truncate text-zinc-700 dark:text-zinc-300 font-medium">{item.key || '(direct)'}</span>
                   </div>
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    <span className="text-zinc-600 tabular-nums text-xs font-medium">
+                  <div className="flex items-center gap-2.5 flex-shrink-0">
+                    <span className="text-zinc-600 dark:text-zinc-400 tabular-nums text-xs font-semibold">
                       {item.value.toLocaleString()}
                     </span>
-                    <span className="text-zinc-400 tabular-nums text-xs w-8 text-right">
+                    <span className="text-zinc-400 dark:text-zinc-500 tabular-nums text-xs w-8 text-right">
                       {pct}%
                     </span>
                   </div>
@@ -103,7 +103,7 @@ export function TopList({ title, data, loading, type }: TopListProps) {
       )}
       {tooltip && (
         <div
-          className="fixed z-50 bg-zinc-900 text-white text-xs rounded-lg px-3 py-2 shadow-lg pointer-events-none max-w-xs"
+          className="fixed z-50 bg-zinc-900 text-white text-xs rounded-lg px-3 py-2 shadow-xl pointer-events-none max-w-xs"
           style={{ left: tooltip.x, top: tooltip.y - 8, transform: 'translate(-50%, -100%)' }}
         >
           <p className="font-medium break-all">{tooltip.key || '(direct)'}</p>

@@ -25,7 +25,7 @@ export function PeriodSelector({ value, onChange, dateFrom, dateTo, onDateFromCh
 
   return (
     <div className="flex items-center gap-3">
-      <div className="flex gap-1 bg-zinc-100 rounded-lg p-1 border border-zinc-200">
+      <div className="inline-flex gap-0.5 bg-zinc-100/80 dark:bg-zinc-800 rounded-lg p-1 border border-zinc-200/60 dark:border-zinc-700 shadow-sm">
         {periods.map((p) => (
           <button
             key={p.value}
@@ -33,10 +33,10 @@ export function PeriodSelector({ value, onChange, dateFrom, dateTo, onDateFromCh
               onChange(p.value);
               setShowCustom(p.value === 'custom');
             }}
-            className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
+            className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all duration-150 ${
               value === p.value
-                ? 'bg-white text-zinc-900 shadow-sm'
-                : 'text-zinc-500 hover:text-zinc-700'
+                ? 'bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-sm ring-1 ring-zinc-200/60 dark:ring-zinc-600'
+                : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-50/50 dark:hover:bg-zinc-700/50'
             }`}
           >
             {p.label}

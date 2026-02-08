@@ -24,15 +24,15 @@ export function LoginPage({ onLogin }: LoginPageProps) {
   };
 
   return (
-    <div className="min-h-screen bg-zinc-50 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-zinc-50 via-indigo-50/30 to-zinc-50 dark:from-zinc-950 dark:via-zinc-900 dark:to-zinc-950 flex items-center justify-center p-4">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
           <img src="/logo.png" alt="Litemetrics" className="h-16 mx-auto mb-4" />
-          <p className="text-sm text-zinc-500">Enter your admin secret to continue</p>
+          <p className="text-sm text-zinc-500 dark:text-zinc-400">Enter your admin secret to continue</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="bg-white rounded-xl border border-zinc-200 p-6 shadow-sm">
-          <label className="block text-sm font-medium text-zinc-700 mb-2">
+        <form onSubmit={handleSubmit} className="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-200/60 dark:border-zinc-800 p-7 shadow-lg">
+          <label className="block text-sm font-semibold text-zinc-700 dark:text-zinc-300 mb-2">
             Admin Secret
           </label>
           <input
@@ -41,24 +41,24 @@ export function LoginPage({ onLogin }: LoginPageProps) {
             onChange={(e) => setSecret(e.target.value)}
             placeholder="Enter admin secret..."
             autoFocus
-            className="w-full bg-white border border-zinc-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+            className="w-full bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg px-3.5 py-2.5 text-sm dark:text-zinc-200"
           />
 
           {error && (
-            <p className="mt-2 text-sm text-red-600">{error}</p>
+            <p className="mt-2 text-sm text-red-600 dark:text-red-400 font-medium">{error}</p>
           )}
 
           <button
             type="submit"
             disabled={loading || !secret.trim()}
-            className="mt-4 w-full bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium py-2 px-4 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="mt-5 w-full bg-gradient-to-b from-indigo-500 to-indigo-600 hover:from-indigo-400 hover:to-indigo-500 text-white text-sm font-semibold py-2.5 px-4 rounded-lg shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading ? 'Verifying...' : 'Sign In'}
           </button>
         </form>
 
-        <p className="text-center text-xs text-zinc-400 mt-6">
-          Powered by <a href="https://github.com/metehankurucu/litemetrics" target="_blank" rel="noopener noreferrer" className="hover:text-zinc-600 transition-colors">Litemetrics</a>
+        <p className="text-center text-xs text-zinc-400 dark:text-zinc-500 mt-6">
+          Powered by <a href="https://github.com/metehankurucu/litemetrics" target="_blank" rel="noopener noreferrer" className="hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors">Litemetrics</a>
         </p>
       </div>
     </div>

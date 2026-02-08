@@ -1,6 +1,6 @@
 {
   "name": "@litemetrics/react",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "React bindings for Litemetrics analytics (hooks + provider)",
   "license": "MIT",
   "author": "Metehan Kurucu",

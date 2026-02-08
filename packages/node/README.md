@@ -70,7 +70,8 @@ const collector = await createCollector({
 - **GeoIP Enrichment** - Resolves country/city from IP using MaxMind GeoLite2
 - **User-Agent Parsing** - Extracts browser, OS, and device type
 - **Hostname Filtering** - Only count events from allowed hostnames per site
-- **Query API** - 12 built-in metrics (pageviews, visitors, sessions, top pages, etc.)
+- **Query API** - Built-in metrics for pages, events, conversions, and behavioral insights
+- **Segmentation Filters** - Filter any metric/time series by geo, device, UTM, referrer, or event metadata
 - **Time Series** - Hourly/daily/weekly/monthly breakdowns
 - **Retention Analysis** - Weekly cohort retention
 - **Site Management** - Multi-tenant CRUD with secret key auth
@@ -94,11 +95,18 @@ await collector.identify('site-id', 'user-123', { plan: 'pro' });
 | `visitors` | Unique visitors |
 | `sessions` | Unique sessions |
 | `events` | Custom events count |
+| `conversions` | Conversion events count |
 | `top_pages` | Most visited pages |
 | `top_referrers` | Top traffic sources |
 | `top_countries` | Visitors by country |
 | `top_cities` | Visitors by city |
 | `top_events` | Most common custom events |
+| `top_conversions` | Most common conversion events |
+| `top_exit_pages` | Last page in session |
+| `top_transitions` | Page-to-page transitions |
+| `top_scroll_pages` | Pages with most scroll depth events |
+| `top_button_clicks` | Most clicked buttons (auto events) |
+| `top_link_targets` | Most clicked link targets |
 | `top_browsers` | Browser breakdown |
 | `top_os` | OS breakdown |
 | `top_devices` | Device type breakdown |

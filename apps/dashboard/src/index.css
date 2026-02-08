@@ -3,7 +3,30 @@
 @tailwind utilities;
 
 body {
-  @apply bg-zinc-50 text-zinc-900 antialiased;
+  @apply bg-zinc-50/80 text-zinc-900 antialiased dark:bg-zinc-950 dark:text-zinc-100;
+}
+
+/* Consistent input/select/textarea styling */
+select,
+input[type="text"],
+input[type="password"],
+input[type="email"],
+input[type="number"],
+input[type="date"],
+input[type="search"],
+textarea {
+  @apply shadow-sm transition-all duration-150;
+}
+
+select:focus,
+input[type="text"]:focus,
+input[type="password"]:focus,
+input[type="email"]:focus,
+input[type="number"]:focus,
+input[type="date"]:focus,
+input[type="search"]:focus,
+textarea:focus {
+  @apply outline-none ring-2 ring-indigo-500/20 border-indigo-400 dark:ring-indigo-400/30 dark:border-indigo-500;
 }
 
 /* Custom scrollbar */
@@ -23,6 +46,14 @@ body {
 
 ::-webkit-scrollbar-thumb:hover {
   background: #a1a1aa;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: #3f3f46;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #52525b;
 }
 
 /* Smooth transitions */

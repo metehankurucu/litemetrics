@@ -51,20 +51,21 @@ interface WorldMapProps {
   client: LitemetricsClient;
   siteId: string;
   period: Period;
+  filters?: Record<string, string>;
 }
 
 interface CountryData {
   [iso: string]: number;
 }
 
-export const WorldMap = memo(function WorldMap({ client, siteId, period }: WorldMapProps) {
+export const WorldMap = memo(function WorldMap({ client, siteId, period, filters }: WorldMapProps) {
   const [tooltip, setTooltip] = useState<{ name: string; value: number; x: number; y: number } | null>(null);
 
   const { data: countryData = {}, isLoading: loading } = useQuery({
-    queryKey: queryKeys.worldMap(siteId, period),
+    queryKey: queryKeys.worldMap(siteId, period, filters),
     queryFn: async () => {
       client.setSiteId(siteId);
-      const result = await client.getTopCountries({ period, limit: 200 });
+      const result = await client.getTopCountries({ period, limit: 200, filters });
       const map: CountryData = {};
       for (const d of result.data) {
         map[d.key] = d.value;
@@ -74,23 +75,25 @@ export const WorldMap = memo(function WorldMap({ client, siteId, period }: World
   });
 
   const maxValue = Math.max(...Object.values(countryData), 1);
+  const dark = document.documentElement.classList.contains('dark');
 
   function getColor(iso: string): string {
     const value = countryData[iso] || 0;
-    if (value === 0) return '#f4f4f5';
+    if (value === 0) return dark ? '#27272a' : '#f4f4f5';
     const intensity = Math.min(value / maxValue, 1);
-    // Indigo gradient: light to dark
     const r = Math.round(224 - intensity * 125);
     const g = Math.round(224 - intensity * 126);
     const b = Math.round(245 - intensity * 4);
     return `rgb(${r}, ${g}, ${b})`;
   }
 
+  const geoStroke = dark ? '#3f3f46' : '#e4e4e7';
+
   return (
-    <div className="rounded-xl bg-white border border-zinc-200 p-5 mb-6">
-      <h3 className="text-xs font-medium text-zinc-400 uppercase tracking-wide mb-3">Visitors by Country</h3>
+    <div className="rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800 shadow-sm p-5 mb-6">
+      <h3 className="text-xs font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider mb-3">Visitors by Country</h3>
       {loading ? (
-        <div className="h-64 bg-zinc-50 rounded-lg animate-pulse" />
+        <div className="h-64 bg-zinc-50 dark:bg-zinc-800 rounded-lg animate-pulse" />
       ) : (
         <div className="relative">
           <ComposableMap
@@ -110,7 +113,7 @@ export const WorldMap = memo(function WorldMap({ client, siteId, period }: World
                         key={geo.rsmKey}
                         geography={geo}
                         fill={getColor(iso)}
-                        stroke="#e4e4e7"
+                        stroke={geoStroke}
                         strokeWidth={0.5}
                         style={{
                           default: { outline: 'none' },

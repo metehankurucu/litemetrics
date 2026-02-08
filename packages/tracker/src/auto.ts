@@ -59,9 +59,31 @@ export class AutoTracker {
 
 const FILE_EXTENSIONS = /\.(pdf|zip|doc|docx|xls|xlsx|csv|mp3|mp4|dmg|exe|rar|7z|gz|tar)$/i;
 
-export function initOutboundTracking(instance: LitemetricsInstance): () => void {
+function toPath(url: URL): string {
+  return url.pathname || '/';
+}
+
+function getElementSelector(el: HTMLElement | null): string | undefined {
+  if (!el) return undefined;
+  if (el.id) return `#${el.id}`;
+  const tag = el.tagName.toLowerCase();
+  const rawClass = typeof el.className === 'string' ? el.className : '';
+  const className = rawClass.trim().split(/\s+/).filter(Boolean).slice(0, 2).join('.');
+  return className ? `${tag}.${className}` : tag;
+}
+
+function getElementText(el: HTMLElement | null): string | undefined {
+  if (!el) return undefined;
+  const text = (el.innerText || '').trim().replace(/\s+/g, ' ');
+  return text ? text.slice(0, 80) : undefined;
+}
+
+export function initLinkClickTracking(
+  instance: LitemetricsInstance,
+  options: { trackInternal: boolean; trackOutbound: boolean; trackFileDownloads: boolean },
+): () => void {
   function handleClick(e: MouseEvent) {
-    const link = (e.target as HTMLElement)?.closest?.('a');
+    const link = (e.target as HTMLElement)?.closest?.('a') as HTMLAnchorElement | null;
     if (!link) return;
 
     const href = link.href;
@@ -69,9 +91,28 @@ export function initOutboundTracking(instance: LitemetricsInstance): () => void 
 
     try {
       const url = new URL(href, location.href);
-      if (url.hostname && url.hostname !== location.hostname) {
-        instance.track('Outbound Link', { url: href });
+      const isOutbound = !!url.hostname && url.hostname !== location.hostname;
+      const match = url.pathname.match(FILE_EXTENSIONS);
+
+      if (match && options.trackFileDownloads) {
+        instance.track('File Download', { extension: match[1].toLowerCase() }, {
+          eventSource: 'auto',
+          eventSubtype: 'file_download',
+          pagePath: location.pathname || '/',
+          targetUrlPath: toPath(url),
+        });
+        return;
       }
+
+      if (isOutbound && !options.trackOutbound) return;
+      if (!isOutbound && !options.trackInternal) return;
+
+      instance.track(isOutbound ? 'Outbound Link' : 'Link Click', undefined, {
+        eventSource: 'auto',
+        eventSubtype: isOutbound ? 'outbound_click' : 'link_click',
+        pagePath: location.pathname || '/',
+        targetUrlPath: toPath(url),
+      });
     } catch {
       // ignore malformed URLs
     }
@@ -83,23 +124,21 @@ export function initOutboundTracking(instance: LitemetricsInstance): () => void 
 
 // ─── File Download Tracking ─────────────────────────────────
 
-export function initFileDownloadTracking(instance: LitemetricsInstance): () => void {
+export function initButtonClickTracking(instance: LitemetricsInstance): () => void {
   function handleClick(e: MouseEvent) {
-    const link = (e.target as HTMLElement)?.closest?.('a');
-    if (!link) return;
+    const target = e.target as HTMLElement | null;
+    if (!target) return;
+    const button = target.closest('button, [role="button"], input[type="button"], input[type="submit"]') as HTMLElement | null;
+    if (!button) return;
+    if (button.closest('a')) return;
 
-    const href = link.href;
-    if (!href) return;
-
-    try {
-      const url = new URL(href, location.href);
-      const match = url.pathname.match(FILE_EXTENSIONS);
-      if (match) {
-        instance.track('File Download', { url: href, extension: match[1].toLowerCase() });
-      }
-    } catch {
-      // ignore malformed URLs
-    }
+    instance.track('Button Click', undefined, {
+      eventSource: 'auto',
+      eventSubtype: 'button_click',
+      pagePath: location.pathname || '/',
+      elementSelector: getElementSelector(button),
+      elementText: getElementText(button),
+    });
   }
 
   document.addEventListener('click', handleClick, true);
@@ -136,7 +175,12 @@ export function initScrollDepthTracking(instance: LitemetricsInstance): () => vo
     for (const m of milestones) {
       if (pct >= m && !reached.has(m)) {
         reached.add(m);
-        instance.track('Scroll Depth', { depth: `${m}%` });
+        instance.track('Scroll Depth', { depth: `${m}%` }, {
+          eventSource: 'auto',
+          eventSubtype: 'scroll_depth',
+          pagePath: location.pathname || '/',
+          scrollDepthPct: m,
+        });
       }
     }
   }
@@ -180,7 +224,11 @@ export function initRageClickTracking(instance: LitemetricsInstance): () => void
         const target = e.target as HTMLElement | null;
         const tagName = target?.tagName?.toLowerCase() || 'unknown';
         const text = (target?.innerText || '').slice(0, 50).trim();
-        instance.track('Rage Click', { element: tagName, text: text || undefined });
+        instance.track('Rage Click', { element: tagName, text: text || undefined }, {
+          eventSource: 'auto',
+          eventSubtype: 'rage_click',
+          pagePath: location.pathname || '/',
+        });
         clicks.length = 0; // Reset after detection
       }
     }

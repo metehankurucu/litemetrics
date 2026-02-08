@@ -42,13 +42,29 @@ const countries = await client.getTopCountries({ period: '30d', limit: 50 });
 ## Time Series
 
 ```ts
-const timeseries = await client.getTimeSeries({
-  metric: 'pageviews',
+const timeseries = await client.getTimeSeries('pageviews', {
   period: '30d',
   granularity: 'day',
+  filters: { 'geo.country': 'US' },
 });
 
 // Returns: { data: [{ date: '2025-01-01', value: 142 }, ...] }
+```
+
+## Segmentation Filters
+
+All `getStats` and `getTimeSeries` calls accept `filters`:
+
+```ts
+const filtered = await client.getStats('top_events', {
+  period: '7d',
+  filters: {
+    'device.type': 'mobile',
+    'utm.source': 'newsletter',
+    'event_source': 'auto',
+    'event_subtype': 'button_click',
+  },
+});
 ```
 
 ## Events & Users
@@ -62,7 +78,7 @@ const events = await client.getEventsList({
 });
 
 // List users
-const users = await client.getUsersList({ limit: 20 });
+const users = await client.getUsers({ limit: 20 });
 
 // User detail
 const user = await client.getUserDetail('visitor-id');
@@ -95,7 +111,7 @@ await sites.regenerateSecret(site.siteId);
 
 ## Available Metrics
 
-`pageviews` | `visitors` | `sessions` | `events` | `top_pages` | `top_referrers` | `top_countries` | `top_cities` | `top_events` | `top_browsers` | `top_os` | `top_devices`
+`pageviews` | `visitors` | `sessions` | `events` | `conversions` | `top_pages` | `top_referrers` | `top_countries` | `top_cities` | `top_events` | `top_conversions` | `top_exit_pages` | `top_transitions` | `top_scroll_pages` | `top_button_clicks` | `top_link_targets` | `top_browsers` | `top_os` | `top_devices`
 
 ## License
 

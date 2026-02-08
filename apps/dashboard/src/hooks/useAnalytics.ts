@@ -10,12 +10,16 @@ export { client };
 
 // Query key factory - all query keys in one place
 export const queryKeys = {
-  analytics: (siteId: string, period: string, dateFrom?: string, dateTo?: string) =>
-    ['analytics', siteId, period, dateFrom, dateTo] as const,
-  timeSeries: (siteId: string, period: string, metric: string) =>
-    ['timeSeries', siteId, period, metric] as const,
-  worldMap: (siteId: string, period: string) =>
-    ['worldMap', siteId, period] as const,
+  analytics: (siteId: string, period: string, dateFrom?: string, dateTo?: string, filters?: Record<string, string>) =>
+    ['analytics', siteId, period, dateFrom, dateTo, filters] as const,
+  timeSeries: (siteId: string, period: string, metric: string, filters?: Record<string, string>) =>
+    ['timeSeries', siteId, period, metric, filters] as const,
+  worldMap: (siteId: string, period: string, filters?: Record<string, string>) =>
+    ['worldMap', siteId, period, filters] as const,
+  insights: (siteId: string, period: string, dateFrom?: string, dateTo?: string, filters?: Record<string, string>) =>
+    ['insights', siteId, period, dateFrom, dateTo, filters] as const,
+  insightsHourly: (siteId: string, period: string, dateFrom?: string, dateTo?: string, filters?: Record<string, string>) =>
+    ['insightsHourly', siteId, period, dateFrom, dateTo, filters] as const,
   events: (siteId: string, filters: Record<string, unknown>) =>
     ['events', siteId, filters] as const,
   users: (siteId: string, filters: Record<string, unknown>) =>

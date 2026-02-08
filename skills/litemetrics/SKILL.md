@@ -127,7 +127,9 @@ docker run -p 3002:3002 \
 - **Multi-tenant**: Single database with `site_id` isolation
 - **ClickHouse default**: Columnar storage optimized for analytics queries. MongoDB also supported.
 - **~3KB tracker**: The browser tracker is ~3KB gzipped with all auto-tracking features
-- Available metrics: `pageviews`, `visitors`, `sessions`, `events`, `conversions`, `top_pages`, `top_referrers`, `top_countries`, `top_cities`, `top_events`, `top_conversions`, `top_devices`, `top_browsers`, `top_os`, `timeseries`, `retention`
+- Auto events are tagged with `event_source=auto` and a subtype (e.g. `scroll_depth`, `button_click`, `link_click`)
+- Manual `track()` events default to `event_source=manual` and `event_subtype=custom`. Older data may have `event_source` as null.
+- Available metrics: `pageviews`, `visitors`, `sessions`, `events`, `conversions`, `top_pages`, `top_referrers`, `top_countries`, `top_cities`, `top_events`, `top_conversions`, `top_exit_pages`, `top_transitions`, `top_scroll_pages`, `top_button_clicks`, `top_link_targets`, `top_devices`, `top_browsers`, `top_os`, `timeseries`, `retention`
 
 ## Conversions (by Event Name)
 
@@ -147,4 +149,19 @@ Query conversion metrics:
 ```ts
 const conversions = await client.getStats('conversions', { period: '30d' });
 const topConversions = await client.getStats('top_conversions', { period: '30d', limit: 10 });
+```
+
+## Segmentation Filters
+
+All `getStats` and `getTimeSeries` calls accept `filters` for geo/device/UTM/referrer/event metadata:
+
+```ts
+const clicks = await client.getStats('top_button_clicks', {
+  period: '7d',
+  filters: {
+    'device.type': 'mobile',
+    'event_source': 'auto',
+    'event_subtype': 'button_click',
+  },
+});
 ```

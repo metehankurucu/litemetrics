@@ -32,6 +32,7 @@ export interface EventsListOptions {
   type?: EventType;
   eventName?: string;
   eventNames?: string[];
+  eventSource?: 'auto' | 'manual';
   visitorId?: string;
   userId?: string;
   period?: Period;
@@ -46,6 +47,7 @@ export interface TimeSeriesOptions {
   dateFrom?: string;
   dateTo?: string;
   granularity?: Granularity;
+  filters?: Record<string, string>;
 }
 
 export interface UsersListOptions {
@@ -126,7 +128,7 @@ export class LitemetricsClient {
   // ─── Time series ──────────────────────────────────────
 
   async getTimeSeries(
-    metric: 'pageviews' | 'visitors' | 'sessions',
+    metric: 'pageviews' | 'visitors' | 'sessions' | 'events' | 'conversions',
     options?: TimeSeriesOptions,
   ): Promise<TimeSeriesResult> {
     const params: Record<string, string> = {
@@ -139,6 +141,7 @@ export class LitemetricsClient {
     if (options?.dateFrom) params.dateFrom = options.dateFrom;
     if (options?.dateTo) params.dateTo = options.dateTo;
     if (options?.granularity) params.granularity = options.granularity;
+    if (options?.filters) params.filters = JSON.stringify(options.filters);
 
     const { data } = await this.http.get<TimeSeriesResult>(this.endpoint, { params });
     return data;
@@ -152,6 +155,7 @@ export class LitemetricsClient {
     if (options?.type) params.type = options.type;
     if (options?.eventName) params.eventName = options.eventName;
     if (options?.eventNames && options.eventNames.length > 0) params.eventNames = options.eventNames.join(',');
+    if (options?.eventSource) params.eventSource = options.eventSource;
     if (options?.visitorId) params.visitorId = options.visitorId;
     if (options?.userId) params.userId = options.userId;
     if (options?.period) params.period = options.period;
@@ -189,6 +193,7 @@ export class LitemetricsClient {
     if (options?.type) params.type = options.type;
     if (options?.eventName) params.eventName = options.eventName;
     if (options?.eventNames && options.eventNames.length > 0) params.eventNames = options.eventNames.join(',');
+    if (options?.eventSource) params.eventSource = options.eventSource;
     if (options?.period) params.period = options.period;
     if (options?.dateFrom) params.dateFrom = options.dateFrom;
     if (options?.dateTo) params.dateTo = options.dateTo;

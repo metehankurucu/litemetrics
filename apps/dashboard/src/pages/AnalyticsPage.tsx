@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { QueryResult, Period, LitemetricsClient, Site } from '@litemetrics/client';
 import { createSitesClient } from '@litemetrics/client';
@@ -10,6 +10,7 @@ import { PeriodSelector } from '../components/PeriodSelector';
 import { WorldMap } from '../components/WorldMap';
 import { PieChartCard } from '../components/PieChartCard';
 import { ExportButton } from '../components/ExportButton';
+import { SegmentFilters, type SegmentFilter, filtersToRecord } from '../components/SegmentFilters';
 import { useAuth } from '../auth';
 
 type TopMetric = 'top_pages' | 'top_referrers' | 'top_countries' | 'top_events' | 'top_conversions' | 'top_browsers' | 'top_devices';
@@ -36,6 +37,8 @@ export function AnalyticsPage({ siteId, client, period, onPeriodChange }: Analyt
   const { adminSecret } = useAuth();
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [filters, setFilters] = useState<SegmentFilter[]>([]);
+  const filterMap = useMemo(() => filtersToRecord(filters), [filters]);
 
   const effectivePeriod = period;
   const statsOptions = period === 'custom' && dateFrom && dateTo
@@ -56,12 +59,13 @@ export function AnalyticsPage({ siteId, client, period, onPeriodChange }: Analyt
   });
 
   const { data, isLoading: loading, error } = useQuery({
-    queryKey: queryKeys.analytics(siteId, period, dateFrom, dateTo),
+    queryKey: queryKeys.analytics(siteId, period, dateFrom, dateTo, filterMap),
     queryFn: async () => {
       client.setSiteId(siteId);
+      const withFilters = { ...statsOptions, filters: filterMap };
       const [overviewResults, ...topResults] = await Promise.all([
-        client.getOverview(['pageviews', 'visitors', 'sessions', 'events', 'conversions'], { ...statsOptions, compare: true }),
-        ...topMetrics.map((t) => client.getStats(t.metric, { ...statsOptions, limit: 10 })),
+        client.getOverview(['pageviews', 'visitors', 'sessions', 'events', 'conversions'], { ...withFilters, compare: true }),
+        ...topMetrics.map((t) => client.getStats(t.metric, { ...withFilters, limit: 10 })),
       ]);
 
       const topMap: Record<string, QueryResult> = {};
@@ -116,21 +120,21 @@ export function AnalyticsPage({ siteId, client, period, onPeriodChange }: Analyt
           onDateToChange={setDateTo}
         />
         <div className="flex items-center gap-2">
-          <div className="flex items-center gap-2 text-xs text-zinc-500 bg-white border border-zinc-200 rounded-full px-3 py-1.5">
+          <div className="flex items-center gap-2 text-xs font-medium text-zinc-500 dark:text-zinc-400 bg-white dark:bg-zinc-800 border border-zinc-200/60 dark:border-zinc-700 rounded-full px-3 py-1.5 shadow-sm">
             <span className="relative flex h-2 w-2">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
               <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
             </span>
             {liveLoading ? (
-              <span className="inline-block h-3 w-12 bg-zinc-100 rounded" />
+              <span className="inline-block h-3 w-12 bg-zinc-100 dark:bg-zinc-700 rounded" />
             ) : (
               <span className="tabular-nums">{activeVisitors} live (1h)</span>
             )}
           </div>
           <ExportButton data={exportData} filename={`analytics-${siteId}-${period}`} />
           <button
-            onClick={() => queryClient.invalidateQueries({ queryKey: queryKeys.analytics(siteId, period, dateFrom, dateTo) })}
-            className="p-2 rounded-lg bg-white border border-zinc-200 text-zinc-500 hover:text-zinc-700 hover:border-zinc-300 transition-colors"
+            onClick={() => queryClient.invalidateQueries({ queryKey: queryKeys.analytics(siteId, period, dateFrom, dateTo, filterMap) })}
+            className="p-2 rounded-lg bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 shadow-sm text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:border-zinc-300 dark:hover:border-zinc-600 hover:shadow transition-all"
             title="Refresh"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -140,17 +144,19 @@ export function AnalyticsPage({ siteId, client, period, onPeriodChange }: Analyt
         </div>
       </div>
 
+      <SegmentFilters value={filters} onChange={setFilters} />
+
       {error && (
-        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl text-red-600 text-sm">
+        <div className="mb-6 p-4 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 rounded-xl text-red-600 dark:text-red-400 text-sm">
           {error instanceof Error ? error.message : 'Failed to fetch analytics'}
         </div>
       )}
 
       {/* Time Series Chart */}
-      <TimeSeriesChart client={client} siteId={siteId} period={effectivePeriod} />
+      <TimeSeriesChart client={client} siteId={siteId} period={effectivePeriod} filters={filterMap} />
 
       {/* Overview Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-5 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 md:gap-5 mb-6">
         <StatCard
           title="Pageviews"
           value={overview.pageviews?.total ?? 0}
@@ -183,13 +189,13 @@ export function AnalyticsPage({ siteId, client, period, onPeriodChange }: Analyt
         />
       </div>
       {showConversionWarning && (
-        <div className="mb-6 p-3 rounded-lg border border-amber-200 bg-amber-50 text-amber-700 text-sm">
+        <div className="mb-6 p-3 rounded-lg border border-amber-200 dark:border-amber-500/20 bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 text-sm">
           Conversions are not configured for this site. Add event names in Site Settings to start tracking conversions.
         </div>
       )}
 
       {/* World Map */}
-      <WorldMap client={client} siteId={siteId} period={effectivePeriod} />
+      <WorldMap client={client} siteId={siteId} period={effectivePeriod} filters={filterMap} />
 
       {/* Pie Charts */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-6">

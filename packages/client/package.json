@@ -1,6 +1,6 @@
 {
   "name": "@litemetrics/client",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Client-side SDK for querying Litemetrics analytics data",
   "license": "MIT",
   "author": "Metehan Kurucu",
