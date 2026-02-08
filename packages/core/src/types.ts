@@ -258,7 +258,10 @@ export type Metric =
   | 'top_os'
   | 'top_utm_sources'
   | 'top_utm_mediums'
-  | 'top_utm_campaigns';
+  | 'top_utm_campaigns'
+  | 'top_utm_terms'
+  | 'top_utm_contents'
+  | 'top_channels';
 
 export type Period = '1h' | '24h' | '7d' | '30d' | '90d' | 'custom';
 

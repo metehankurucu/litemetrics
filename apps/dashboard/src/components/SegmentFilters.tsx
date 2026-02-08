@@ -16,6 +16,7 @@ const FILTER_OPTIONS: { key: string; label: string; placeholder?: string }[] = [
   { key: 'device.browser', label: 'Browser', placeholder: 'Chrome, Safari...' },
   { key: 'device.os', label: 'OS', placeholder: 'macOS, Windows...' },
   { key: 'referrer', label: 'Referrer', placeholder: 'https://...' },
+  { key: 'channel', label: 'Channel', placeholder: 'Direct, Organic Search, Paid Social...' },
   { key: 'utm.source', label: 'UTM Source' },
   { key: 'utm.medium', label: 'UTM Medium' },
   { key: 'utm.campaign', label: 'UTM Campaign' },

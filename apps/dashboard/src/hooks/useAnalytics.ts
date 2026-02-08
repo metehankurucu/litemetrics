@@ -34,6 +34,8 @@ export const queryKeys = {
     ['realtime', siteId] as const,
   live: (siteId: string) =>
     ['live', siteId] as const,
+  campaigns: (siteId: string, period: string, tab: string, dateFrom?: string, dateTo?: string, filters?: Record<string, string>) =>
+    ['campaigns', siteId, period, tab, dateFrom, dateTo, filters] as const,
   sites: () => ['sites'] as const,
 };
 

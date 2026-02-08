@@ -12,9 +12,11 @@ import { UsersPage } from './pages/UsersPage';
 import { RealtimePage } from './pages/RealtimePage';
 import { SitesPage } from './pages/SitesPage';
 import { RetentionPage } from './pages/RetentionPage';
+import { CampaignsPage } from './pages/CampaignsPage';
 import {
   BarChart3,
   TrendingUp,
+  Megaphone,
   Zap,
   List,
   Users,
@@ -36,6 +38,7 @@ interface NavItem {
 const navItems: NavItem[] = [
   { to: '/', label: 'Analytics', icon: <BarChart3 className="w-5 h-5" /> },
   { to: '/insights', label: 'Insights', icon: <TrendingUp className="w-5 h-5" /> },
+  { to: '/campaigns', label: 'Campaigns', icon: <Megaphone className="w-5 h-5" /> },
   { to: '/realtime', label: 'Realtime', icon: <Zap className="w-5 h-5" /> },
   { to: '/events', label: 'Events', icon: <List className="w-5 h-5" /> },
   { to: '/users', label: 'Users', icon: <Users className="w-5 h-5" /> },
@@ -174,6 +177,17 @@ export function App() {
               path="/insights"
               element={
                 <InsightsPage
+                  siteId={siteId}
+                  client={client}
+                  period={period}
+                  onPeriodChange={setPeriod}
+                />
+              }
+            />
+            <Route
+              path="/campaigns"
+              element={
+                <CampaignsPage
                   siteId={siteId}
                   client={client}
                   period={period}

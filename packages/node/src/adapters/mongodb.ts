@@ -64,6 +64,138 @@ const EVENTS_COLLECTION = 'litemetrics_events';
 const SITES_COLLECTION = 'litemetrics_sites';
 const IDENTITY_MAP_COLLECTION = 'litemetrics_identity_map';
 
+/** MongoDB $switch expression that normalizes utm_source abbreviations */
+function normalizedUtmSourceSwitch() {
+  return {
+    $switch: {
+      branches: [
+        { case: { $in: [{ $toLower: { $ifNull: ['$utm_source', ''] } }, ['ig', 'instagram', 'instagram.com']] }, then: 'Instagram' },
+        { case: { $in: [{ $toLower: { $ifNull: ['$utm_source', ''] } }, ['fb', 'facebook', 'facebook.com', 'fb.com']] }, then: 'Facebook' },
+        { case: { $in: [{ $toLower: { $ifNull: ['$utm_source', ''] } }, ['tw', 'twitter', 'twitter.com', 'x', 'x.com', 't.co']] }, then: 'X (Twitter)' },
+        { case: { $in: [{ $toLower: { $ifNull: ['$utm_source', ''] } }, ['li', 'linkedin', 'linkedin.com']] }, then: 'LinkedIn' },
+        { case: { $in: [{ $toLower: { $ifNull: ['$utm_source', ''] } }, ['yt', 'youtube', 'youtube.com']] }, then: 'YouTube' },
+        { case: { $in: [{ $toLower: { $ifNull: ['$utm_source', ''] } }, ['goog', 'google', 'google.com']] }, then: 'Google' },
+        { case: { $in: [{ $toLower: { $ifNull: ['$utm_source', ''] } }, ['gh', 'github', 'github.com']] }, then: 'GitHub' },
+        { case: { $in: [{ $toLower: { $ifNull: ['$utm_source', ''] } }, ['reddit', 'reddit.com']] }, then: 'Reddit' },
+        { case: { $in: [{ $toLower: { $ifNull: ['$utm_source', ''] } }, ['pinterest', 'pinterest.com']] }, then: 'Pinterest' },
+        { case: { $in: [{ $toLower: { $ifNull: ['$utm_source', ''] } }, ['tiktok', 'tiktok.com']] }, then: 'TikTok' },
+        { case: { $in: [{ $toLower: { $ifNull: ['$utm_source', ''] } }, ['openai', 'chatgpt', 'chat.openai.com']] }, then: 'OpenAI' },
+        { case: { $in: [{ $toLower: { $ifNull: ['$utm_source', ''] } }, ['perplexity', 'perplexity.ai']] }, then: 'Perplexity' },
+      ],
+      default: '$utm_source',
+    },
+  };
+}
+
+/** MongoDB $switch expression that normalizes utm_medium values */
+function normalizedUtmMediumSwitch() {
+  return {
+    $switch: {
+      branches: [
+        { case: { $in: [{ $toLower: { $ifNull: ['$utm_medium', ''] } }, ['cpc', 'ppc', 'paidsearch', 'paid-search', 'paid_search', 'paid']] }, then: 'Paid' },
+        { case: { $in: [{ $toLower: { $ifNull: ['$utm_medium', ''] } }, ['organic']] }, then: 'Organic' },
+        { case: { $in: [{ $toLower: { $ifNull: ['$utm_medium', ''] } }, ['social', 'social-media', 'social_media']] }, then: 'Social' },
+        { case: { $in: [{ $toLower: { $ifNull: ['$utm_medium', ''] } }, ['email', 'e-mail', 'e_mail']] }, then: 'Email' },
+        { case: { $in: [{ $toLower: { $ifNull: ['$utm_medium', ''] } }, ['display', 'banner', 'cpm']] }, then: 'Display' },
+        { case: { $in: [{ $toLower: { $ifNull: ['$utm_medium', ''] } }, ['affiliate']] }, then: 'Affiliate' },
+        { case: { $in: [{ $toLower: { $ifNull: ['$utm_medium', ''] } }, ['referral']] }, then: 'Referral' },
+      ],
+      default: '$utm_medium',
+    },
+  };
+}
+
+const SEARCH_ENGINES = /google|bing|yahoo|duckduckgo|ecosia|baidu|yandex|search\.brave/i;
+const SOCIAL_NETWORKS = /instagram|facebook|twitter|x\.com|t\.co|linkedin|youtube|tiktok|pinterest|reddit|snapchat|mastodon|tumblr/i;
+const PAID_MEDIUMS = ['cpc', 'ppc', 'paidsearch', 'paid-search', 'paid_search', 'paid'];
+const SOCIAL_SOURCES = ['instagram', 'ig', 'facebook', 'fb', 'twitter', 'tw', 'x', 'linkedin', 'li', 'youtube', 'yt', 'tiktok', 'pinterest', 'reddit', 'snapchat'];
+
+/** MongoDB $switch expression for channel classification */
+function channelClassificationSwitch() {
+  const lMedium = { $toLower: { $ifNull: ['$utm_medium', ''] } };
+  const lSource = { $toLower: { $ifNull: ['$utm_source', ''] } };
+  const refStr = { $ifNull: ['$referrer', ''] };
+
+  return {
+    $switch: {
+      branches: [
+        // Paid Search
+        {
+          case: {
+            $and: [
+              { $in: [lMedium, PAID_MEDIUMS] },
+              { $or: [
+                { $in: [lSource, ['google', 'goog', 'bing', 'yahoo', 'duckduckgo', 'ecosia', 'baidu', 'yandex']] },
+                { $regexMatch: { input: refStr, regex: SEARCH_ENGINES } },
+              ] },
+            ],
+          },
+          then: 'Paid Search',
+        },
+        // Paid Social
+        {
+          case: {
+            $and: [
+              { $in: [lMedium, PAID_MEDIUMS] },
+              { $or: [
+                { $in: [lSource, SOCIAL_SOURCES] },
+                { $regexMatch: { input: refStr, regex: SOCIAL_NETWORKS } },
+              ] },
+            ],
+          },
+          then: 'Paid Social',
+        },
+        // Email
+        { case: { $in: [lMedium, ['email', 'e-mail', 'e_mail']] }, then: 'Email' },
+        // Display
+        { case: { $in: [lMedium, ['display', 'banner', 'cpm']] }, then: 'Display' },
+        // Affiliate
+        { case: { $in: [lMedium, ['affiliate']] }, then: 'Affiliate' },
+        // Organic Search
+        {
+          case: {
+            $and: [
+              { $regexMatch: { input: refStr, regex: SEARCH_ENGINES } },
+              { $not: [{ $in: [lMedium, PAID_MEDIUMS] }] },
+            ],
+          },
+          then: 'Organic Search',
+        },
+        // Organic Social
+        {
+          case: {
+            $and: [
+              { $or: [
+                { $regexMatch: { input: refStr, regex: SOCIAL_NETWORKS } },
+                { $in: [lSource, SOCIAL_SOURCES] },
+              ] },
+              { $not: [{ $in: [lMedium, PAID_MEDIUMS] }] },
+            ],
+          },
+          then: 'Organic Social',
+        },
+        // Referral
+        {
+          case: { $and: [{ $ne: [refStr, ''] }, { $gt: [{ $strLenCP: refStr }, 0] }] },
+          then: 'Referral',
+        },
+        // Other (has UTM but no referrer)
+        {
+          case: {
+            $or: [
+              { $and: [{ $ne: [{ $ifNull: ['$utm_source', ''] }, ''] }] },
+              { $and: [{ $ne: [{ $ifNull: ['$utm_medium', ''] }, ''] }] },
+              { $and: [{ $ne: [{ $ifNull: ['$utm_campaign', ''] }, ''] }] },
+            ],
+          },
+          then: 'Other',
+        },
+      ],
+      default: 'Direct',
+    },
+  };
+}
+
 function buildFilterMatch(filters?: Record<string, string>): Record<string, unknown> {
   if (!filters) return {};
   const map: Record<string, string> = {
@@ -89,7 +221,10 @@ function buildFilterMatch(filters?: Record<string, string>): Record<string, unkn
   };
   const match: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(filters)) {
-    if (!value || !map[key]) continue;
+    if (!value) continue;
+    // 'channel' filter is handled at the pipeline level, not here
+    if (key === 'channel') continue;
+    if (!map[key]) continue;
     match[map[key]] = value;
   }
   return match;
@@ -181,13 +316,25 @@ export class MongoDBAdapter implements DBAdapter {
     };
     const filterMatch = buildFilterMatch(q.filters);
 
+    // Helper: builds initial pipeline stages including optional channel filter
+    const matchStages = (extra?: Record<string, unknown>): Record<string, unknown>[] => {
+      const stages: Record<string, unknown>[] = [
+        { $match: { ...baseMatch, ...filterMatch, ...extra } },
+      ];
+      if (q.filters?.channel) {
+        stages.push({ $addFields: { _channel: channelClassificationSwitch() } });
+        stages.push({ $match: { _channel: q.filters.channel } });
+      }
+      return stages;
+    };
+
     let data: QueryDataPoint[] = [];
     let total = 0;
 
     switch (q.metric) {
       case 'pageviews': {
         const [result] = await this.collection.aggregate<{ count: number }>([
-          { $match: { ...baseMatch, ...filterMatch, type: 'pageview' } },
+          ...matchStages({ type: 'pageview' }),
           { $count: 'count' },
         ]).toArray();
         total = result?.count ?? 0;
@@ -197,7 +344,7 @@ export class MongoDBAdapter implements DBAdapter {
 
       case 'visitors': {
         const [result] = await this.collection.aggregate<{ count: number }>([
-          { $match: { ...baseMatch, ...filterMatch } },
+          ...matchStages(),
           { $group: { _id: '$visitor_id' } },
           { $count: 'count' },
         ]).toArray();
@@ -208,7 +355,7 @@ export class MongoDBAdapter implements DBAdapter {
 
       case 'sessions': {
         const [result] = await this.collection.aggregate<{ count: number }>([
-          { $match: { ...baseMatch, ...filterMatch } },
+          ...matchStages(),
           { $group: { _id: '$session_id' } },
           { $count: 'count' },
         ]).toArray();
@@ -219,7 +366,7 @@ export class MongoDBAdapter implements DBAdapter {
 
       case 'events': {
         const [result] = await this.collection.aggregate<{ count: number }>([
-          { $match: { ...baseMatch, ...filterMatch, type: 'event' } },
+          ...matchStages({ type: 'event' }),
           { $count: 'count' },
         ]).toArray();
         total = result?.count ?? 0;
@@ -234,7 +381,7 @@ export class MongoDBAdapter implements DBAdapter {
           break;
         }
         const [result] = await this.collection.aggregate<{ count: number }>([
-          { $match: { ...baseMatch, ...filterMatch, type: 'event', event_name: { $in: conversionEvents } } },
+          ...matchStages({ type: 'event', event_name: { $in: conversionEvents } }),
           { $count: 'count' },
         ]).toArray();
         total = result?.count ?? 0;
@@ -244,7 +391,7 @@ export class MongoDBAdapter implements DBAdapter {
 
       case 'top_pages': {
         const rows = await this.collection.aggregate<{ _id: string; value: number }>([
-          { $match: { ...baseMatch, ...filterMatch, type: 'pageview', url: { $ne: null } } },
+          ...matchStages({ type: 'pageview', url: { $ne: null } }),
           { $group: { _id: '$url', value: { $sum: 1 } } },
           { $sort: { value: -1 } },
           { $limit: limit },
@@ -256,7 +403,7 @@ export class MongoDBAdapter implements DBAdapter {
 
       case 'top_referrers': {
         const rows = await this.collection.aggregate<{ _id: string; value: number }>([
-          { $match: { ...baseMatch, ...filterMatch, type: 'pageview', referrer: { $nin: [null, ''] } } },
+          ...matchStages({ type: 'pageview', referrer: { $nin: [null, ''] } }),
           { $group: { _id: '$referrer', value: { $sum: 1 } } },
           { $sort: { value: -1 } },
           { $limit: limit },
@@ -268,7 +415,7 @@ export class MongoDBAdapter implements DBAdapter {
 
       case 'top_countries': {
         const rows = await this.collection.aggregate<{ _id: string; value: number }>([
-          { $match: { ...baseMatch, ...filterMatch, country: { $ne: null } } },
+          ...matchStages({ country: { $ne: null } }),
           { $group: { _id: '$country', value: { $addToSet: '$visitor_id' } } },
           { $project: { _id: 1, value: { $size: '$value' } } },
           { $sort: { value: -1 } },
@@ -281,7 +428,7 @@ export class MongoDBAdapter implements DBAdapter {
 
       case 'top_cities': {
         const rows = await this.collection.aggregate<{ _id: string; value: number }>([
-          { $match: { ...baseMatch, ...filterMatch, city: { $ne: null } } },
+          ...matchStages({ city: { $ne: null } }),
           { $group: { _id: '$city', value: { $addToSet: '$visitor_id' } } },
           { $project: { _id: 1, value: { $size: '$value' } } },
           { $sort: { value: -1 } },
@@ -294,7 +441,7 @@ export class MongoDBAdapter implements DBAdapter {
 
       case 'top_events': {
         const rows = await this.collection.aggregate<{ _id: string; value: number }>([
-          { $match: { ...baseMatch, ...filterMatch, type: 'event', event_name: { $ne: null } } },
+          ...matchStages({ type: 'event', event_name: { $ne: null } }),
           { $group: { _id: '$event_name', value: { $sum: 1 } } },
           { $sort: { value: -1 } },
           { $limit: limit },
@@ -311,7 +458,7 @@ export class MongoDBAdapter implements DBAdapter {
           break;
         }
         const rows = await this.collection.aggregate<{ _id: string; value: number }>([
-          { $match: { ...baseMatch, ...filterMatch, type: 'event', event_name: { $in: conversionEvents } } },
+          ...matchStages({ type: 'event', event_name: { $in: conversionEvents } }),
           { $group: { _id: '$event_name', value: { $sum: 1 } } },
           { $sort: { value: -1 } },
           { $limit: limit },
@@ -322,7 +469,7 @@ export class MongoDBAdapter implements DBAdapter {
       }
       case 'top_exit_pages': {
         const rows = await this.collection.aggregate<{ _id: string; value: number }>([
-          { $match: { ...baseMatch, ...filterMatch, type: 'pageview', url: { $ne: null } } },
+          ...matchStages({ type: 'pageview', url: { $ne: null } }),
           { $sort: { timestamp: 1 } },
           { $group: { _id: '$session_id', url: { $last: '$url' } } },
           { $group: { _id: '$url', value: { $sum: 1 } } },
@@ -335,7 +482,7 @@ export class MongoDBAdapter implements DBAdapter {
       }
       case 'top_transitions': {
         const rows = await this.collection.aggregate<{ _id: string; value: number }>([
-          { $match: { ...baseMatch, ...filterMatch, type: 'pageview', url: { $ne: null } } },
+          ...matchStages({ type: 'pageview', url: { $ne: null } }),
           {
             $setWindowFields: {
               partitionBy: '$session_id',
@@ -356,7 +503,7 @@ export class MongoDBAdapter implements DBAdapter {
       }
       case 'top_scroll_pages': {
         const rows = await this.collection.aggregate<{ _id: string; value: number }>([
-          { $match: { ...baseMatch, ...filterMatch, type: 'event', event_subtype: 'scroll_depth', page_path: { $ne: null } } },
+          ...matchStages({ type: 'event', event_subtype: 'scroll_depth', page_path: { $ne: null } }),
           { $group: { _id: '$page_path', value: { $sum: 1 } } },
           { $sort: { value: -1 } },
           { $limit: limit },
@@ -367,15 +514,11 @@ export class MongoDBAdapter implements DBAdapter {
       }
       case 'top_button_clicks': {
         const rows = await this.collection.aggregate<{ _id: string; value: number }>([
-          {
-            $match: {
-              ...baseMatch,
-              ...filterMatch,
-              type: 'event',
-              event_subtype: 'button_click',
-              $or: [{ element_text: { $ne: null } }, { element_selector: { $ne: null } }],
-            },
-          },
+          ...matchStages({
+            type: 'event',
+            event_subtype: 'button_click',
+            $or: [{ element_text: { $ne: null } }, { element_selector: { $ne: null } }],
+          }),
           { $group: { _id: { $ifNull: ['$element_text', '$element_selector'] }, value: { $sum: 1 } } },
           { $sort: { value: -1 } },
           { $limit: limit },
@@ -386,15 +529,11 @@ export class MongoDBAdapter implements DBAdapter {
       }
       case 'top_link_targets': {
         const rows = await this.collection.aggregate<{ _id: string; value: number }>([
-          {
-            $match: {
-              ...baseMatch,
-              ...filterMatch,
-              type: 'event',
-              event_subtype: { $in: ['link_click', 'outbound_click'] },
-              target_url_path: { $ne: null },
-            },
-          },
+          ...matchStages({
+            type: 'event',
+            event_subtype: { $in: ['link_click', 'outbound_click'] },
+            target_url_path: { $ne: null },
+          }),
           { $group: { _id: '$target_url_path', value: { $sum: 1 } } },
           { $sort: { value: -1 } },
           { $limit: limit },
@@ -406,7 +545,7 @@ export class MongoDBAdapter implements DBAdapter {
 
       case 'top_devices': {
         const rows = await this.collection.aggregate<{ _id: string; value: number }>([
-          { $match: { ...baseMatch, ...filterMatch, device_type: { $ne: null } } },
+          ...matchStages({ device_type: { $ne: null } }),
           { $group: { _id: '$device_type', value: { $addToSet: '$visitor_id' } } },
           { $project: { _id: 1, value: { $size: '$value' } } },
           { $sort: { value: -1 } },
@@ -419,7 +558,7 @@ export class MongoDBAdapter implements DBAdapter {
 
       case 'top_browsers': {
         const rows = await this.collection.aggregate<{ _id: string; value: number }>([
-          { $match: { ...baseMatch, ...filterMatch, browser: { $ne: null } } },
+          ...matchStages({ browser: { $ne: null } }),
           { $group: { _id: '$browser', value: { $addToSet: '$visitor_id' } } },
           { $project: { _id: 1, value: { $size: '$value' } } },
           { $sort: { value: -1 } },
@@ -432,7 +571,7 @@ export class MongoDBAdapter implements DBAdapter {
 
       case 'top_os': {
         const rows = await this.collection.aggregate<{ _id: string; value: number }>([
-          { $match: { ...baseMatch, ...filterMatch, os: { $ne: null } } },
+          ...matchStages({ os: { $ne: null } }),
           { $group: { _id: '$os', value: { $addToSet: '$visitor_id' } } },
           { $project: { _id: 1, value: { $size: '$value' } } },
           { $sort: { value: -1 } },
@@ -445,8 +584,9 @@ export class MongoDBAdapter implements DBAdapter {
 
       case 'top_utm_sources': {
         const rows = await this.collection.aggregate<{ _id: string; value: number }>([
-          { $match: { ...baseMatch, ...filterMatch, utm_source: { $nin: [null, ''] } } },
-          { $group: { _id: '$utm_source', value: { $addToSet: '$visitor_id' } } },
+          ...matchStages({ utm_source: { $nin: [null, ''] } }),
+          { $addFields: { _normalized_source: normalizedUtmSourceSwitch() } },
+          { $group: { _id: '$_normalized_source', value: { $addToSet: '$visitor_id' } } },
           { $project: { _id: 1, value: { $size: '$value' } } },
           { $sort: { value: -1 } },
           { $limit: limit },
@@ -458,8 +598,9 @@ export class MongoDBAdapter implements DBAdapter {
 
       case 'top_utm_mediums': {
         const rows = await this.collection.aggregate<{ _id: string; value: number }>([
-          { $match: { ...baseMatch, ...filterMatch, utm_medium: { $nin: [null, ''] } } },
-          { $group: { _id: '$utm_medium', value: { $addToSet: '$visitor_id' } } },
+          ...matchStages({ utm_medium: { $nin: [null, ''] } }),
+          { $addFields: { _normalized_medium: normalizedUtmMediumSwitch() } },
+          { $group: { _id: '$_normalized_medium', value: { $addToSet: '$visitor_id' } } },
           { $project: { _id: 1, value: { $size: '$value' } } },
           { $sort: { value: -1 } },
           { $limit: limit },
@@ -471,8 +612,48 @@ export class MongoDBAdapter implements DBAdapter {
 
       case 'top_utm_campaigns': {
         const rows = await this.collection.aggregate<{ _id: string; value: number }>([
-          { $match: { ...baseMatch, ...filterMatch, utm_campaign: { $nin: [null, ''] } } },
+          ...matchStages({ utm_campaign: { $nin: [null, ''] } }),
           { $group: { _id: '$utm_campaign', value: { $addToSet: '$visitor_id' } } },
+          { $project: { _id: 1, value: { $size: '$value' } } },
+          { $sort: { value: -1 } },
+          { $limit: limit },
+        ]).toArray();
+        data = rows.map((r) => ({ key: r._id, value: r.value }));
+        total = data.reduce((sum, d) => sum + d.value, 0);
+        break;
+      }
+
+      case 'top_utm_terms': {
+        const rows = await this.collection.aggregate<{ _id: string; value: number }>([
+          ...matchStages({ utm_term: { $nin: [null, ''] } }),
+          { $group: { _id: '$utm_term', value: { $addToSet: '$visitor_id' } } },
+          { $project: { _id: 1, value: { $size: '$value' } } },
+          { $sort: { value: -1 } },
+          { $limit: limit },
+        ]).toArray();
+        data = rows.map((r) => ({ key: r._id, value: r.value }));
+        total = data.reduce((sum, d) => sum + d.value, 0);
+        break;
+      }
+
+      case 'top_utm_contents': {
+        const rows = await this.collection.aggregate<{ _id: string; value: number }>([
+          ...matchStages({ utm_content: { $nin: [null, ''] } }),
+          { $group: { _id: '$utm_content', value: { $addToSet: '$visitor_id' } } },
+          { $project: { _id: 1, value: { $size: '$value' } } },
+          { $sort: { value: -1 } },
+          { $limit: limit },
+        ]).toArray();
+        data = rows.map((r) => ({ key: r._id, value: r.value }));
+        total = data.reduce((sum, d) => sum + d.value, 0);
+        break;
+      }
+
+      case 'top_channels': {
+        const rows = await this.collection.aggregate<{ _id: string; value: number }>([
+          ...matchStages(),
+          { $addFields: { _channel: channelClassificationSwitch() } },
+          { $group: { _id: '$_channel', value: { $addToSet: '$visitor_id' } } },
           { $project: { _id: 1, value: { $size: '$value' } } },
           { $sort: { value: -1 } },
           { $limit: limit },

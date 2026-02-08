@@ -14,7 +14,7 @@ import { SegmentFilters, type SegmentFilter, filtersToRecord } from '../componen
 import { useAuth } from '../auth';
 import { Eye, Users, MousePointerClick, Zap, Target, RefreshCw, Monitor, Smartphone } from 'lucide-react';
 
-type TopMetric = 'top_pages' | 'top_referrers' | 'top_countries' | 'top_events' | 'top_conversions' | 'top_browsers' | 'top_devices' | 'top_utm_sources' | 'top_utm_mediums' | 'top_utm_campaigns';
+type TopMetric = 'top_pages' | 'top_referrers' | 'top_countries' | 'top_events' | 'top_conversions' | 'top_browsers' | 'top_devices';
 
 const topMetrics: { metric: TopMetric; title: string; type: TopListType }[] = [
   { metric: 'top_pages', title: 'Pages', type: 'pages' },
@@ -24,9 +24,6 @@ const topMetrics: { metric: TopMetric; title: string; type: TopListType }[] = [
   { metric: 'top_conversions', title: 'Top Conversions', type: 'conversions' },
   { metric: 'top_browsers', title: 'Browsers', type: 'browsers' },
   { metric: 'top_devices', title: 'Devices', type: 'devices' },
-  { metric: 'top_utm_sources', title: 'UTM Sources', type: 'utm_sources' },
-  { metric: 'top_utm_mediums', title: 'UTM Mediums', type: 'utm_mediums' },
-  { metric: 'top_utm_campaigns', title: 'UTM Campaigns', type: 'utm_campaigns' },
 ];
 
 interface AnalyticsPageProps {

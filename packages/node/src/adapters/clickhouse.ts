@@ -86,6 +86,71 @@ function toCHDateTime(d: string | Date): string {
   return iso.replace('T', ' ').replace('Z', '');
 }
 
+/** ClickHouse multiIf expression that normalizes utm_source abbreviations */
+function normalizedUtmSourceExpr(): string {
+  return `multiIf(
+    lower(utm_source) IN ('ig','instagram','instagram.com'), 'Instagram',
+    lower(utm_source) IN ('fb','facebook','facebook.com','fb.com'), 'Facebook',
+    lower(utm_source) IN ('tw','twitter','twitter.com','x','x.com','t.co'), 'X (Twitter)',
+    lower(utm_source) IN ('li','linkedin','linkedin.com'), 'LinkedIn',
+    lower(utm_source) IN ('yt','youtube','youtube.com'), 'YouTube',
+    lower(utm_source) IN ('goog','google','google.com'), 'Google',
+    lower(utm_source) IN ('gh','github','github.com'), 'GitHub',
+    lower(utm_source) IN ('reddit','reddit.com'), 'Reddit',
+    lower(utm_source) IN ('pinterest','pinterest.com'), 'Pinterest',
+    lower(utm_source) IN ('tiktok','tiktok.com'), 'TikTok',
+    lower(utm_source) IN ('openai','chatgpt','chat.openai.com'), 'OpenAI',
+    lower(utm_source) IN ('perplexity','perplexity.ai'), 'Perplexity',
+    utm_source
+  )`;
+}
+
+/** ClickHouse multiIf expression that normalizes utm_medium values */
+function normalizedUtmMediumExpr(): string {
+  return `multiIf(
+    lower(utm_medium) IN ('cpc','ppc','paidsearch','paid-search','paid_search','paid'), 'Paid',
+    lower(utm_medium) IN ('organic'), 'Organic',
+    lower(utm_medium) IN ('social','social-media','social_media'), 'Social',
+    lower(utm_medium) IN ('email','e-mail','e_mail'), 'Email',
+    lower(utm_medium) IN ('display','banner','cpm'), 'Display',
+    lower(utm_medium) IN ('affiliate'), 'Affiliate',
+    lower(utm_medium) IN ('referral'), 'Referral',
+    utm_medium
+  )`;
+}
+
+/** ClickHouse multiIf expression for channel classification (Plausible-style) */
+function channelClassificationExpr(): string {
+  return `multiIf(
+    lower(ifNull(utm_medium,'')) IN ('cpc','ppc','paidsearch','paid-search','paid_search','paid')
+      AND (lower(ifNull(utm_source,'')) IN ('google','goog','bing','yahoo','duckduckgo','ecosia','baidu','yandex')
+           OR multiSearchAnyCaseInsensitive(ifNull(referrer,''), ['google','bing','yahoo','duckduckgo','ecosia','baidu','yandex','search.brave']) > 0),
+    'Paid Search',
+    lower(ifNull(utm_medium,'')) IN ('cpc','ppc','paidsearch','paid-search','paid_search','paid')
+      AND (lower(ifNull(utm_source,'')) IN ('instagram','ig','facebook','fb','twitter','tw','x','linkedin','li','youtube','yt','tiktok','pinterest','reddit','snapchat')
+           OR multiSearchAnyCaseInsensitive(ifNull(referrer,''), ['instagram','facebook','twitter','x.com','t.co','linkedin','youtube','tiktok','pinterest','reddit','snapchat']) > 0),
+    'Paid Social',
+    lower(ifNull(utm_medium,'')) IN ('email','e-mail','e_mail'),
+    'Email',
+    lower(ifNull(utm_medium,'')) IN ('display','banner','cpm'),
+    'Display',
+    lower(ifNull(utm_medium,'')) IN ('affiliate'),
+    'Affiliate',
+    multiSearchAnyCaseInsensitive(ifNull(referrer,''), ['google','bing','yahoo','duckduckgo','ecosia','baidu','yandex','search.brave']) > 0
+      AND (ifNull(utm_medium,'') = '' OR lower(utm_medium) NOT IN ('cpc','ppc','paidsearch','paid-search','paid_search','paid')),
+    'Organic Search',
+    (multiSearchAnyCaseInsensitive(ifNull(referrer,''), ['instagram','facebook','twitter','x.com','t.co','linkedin','youtube','tiktok','pinterest','reddit','snapchat','mastodon','tumblr']) > 0
+     OR lower(ifNull(utm_source,'')) IN ('instagram','ig','facebook','fb','twitter','tw','x','linkedin','li','youtube','yt','tiktok','pinterest','reddit','snapchat'))
+      AND (ifNull(utm_medium,'') = '' OR lower(utm_medium) NOT IN ('cpc','ppc','paidsearch','paid-search','paid_search','paid')),
+    'Organic Social',
+    ifNull(referrer,'') != '' AND length(ifNull(referrer,'')) > 0,
+    'Referral',
+    (ifNull(utm_source,'') != '' OR ifNull(utm_medium,'') != '' OR ifNull(utm_campaign,'') != ''),
+    'Other',
+    'Direct'
+  )`;
+}
+
 function buildFilterConditions(filters?: Record<string, string>): { conditions: string[]; params: Record<string, unknown> } {
   if (!filters) return { conditions: [], params: {} };
   const map: Record<string, string> = {
@@ -112,7 +177,15 @@ function buildFilterConditions(filters?: Record<string, string>): { conditions: 
   const conditions: string[] = [];
   const params: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(filters)) {
-    if (!value || !map[key]) continue;
+    if (!value) continue;
+    // Special handling for channel filter (computed expression, not a column)
+    if (key === 'channel') {
+      const paramKey = 'f_channel';
+      conditions.push(`${channelClassificationExpr()} = {${paramKey}:String}`);
+      params[paramKey] = value;
+      continue;
+    }
+    if (!map[key]) continue;
     const paramKey = `f_${key.replace(/[^a-zA-Z0-9]/g, '_')}`;
     conditions.push(`${map[key]} = {${paramKey}:String}`);
     params[paramKey] = value;
@@ -563,13 +636,13 @@ export class ClickHouseAdapter implements DBAdapter {
 
       case 'top_utm_sources': {
         const rows = await this.queryRows<{ key: string; value: string }>(
-          `SELECT utm_source AS key, uniq(visitor_id) AS value FROM ${EVENTS_TABLE}
+          `SELECT ${normalizedUtmSourceExpr()} AS key, uniq(visitor_id) AS value FROM ${EVENTS_TABLE}
            WHERE site_id = {siteId:String}
              AND timestamp >= {from:String}
              AND timestamp <= {to:String}
              AND utm_source IS NOT NULL AND utm_source != ''
              ${filterSql}
-           GROUP BY utm_source
+           GROUP BY key
            ORDER BY value DESC
            LIMIT {limit:UInt32}`,
           { ...params, ...filter.params },
@@ -581,13 +654,13 @@ export class ClickHouseAdapter implements DBAdapter {
 
       case 'top_utm_mediums': {
         const rows = await this.queryRows<{ key: string; value: string }>(
-          `SELECT utm_medium AS key, uniq(visitor_id) AS value FROM ${EVENTS_TABLE}
+          `SELECT ${normalizedUtmMediumExpr()} AS key, uniq(visitor_id) AS value FROM ${EVENTS_TABLE}
            WHERE site_id = {siteId:String}
              AND timestamp >= {from:String}
              AND timestamp <= {to:String}
              AND utm_medium IS NOT NULL AND utm_medium != ''
              ${filterSql}
-           GROUP BY utm_medium
+           GROUP BY key
            ORDER BY value DESC
            LIMIT {limit:UInt32}`,
           { ...params, ...filter.params },
@@ -606,6 +679,59 @@ export class ClickHouseAdapter implements DBAdapter {
              AND utm_campaign IS NOT NULL AND utm_campaign != ''
              ${filterSql}
            GROUP BY utm_campaign
+           ORDER BY value DESC
+           LIMIT {limit:UInt32}`,
+          { ...params, ...filter.params },
+        );
+        data = rows.map((r) => ({ key: r.key, value: Number(r.value) }));
+        total = data.reduce((sum, d) => sum + d.value, 0);
+        break;
+      }
+
+      case 'top_utm_terms': {
+        const rows = await this.queryRows<{ key: string; value: string }>(
+          `SELECT utm_term AS key, uniq(visitor_id) AS value FROM ${EVENTS_TABLE}
+           WHERE site_id = {siteId:String}
+             AND timestamp >= {from:String}
+             AND timestamp <= {to:String}
+             AND utm_term IS NOT NULL AND utm_term != ''
+             ${filterSql}
+           GROUP BY utm_term
+           ORDER BY value DESC
+           LIMIT {limit:UInt32}`,
+          { ...params, ...filter.params },
+        );
+        data = rows.map((r) => ({ key: r.key, value: Number(r.value) }));
+        total = data.reduce((sum, d) => sum + d.value, 0);
+        break;
+      }
+
+      case 'top_utm_contents': {
+        const rows = await this.queryRows<{ key: string; value: string }>(
+          `SELECT utm_content AS key, uniq(visitor_id) AS value FROM ${EVENTS_TABLE}
+           WHERE site_id = {siteId:String}
+             AND timestamp >= {from:String}
+             AND timestamp <= {to:String}
+             AND utm_content IS NOT NULL AND utm_content != ''
+             ${filterSql}
+           GROUP BY utm_content
+           ORDER BY value DESC
+           LIMIT {limit:UInt32}`,
+          { ...params, ...filter.params },
+        );
+        data = rows.map((r) => ({ key: r.key, value: Number(r.value) }));
+        total = data.reduce((sum, d) => sum + d.value, 0);
+        break;
+      }
+
+      case 'top_channels': {
+        const rows = await this.queryRows<{ key: string; value: string }>(
+          `SELECT ${channelClassificationExpr()} AS key, uniq(visitor_id) AS value FROM ${EVENTS_TABLE}
+           WHERE site_id = {siteId:String}
+             AND timestamp >= {from:String}
+             AND timestamp <= {to:String}
+             ${filterSql}
+           GROUP BY key
            ORDER BY value DESC
            LIMIT {limit:UInt32}`,
           { ...params, ...filter.params },
