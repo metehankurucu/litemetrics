@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import type { QueryResult, Period, LitemetricsClient } from '@litemetrics/client';
+import type { QueryResult, Period, LitemetricsClient, Site } from '@litemetrics/client';
+import { createSitesClient } from '@litemetrics/client';
 import { queryKeys } from '../hooks/useAnalytics';
 import { StatCard } from '../components/StatCard';
 import { TopList, type TopListType } from '../components/TopList';
@@ -9,14 +10,16 @@ import { PeriodSelector } from '../components/PeriodSelector';
 import { WorldMap } from '../components/WorldMap';
 import { PieChartCard } from '../components/PieChartCard';
 import { ExportButton } from '../components/ExportButton';
+import { useAuth } from '../auth';
 
-type TopMetric = 'top_pages' | 'top_referrers' | 'top_countries' | 'top_events' | 'top_browsers' | 'top_devices';
+type TopMetric = 'top_pages' | 'top_referrers' | 'top_countries' | 'top_events' | 'top_conversions' | 'top_browsers' | 'top_devices';
 
 const topMetrics: { metric: TopMetric; title: string; type: TopListType }[] = [
   { metric: 'top_pages', title: 'Pages', type: 'pages' },
   { metric: 'top_referrers', title: 'Referrers', type: 'referrers' },
   { metric: 'top_countries', title: 'Countries', type: 'countries' },
   { metric: 'top_events', title: 'Events', type: 'events' },
+  { metric: 'top_conversions', title: 'Top Conversions', type: 'conversions' },
   { metric: 'top_browsers', title: 'Browsers', type: 'browsers' },
   { metric: 'top_devices', title: 'Devices', type: 'devices' },
 ];
@@ -30,6 +33,7 @@ interface AnalyticsPageProps {
 
 export function AnalyticsPage({ siteId, client, period, onPeriodChange }: AnalyticsPageProps) {
   const queryClient = useQueryClient();
+  const { adminSecret } = useAuth();
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
 
@@ -38,12 +42,25 @@ export function AnalyticsPage({ siteId, client, period, onPeriodChange }: Analyt
     ? { period, dateFrom: new Date(dateFrom).toISOString(), dateTo: new Date(dateTo + 'T23:59:59').toISOString() }
     : { period };
 
+  const { data: site } = useQuery({
+    queryKey: ['site', siteId],
+    queryFn: async () => {
+      const sitesClient = createSitesClient({
+        baseUrl: import.meta.env.VITE_LITEMETRICS_URL || '',
+        adminSecret: adminSecret!,
+      });
+      const result = await sitesClient.getSite(siteId);
+      return result.site as Site;
+    },
+    enabled: !!adminSecret,
+  });
+
   const { data, isLoading: loading, error } = useQuery({
     queryKey: queryKeys.analytics(siteId, period, dateFrom, dateTo),
     queryFn: async () => {
       client.setSiteId(siteId);
       const [overviewResults, ...topResults] = await Promise.all([
-        client.getOverview(['pageviews', 'visitors', 'sessions', 'events'], { ...statsOptions, compare: true }),
+        client.getOverview(['pageviews', 'visitors', 'sessions', 'events', 'conversions'], { ...statsOptions, compare: true }),
         ...topMetrics.map((t) => client.getStats(t.metric, { ...statsOptions, limit: 10 })),
       ]);
 
@@ -62,6 +79,8 @@ export function AnalyticsPage({ siteId, client, period, onPeriodChange }: Analyt
 
   const overview = data?.overview ?? {};
   const tops = data?.tops ?? {};
+  const conversionEvents = site?.conversionEvents ?? [];
+  const showConversionWarning = !!site && conversionEvents.length === 0;
 
   // Build pie chart data from top lists
   const browserPieData = (tops.top_browsers?.data ?? []).map((d) => ({ name: d.key, value: d.value }));
@@ -108,7 +127,7 @@ export function AnalyticsPage({ siteId, client, period, onPeriodChange }: Analyt
       <TimeSeriesChart client={client} siteId={siteId} period={effectivePeriod} />
 
       {/* Overview Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-5 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-5 mb-6">
         <StatCard
           title="Pageviews"
           value={overview.pageviews?.total ?? 0}
@@ -133,7 +152,18 @@ export function AnalyticsPage({ siteId, client, period, onPeriodChange }: Analyt
           changePercent={overview.events?.changePercent}
           loading={loading}
         />
+        <StatCard
+          title="Conversions"
+          value={overview.conversions?.total ?? 0}
+          changePercent={overview.conversions?.changePercent}
+          loading={loading}
+        />
       </div>
+      {showConversionWarning && (
+        <div className="mb-6 p-3 rounded-lg border border-amber-200 bg-amber-50 text-amber-700 text-sm">
+          Conversions are not configured for this site. Add event names in Site Settings to start tracking conversions.
+        </div>
+      )}
 
       {/* World Map */}
       <WorldMap client={client} siteId={siteId} period={effectivePeriod} />

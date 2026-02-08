@@ -87,7 +87,7 @@ Use specific widgets instead of the full dashboard:
 ```tsx
 import {
   StatCards, TimeSeriesChart, TopPages, TopReferrers,
-  TopCountries, BrowsersChart, DevicesChart, WorldMap,
+  TopCountries, TopConversions, BrowsersChart, DevicesChart, WorldMap,
   PeriodSelector, ExportButton,
 } from '@litemetrics/ui';
 
@@ -98,6 +98,7 @@ import {
   <TopPages limit={10} />
   <TopReferrers />
   <TopCountries />
+  <TopConversions />
   <BrowsersChart />
   <DevicesChart />
   <WorldMap />
@@ -117,7 +118,7 @@ const { data, isLoading } = useStats('pageviews', { period: '7d' });
 const timeseries = useTimeSeries('visitors', { period: '30d' });
 
 // Overview with comparison
-const overview = useOverview({ period: '7d', compare: true });
+const overview = useOverview({ period: '7d', compare: true }); // includes conversions by default
 
 // Access provider context
 const { client, period, setPeriod } = useLitemetricsUI();

@@ -127,4 +127,24 @@ docker run -p 3002:3002 \
 - **Multi-tenant**: Single database with `site_id` isolation
 - **ClickHouse default**: Columnar storage optimized for analytics queries. MongoDB also supported.
 - **~3KB tracker**: The browser tracker is ~3KB gzipped with all auto-tracking features
-- Available metrics: `pageviews`, `visitors`, `sessions`, `events`, `top_pages`, `top_referrers`, `top_countries`, `top_cities`, `top_events`, `top_devices`, `top_browsers`, `top_os`, `timeseries`, `retention`
+- Available metrics: `pageviews`, `visitors`, `sessions`, `events`, `conversions`, `top_pages`, `top_referrers`, `top_countries`, `top_cities`, `top_events`, `top_conversions`, `top_devices`, `top_browsers`, `top_os`, `timeseries`, `retention`
+
+## Conversions (by Event Name)
+
+Conversions are just custom events whose names are listed in the site's `conversionEvents`.
+
+Update a site (admin secret required):
+
+```bash
+curl -X PUT https://your-server.com/api/sites/<siteId> \
+  -H "Content-Type: application/json" \
+  -H "X-Litemetrics-Admin-Secret: <admin_secret>" \
+  -d '{"conversionEvents":["Signup","Purchase"]}'
+```
+
+Query conversion metrics:
+
+```ts
+const conversions = await client.getStats('conversions', { period: '30d' });
+const topConversions = await client.getStats('top_conversions', { period: '30d', limit: 10 });
+```

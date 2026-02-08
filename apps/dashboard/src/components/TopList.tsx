@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { QueryDataPoint } from '@litemetrics/client';
 import { getBrowserIcon, getOSIcon, getDeviceIcon, getReferrerIcon, countryToFlag } from './icons';
 
-export type TopListType = 'pages' | 'referrers' | 'countries' | 'events' | 'browsers' | 'devices';
+export type TopListType = 'pages' | 'referrers' | 'countries' | 'events' | 'conversions' | 'browsers' | 'devices';
 
 interface TopListProps {
   title: string;
@@ -30,6 +30,12 @@ function getIcon(type: TopListType | undefined, key: string): React.ReactNode {
       return (
         <svg className="w-4 h-4 flex-shrink-0 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 10V3L4 14h7v7l9-11h-7z" />
+        </svg>
+      );
+    case 'conversions':
+      return (
+        <svg className="w-4 h-4 flex-shrink-0 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
       );
     case 'browsers':

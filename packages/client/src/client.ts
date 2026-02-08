@@ -31,6 +31,7 @@ export interface RetentionOptions {
 export interface EventsListOptions {
   type?: EventType;
   eventName?: string;
+  eventNames?: string[];
   visitorId?: string;
   userId?: string;
   period?: Period;
@@ -113,7 +114,7 @@ export class LitemetricsClient {
 
   /** Fetch multiple metrics in parallel */
   async getOverview(
-    metrics: Metric[] = ['pageviews', 'visitors', 'sessions', 'events'],
+    metrics: Metric[] = ['pageviews', 'visitors', 'sessions', 'events', 'conversions'],
     options?: StatsOptions,
   ): Promise<Record<Metric, QueryResult>> {
     const results = await Promise.all(
@@ -150,6 +151,7 @@ export class LitemetricsClient {
 
     if (options?.type) params.type = options.type;
     if (options?.eventName) params.eventName = options.eventName;
+    if (options?.eventNames && options.eventNames.length > 0) params.eventNames = options.eventNames.join(',');
     if (options?.visitorId) params.visitorId = options.visitorId;
     if (options?.userId) params.userId = options.userId;
     if (options?.period) params.period = options.period;
@@ -185,6 +187,8 @@ export class LitemetricsClient {
     const params: Record<string, string> = { siteId: this.siteId };
 
     if (options?.type) params.type = options.type;
+    if (options?.eventName) params.eventName = options.eventName;
+    if (options?.eventNames && options.eventNames.length > 0) params.eventNames = options.eventNames.join(',');
     if (options?.period) params.period = options.period;
     if (options?.dateFrom) params.dateFrom = options.dateFrom;
     if (options?.dateTo) params.dateTo = options.dateTo;

@@ -157,6 +157,7 @@ export interface Site {
   name: string;
   domain?: string;
   allowedOrigins?: string[];
+  conversionEvents?: string[];
   createdAt: string;
   updatedAt: string;
 }
@@ -165,12 +166,14 @@ export interface CreateSiteRequest {
   name: string;
   domain?: string;
   allowedOrigins?: string[];
+  conversionEvents?: string[];
 }
 
 export interface UpdateSiteRequest {
   name?: string;
   domain?: string;
   allowedOrigins?: string[];
+  conversionEvents?: string[];
 }
 
 // ─── DB Adapter Interface ───────────────────────────────────
@@ -206,11 +209,13 @@ export type Metric =
   | 'visitors'
   | 'sessions'
   | 'events'
+  | 'conversions'
   | 'top_pages'
   | 'top_referrers'
   | 'top_countries'
   | 'top_cities'
   | 'top_events'
+  | 'top_conversions'
   | 'top_devices'
   | 'top_browsers'
   | 'top_os';
@@ -226,6 +231,7 @@ export interface QueryParams {
   filters?: Record<string, string>;
   limit?: number;
   compare?: boolean;
+  conversionEvents?: string[];
 }
 
 export interface QueryResult {
@@ -274,6 +280,7 @@ export interface EventListParams {
   siteId: string;
   type?: EventType;
   eventName?: string;
+  eventNames?: string[];
   visitorId?: string;
   userId?: string;
   period?: Period;

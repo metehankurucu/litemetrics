@@ -136,6 +136,25 @@ GET /api/stats?site_id=xxx&metric=top_pages&period=30d&limit=10
 GET /api/stats?site_id=xxx&metric=timeseries&period=7d&granularity=day
 ```
 
-Available metrics: `pageviews`, `visitors`, `sessions`, `events`, `top_pages`, `top_referrers`, `top_countries`, `top_cities`, `top_events`, `top_devices`, `top_browsers`, `top_os`, `timeseries`, `retention`
+Available metrics: `pageviews`, `visitors`, `sessions`, `events`, `conversions`, `top_pages`, `top_referrers`, `top_countries`, `top_cities`, `top_events`, `top_conversions`, `top_devices`, `top_browsers`, `top_os`, `timeseries`, `retention`
+
+### Event List Filters (/api/events)
+
+`eventName` = single name, `eventNames` = comma-separated list.
+
+```
+GET /api/events?siteId=site_abc&type=event&eventNames=Signup,Purchase&period=7d
+```
+
+### Conversion Events (Site Settings)
+
+Conversions are custom events whose names match `conversionEvents` in the site record.
+
+```
+PUT /api/sites/:id
+{
+  "conversionEvents": ["Signup", "Purchase"]
+}
+```
 
 Periods: `1h`, `24h`, `7d`, `30d`, `90d`, or custom date range with `start` and `end` params.

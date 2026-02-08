@@ -11,7 +11,7 @@ export function StatCards({ period, className }: StatCardsProps) {
   const { data: overview, isLoading: loading } = useOverview({ period });
 
   return (
-    <div className={`grid grid-cols-2 md:grid-cols-4 gap-5 ${className ?? ''}`}>
+    <div className={`grid grid-cols-2 md:grid-cols-5 gap-5 ${className ?? ''}`}>
       <StatCard
         title="Pageviews"
         value={overview?.pageviews?.total ?? 0}
@@ -34,6 +34,12 @@ export function StatCards({ period, className }: StatCardsProps) {
         title="Events"
         value={overview?.events?.total ?? 0}
         changePercent={overview?.events?.changePercent}
+        loading={loading}
+      />
+      <StatCard
+        title="Conversions"
+        value={overview?.conversions?.total ?? 0}
+        changePercent={overview?.conversions?.changePercent}
         loading={loading}
       />
     </div>

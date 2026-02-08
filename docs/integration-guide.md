@@ -329,11 +329,16 @@ const client = createClient({
   secretKey: 'YOUR_SECRET_KEY',
 });
 
+// Configure conversions per site via admin API (once)
+// PUT /api/sites/:siteId { conversionEvents: ["Signup", "Purchase"] }
+
 const pageviews = await client.getPageviews({ period: '7d' });
 const overview = await client.getOverview(
-  ['pageviews', 'visitors', 'sessions'],
+  ['pageviews', 'visitors', 'sessions', 'conversions'],
   { period: '30d' }
 );
+const conversions = await client.getStats('conversions', { period: '30d' });
+const topConversions = await client.getStats('top_conversions', { period: '30d', limit: 10 });
 const timeseries = await client.getTimeSeries('pageviews', { period: '30d' });
 const retention = await client.getRetention({ period: '90d', weeks: 8 });
 ```

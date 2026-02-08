@@ -23,6 +23,7 @@ export {
   TopReferrers,
   TopCountries,
   TopEvents,
+  TopConversions,
   TopBrowsers,
   TopDevices,
   BrowsersChart,

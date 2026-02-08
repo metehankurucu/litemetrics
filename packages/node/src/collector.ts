@@ -242,7 +242,15 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
           return;
         }
 
-        const result = await db.query(params);
+        const isConversionMetric = params.metric === 'conversions' || params.metric === 'top_conversions';
+        let result: QueryResult;
+        if (isConversionMetric) {
+          const site = await db.getSite(params.siteId);
+          const conversionEvents = site?.conversionEvents ?? [];
+          result = await db.query({ ...params, conversionEvents });
+        } else {
+          result = await db.query(params);
+        }
         sendJson(res, 200, result);
       } catch (err) {
         sendJson(res, 500, { ok: false, error: err instanceof Error ? err.message : 'Internal error' });
@@ -354,10 +362,15 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
           return;
         }
 
+        const eventNames = typeof q.eventNames === 'string'
+          ? q.eventNames.split(',').map((s: string) => s.trim()).filter(Boolean)
+          : undefined;
+
         const params: EventListParams = {
           siteId: q.siteId as string,
           type: q.type as EventListParams['type'],
           eventName: q.eventName as string | undefined,
+          eventNames,
           visitorId: q.visitorId as string | undefined,
           userId: q.userId as string | undefined,
           period: q.period as EventListParams['period'],
@@ -409,9 +422,15 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
 
         // GET /api/users/:visitorId/events
         if (visitorId && action === 'events') {
+          const eventNames = typeof q.eventNames === 'string'
+            ? q.eventNames.split(',').map((s: string) => s.trim()).filter(Boolean)
+            : undefined;
+
           const params: EventListParams = {
             siteId: q.siteId as string,
             type: q.type as EventListParams['type'],
+            eventName: q.eventName as string | undefined,
+            eventNames,
             period: q.period as EventListParams['period'],
             dateFrom: q.dateFrom as string | undefined,
             dateTo: q.dateTo as string | undefined,

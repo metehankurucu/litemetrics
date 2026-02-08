@@ -187,7 +187,7 @@ export function SiteManager() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: async ({ siteId, data }: { siteId: string; data: { allowedOrigins?: string[] } }) => {
+    mutationFn: async ({ siteId, data }: { siteId: string; data: { allowedOrigins?: string[]; conversionEvents?: string[] } }) => {
       const { site } = await sitesClient.updateSite(siteId, data);
       return site;
     },
@@ -352,6 +352,13 @@ export function SiteManager() {
               saving={updateMutation.isPending}
             />
 
+            {/* Conversion Events */}
+            <ConversionEvents
+              events={selected.conversionEvents ?? []}
+              onUpdate={(events) => updateMutation.mutate({ siteId: selected.siteId, data: { conversionEvents: events } })}
+              saving={updateMutation.isPending}
+            />
+
             {/* Setup Guide */}
             <SetupGuide site={selected} />
           </div>
@@ -417,6 +424,66 @@ function AllowedHostnames({ hostnames, onUpdate, saving }: {
         </button>
       </div>
       <p className="text-xs text-zinc-400 mt-1.5">Only events from these hostnames will be recorded. Leave empty to allow all.</p>
+    </div>
+  );
+}
+
+function ConversionEvents({ events, onUpdate, saving }: {
+  events: string[];
+  onUpdate: (events: string[]) => void;
+  saving: boolean;
+}) {
+  const [input, setInput] = useState('');
+
+  const handleAdd = () => {
+    const val = input.trim();
+    if (!val || events.includes(val)) return;
+    onUpdate([...events, val]);
+    setInput('');
+  };
+
+  const handleRemove = (name: string) => {
+    onUpdate(events.filter((e) => e !== name));
+  };
+
+  return (
+    <div>
+      <p className="text-xs text-zinc-400 mb-2">Conversion Events</p>
+      <div className="flex flex-wrap gap-2 mb-2">
+        {events.map((e) => (
+          <span key={e} className="inline-flex items-center gap-1 bg-emerald-50 border border-emerald-200 rounded-lg px-2.5 py-1 text-sm font-mono text-emerald-700">
+            {e}
+            <button
+              onClick={() => handleRemove(e)}
+              className="text-emerald-400 hover:text-red-500 transition-colors ml-0.5"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </span>
+        ))}
+        {events.length === 0 && (
+          <span className="text-xs text-zinc-400 italic">No conversions configured</span>
+        )}
+      </div>
+      <div className="flex gap-2">
+        <input
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
+          placeholder="Signup"
+          className="flex-1 bg-white border border-zinc-300 rounded-lg px-3 py-1.5 text-sm font-mono focus:outline-none focus:border-emerald-500"
+        />
+        <button
+          onClick={handleAdd}
+          disabled={saving}
+          className="text-xs bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-400 text-white px-3 py-1.5 rounded-lg transition-colors"
+        >
+          {saving ? 'Saving...' : 'Add'}
+        </button>
+      </div>
+      <p className="text-xs text-zinc-400 mt-1.5">Events with these exact names count as conversions.</p>
     </div>
   );
 }

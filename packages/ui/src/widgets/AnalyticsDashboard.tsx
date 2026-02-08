@@ -8,6 +8,7 @@ import { TopPages } from './TopPages';
 import { TopReferrers } from './TopReferrers';
 import { TopCountries } from './TopCountries';
 import { TopEvents } from './TopEvents';
+import { TopConversions } from './TopConversions';
 import { TopBrowsers } from './TopBrowsers';
 import { TopDevices } from './TopDevices';
 import { BrowsersChart } from './BrowsersChart';
@@ -78,6 +79,7 @@ export function AnalyticsDashboard({
         <TopReferrers period={effectivePeriod} />
         <TopCountries period={effectivePeriod} />
         <TopEvents period={effectivePeriod} />
+        <TopConversions period={effectivePeriod} />
         <TopBrowsers period={effectivePeriod} />
         <TopDevices period={effectivePeriod} />
       </div>

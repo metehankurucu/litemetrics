@@ -80,6 +80,8 @@ Query analytics metrics for a site.
 | `top_countries` | Visitors by country |
 | `top_cities` | Visitors by city |
 | `top_events` | Most triggered events |
+| `conversions` | Total conversion count (events matching site conversion list) |
+| `top_conversions` | Most triggered conversion events |
 | `top_devices` | Device type breakdown |
 | `top_browsers` | Browser breakdown |
 | `top_os` | OS breakdown |
@@ -182,8 +184,10 @@ List tracked events with pagination.
 | `siteId` | string | -- | Site identifier |
 | `period` | string | `7d` | Time period |
 | `type` | string | -- | Filter by event type (`pageview`, `event`, `identify`) |
-| `page` | number | 1 | Page number |
+| `eventName` | string | -- | Filter by a single event name |
+| `eventNames` | string | -- | Comma-separated list of event names |
 | `limit` | number | 50 | Events per page |
+| `offset` | number | 0 | Pagination offset |
 
 **Response:**
 
@@ -252,7 +256,8 @@ All endpoints require `X-Litemetrics-Admin-Secret` header.
 {
   "name": "My Website",
   "domain": "mysite.com",
-  "allowedOrigins": ["https://mysite.com"]
+  "allowedOrigins": ["https://mysite.com"],
+  "conversionEvents": ["Signup", "Purchase"]
 }
 ```
 

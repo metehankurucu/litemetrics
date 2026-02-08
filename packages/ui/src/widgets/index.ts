@@ -4,6 +4,7 @@ export { TopPages } from './TopPages';
 export { TopReferrers } from './TopReferrers';
 export { TopCountries } from './TopCountries';
 export { TopEvents } from './TopEvents';
+export { TopConversions } from './TopConversions';
 export { TopBrowsers } from './TopBrowsers';
 export { TopDevices } from './TopDevices';
 export { BrowsersChart } from './BrowsersChart';

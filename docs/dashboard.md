@@ -35,11 +35,11 @@ Output in `apps/dashboard/dist/`. The `@litemetrics/server` package serves this 
 ### Analytics (`/`)
 
 Main overview page:
-- Stat cards: pageviews, visitors, sessions, events (with % change vs previous period)
+- Stat cards: pageviews, visitors, sessions, events, conversions (with % change vs previous period)
 - Time series chart (pageviews/visitors/sessions over time)
 - World map showing visitor distribution by country
 - Pie charts for browser and device breakdown
-- Top lists: pages, referrers, countries, events, browsers, devices
+- Top lists: pages, referrers, countries, events, conversions, browsers, devices
 - Period selector: 7d, 14d, 30d, 90d, or custom date range
 - Export data as CSV
 
@@ -54,7 +54,7 @@ Live monitoring:
 
 Event explorer:
 - Paginated list of all tracked events
-- Filter by event type (pageview, event, identify)
+- Filter by event type (pageview, event, identify, conversions)
 - Click through to user details
 - Export as CSV
 
@@ -81,6 +81,7 @@ Site management:
 - Create, edit, delete tracked sites
 - View site IDs and secret keys
 - Regenerate secret keys
+- Configure conversion event names per site
 
 ## Navigation
 

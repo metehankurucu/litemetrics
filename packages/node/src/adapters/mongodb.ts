@@ -40,6 +40,7 @@ interface SiteDocument {
   name: string;
   domain: string | null;
   allowed_origins: string[] | null;
+  conversion_events: string[] | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -166,6 +167,21 @@ export class MongoDBAdapter implements DBAdapter {
         data = [{ key: 'events', value: total }];
         break;
       }
+      case 'conversions': {
+        const conversionEvents = q.conversionEvents ?? [];
+        if (conversionEvents.length === 0) {
+          total = 0;
+          data = [{ key: 'conversions', value: 0 }];
+          break;
+        }
+        const [result] = await this.collection.aggregate<{ count: number }>([
+          { $match: { ...baseMatch, type: 'event', event_name: { $in: conversionEvents } } },
+          { $count: 'count' },
+        ]).toArray();
+        total = result?.count ?? 0;
+        data = [{ key: 'conversions', value: total }];
+        break;
+      }
 
       case 'top_pages': {
         const rows = await this.collection.aggregate<{ _id: string; value: number }>([
@@ -228,6 +244,23 @@ export class MongoDBAdapter implements DBAdapter {
         total = data.reduce((sum, d) => sum + d.value, 0);
         break;
       }
+      case 'top_conversions': {
+        const conversionEvents = q.conversionEvents ?? [];
+        if (conversionEvents.length === 0) {
+          total = 0;
+          data = [];
+          break;
+        }
+        const rows = await this.collection.aggregate<{ _id: string; value: number }>([
+          { $match: { ...baseMatch, type: 'event', event_name: { $in: conversionEvents } } },
+          { $group: { _id: '$event_name', value: { $sum: 1 } } },
+          { $sort: { value: -1 } },
+          { $limit: limit },
+        ]).toArray();
+        data = rows.map((r) => ({ key: r._id, value: r.value }));
+        total = data.reduce((sum, d) => sum + d.value, 0);
+        break;
+      }
 
       case 'top_devices': {
         const rows = await this.collection.aggregate<{ _id: string; value: number }>([
@@ -272,7 +305,7 @@ export class MongoDBAdapter implements DBAdapter {
     const result: QueryResult = { metric: q.metric, period, data, total };
 
     // Comparison with previous period
-    if (q.compare && ['pageviews', 'visitors', 'sessions', 'events'].includes(q.metric)) {
+    if (q.compare && ['pageviews', 'visitors', 'sessions', 'events', 'conversions'].includes(q.metric)) {
       const prevRange = previousPeriodRange(dateRange);
       const prevResult = await this.query({
         ...q,
@@ -443,7 +476,11 @@ export class MongoDBAdapter implements DBAdapter {
     const match: Record<string, unknown> = { site_id: params.siteId };
 
     if (params.type) match.type = params.type;
-    if (params.eventName) match.event_name = params.eventName;
+    if (params.eventName) {
+      match.event_name = params.eventName;
+    } else if (params.eventNames && params.eventNames.length > 0) {
+      match.event_name = { $in: params.eventNames };
+    }
     if (params.visitorId) match.visitor_id = params.visitorId;
     if (params.userId) match.user_id = params.userId;
 
@@ -612,6 +649,7 @@ export class MongoDBAdapter implements DBAdapter {
       name: data.name,
       domain: data.domain ?? null,
       allowed_origins: data.allowedOrigins ?? null,
+      conversion_events: data.conversionEvents ?? null,
       created_at: now,
       updated_at: now,
     };
@@ -639,6 +677,7 @@ export class MongoDBAdapter implements DBAdapter {
     if (data.name !== undefined) updates.name = data.name;
     if (data.domain !== undefined) updates.domain = data.domain || null;
     if (data.allowedOrigins !== undefined) updates.allowed_origins = data.allowedOrigins.length > 0 ? data.allowedOrigins : null;
+    if (data.conversionEvents !== undefined) updates.conversion_events = data.conversionEvents.length > 0 ? data.conversionEvents : null;
 
     const result = await this.sites.findOneAndUpdate(
       { site_id: siteId },
@@ -675,6 +714,7 @@ export class MongoDBAdapter implements DBAdapter {
       name: doc.name,
       domain: doc.domain ?? undefined,
       allowedOrigins: doc.allowed_origins ?? undefined,
+      conversionEvents: doc.conversion_events ?? undefined,
       createdAt: doc.created_at.toISOString(),
       updatedAt: doc.updated_at.toISOString(),
     };

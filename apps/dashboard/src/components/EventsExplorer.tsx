@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import type { LitemetricsClient, EventListItem, EventType, Period } from '@litemetrics/client';
+import type { LitemetricsClient, EventListItem, EventType, Period, Site } from '@litemetrics/client';
+import { createSitesClient } from '@litemetrics/client';
 import { queryKeys } from '../hooks/useAnalytics';
 import { getBrowserIcon, getOSIcon, getDeviceIcon, countryToFlag } from './icons';
 import { ExportButton } from './ExportButton';
+import { useAuth } from '../auth';
 
 interface EventsExplorerProps {
   siteId: string;
@@ -11,10 +13,13 @@ interface EventsExplorerProps {
   onUserClick?: (visitorId: string) => void;
 }
 
-const typeFilters: { value: EventType | ''; label: string }[] = [
+type ExtendedEventType = EventType | 'conversion' | '';
+
+const typeFilters: { value: ExtendedEventType; label: string }[] = [
   { value: '', label: 'All Types' },
   { value: 'pageview', label: 'Pageviews' },
   { value: 'event', label: 'Events' },
+  { value: 'conversion', label: 'Conversions' },
   { value: 'identify', label: 'Identify' },
 ];
 
@@ -27,8 +32,9 @@ const periodFilters: { value: Period; label: string }[] = [
 ];
 
 export function EventsExplorer({ siteId, client, onUserClick }: EventsExplorerProps) {
+  const { adminSecret } = useAuth();
   // Filters
-  const [typeFilter, setTypeFilter] = useState<EventType | ''>('');
+  const [typeFilter, setTypeFilter] = useState<ExtendedEventType>('');
   const [eventNameFilter, setEventNameFilter] = useState('');
   const [period, setPeriod] = useState<Period>('24h');
   const [page, setPage] = useState(0);
@@ -36,13 +42,32 @@ export function EventsExplorer({ siteId, client, onUserClick }: EventsExplorerPr
 
   const limit = 30;
 
+  const { data: site } = useQuery({
+    queryKey: ['site', siteId],
+    queryFn: async () => {
+      const sitesClient = createSitesClient({
+        baseUrl: import.meta.env.VITE_LITEMETRICS_URL || '',
+        adminSecret: adminSecret!,
+      });
+      const result = await sitesClient.getSite(siteId);
+      return result.site as Site;
+    },
+    enabled: !!adminSecret,
+  });
+
+  const conversionEvents = site?.conversionEvents ?? [];
+  const isConversionFilter = typeFilter === 'conversion';
+  const effectiveType = isConversionFilter ? 'event' : (typeFilter || undefined);
+  const eventNames = isConversionFilter ? conversionEvents : undefined;
+
   const { data, isLoading: loading, error } = useQuery({
-    queryKey: queryKeys.events(siteId, { type: typeFilter, eventName: eventNameFilter, period, page }),
+    queryKey: queryKeys.events(siteId, { type: effectiveType, eventName: eventNameFilter, eventNames, period, page }),
     queryFn: async () => {
       client.setSiteId(siteId);
       const result = await client.getEventsList({
-        type: typeFilter || undefined,
+        type: effectiveType,
         eventName: eventNameFilter || undefined,
+        eventNames,
         period,
         limit,
         offset: page * limit,
@@ -57,7 +82,7 @@ export function EventsExplorer({ siteId, client, onUserClick }: EventsExplorerPr
   const totalPages = Math.ceil(total / limit);
 
   // Reset page when filters change
-  const handleTypeChange = (v: EventType | '') => { setTypeFilter(v); setPage(0); };
+  const handleTypeChange = (v: ExtendedEventType) => { setTypeFilter(v); setPage(0); };
   const handleNameChange = (v: string) => { setEventNameFilter(v); setPage(0); };
   const handlePeriodChange = (v: Period) => { setPeriod(v); setPage(0); };
 
@@ -68,7 +93,7 @@ export function EventsExplorer({ siteId, client, onUserClick }: EventsExplorerPr
         {/* Type filter */}
         <select
           value={typeFilter}
-          onChange={(e) => handleTypeChange(e.target.value as EventType | '')}
+          onChange={(e) => handleTypeChange(e.target.value as ExtendedEventType)}
           className="bg-white border border-zinc-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-indigo-500"
         >
           {typeFilters.map((f) => (
@@ -361,4 +386,3 @@ function EventDetail({ event, onUserClick }: { event: EventListItem; onUserClick
     </div>
   );
 }
-

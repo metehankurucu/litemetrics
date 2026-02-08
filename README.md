@@ -169,7 +169,7 @@ This gives your AI agent full knowledge of Litemetrics integration patterns for 
 
 ## Metrics
 
-`pageviews` `visitors` `sessions` `events` `top_pages` `top_referrers` `top_countries` `top_cities` `top_events` `top_devices` `top_browsers` `top_os` `timeseries` `retention`
+`pageviews` `visitors` `sessions` `events` `conversions` `top_pages` `top_referrers` `top_countries` `top_cities` `top_events` `top_conversions` `top_devices` `top_browsers` `top_os` `timeseries` `retention`
 
 ## Docs
 

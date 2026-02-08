@@ -12,7 +12,7 @@ interface UseOverviewOptions {
 export function useOverview(options?: UseOverviewOptions) {
   const { client, siteId, period: ctxPeriod, dateFrom, dateTo, staleTime } = useLitemetricsUI();
   const period = options?.period ?? ctxPeriod;
-  const metrics = options?.metrics ?? ['pageviews', 'visitors', 'sessions', 'events'] as Metric[];
+  const metrics = options?.metrics ?? ['pageviews', 'visitors', 'sessions', 'events', 'conversions'] as Metric[];
 
   const statsOptions = period === 'custom' && dateFrom && dateTo
     ? { period, dateFrom: new Date(dateFrom).toISOString(), dateTo: new Date(dateTo + 'T23:59:59').toISOString(), compare: true }
