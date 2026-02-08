@@ -82,6 +82,18 @@ export function AnalyticsPage({ siteId, client, period, onPeriodChange }: Analyt
   const conversionEvents = site?.conversionEvents ?? [];
   const showConversionWarning = !!site && conversionEvents.length === 0;
 
+  const { data: liveData, isLoading: liveLoading } = useQuery({
+    queryKey: queryKeys.live(siteId),
+    queryFn: async () => {
+      client.setSiteId(siteId);
+      const result = await client.getStats('visitors', { period: '1h' });
+      return { activeVisitors: result.total };
+    },
+    refetchInterval: 10_000,
+  });
+
+  const activeVisitors = liveData?.activeVisitors ?? 0;
+
   // Build pie chart data from top lists
   const browserPieData = (tops.top_browsers?.data ?? []).map((d) => ({ name: d.key, value: d.value }));
   const devicePieData = (tops.top_devices?.data ?? []).map((d) => ({ name: d.key, value: d.value }));
@@ -103,6 +115,17 @@ export function AnalyticsPage({ siteId, client, period, onPeriodChange }: Analyt
           onDateFromChange={setDateFrom}
           onDateToChange={setDateTo}
         />
+        <div className="flex items-center gap-2 text-xs text-zinc-500 bg-white border border-zinc-200 rounded-full px-3 py-1.5">
+          <span className="relative flex h-2 w-2">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
+          </span>
+          {liveLoading ? (
+            <span className="inline-block h-3 w-12 bg-zinc-100 rounded" />
+          ) : (
+            <span className="tabular-nums">{activeVisitors} live (1h)</span>
+          )}
+        </div>
         <div className="flex items-center gap-2">
           <ExportButton data={exportData} filename={`analytics-${siteId}-${period}`} />
           <button

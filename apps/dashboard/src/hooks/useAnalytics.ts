@@ -28,6 +28,8 @@ export const queryKeys = {
     ['retention', siteId, period, weeks] as const,
   realtime: (siteId: string) =>
     ['realtime', siteId] as const,
+  live: (siteId: string) =>
+    ['live', siteId] as const,
   sites: () => ['sites'] as const,
 };
 

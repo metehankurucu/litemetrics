@@ -36,6 +36,7 @@ export function EventsExplorer({ siteId, client, onUserClick }: EventsExplorerPr
   // Filters
   const [typeFilter, setTypeFilter] = useState<ExtendedEventType>('');
   const [eventNameFilter, setEventNameFilter] = useState('');
+  const [selectedEventName, setSelectedEventName] = useState('');
   const [period, setPeriod] = useState<Period>('24h');
   const [page, setPage] = useState(0);
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -60,6 +61,18 @@ export function EventsExplorer({ siteId, client, onUserClick }: EventsExplorerPr
   const effectiveType = isConversionFilter ? 'event' : (typeFilter || undefined);
   const eventNames = isConversionFilter ? conversionEvents : undefined;
 
+  const { data: topEventsData } = useQuery({
+    queryKey: ['topEvents', siteId, period, typeFilter, isConversionFilter ? conversionEvents.join('|') : ''],
+    queryFn: async () => {
+      client.setSiteId(siteId);
+      if (isConversionFilter) {
+        return conversionEvents.map((name) => ({ key: name }));
+      }
+      const result = await client.getStats('top_events', { period, limit: 50 });
+      return result.data;
+    },
+  });
+
   const { data, isLoading: loading, error } = useQuery({
     queryKey: queryKeys.events(siteId, { type: effectiveType, eventName: eventNameFilter, eventNames, period, page }),
     queryFn: async () => {
@@ -82,8 +95,17 @@ export function EventsExplorer({ siteId, client, onUserClick }: EventsExplorerPr
   const totalPages = Math.ceil(total / limit);
 
   // Reset page when filters change
-  const handleTypeChange = (v: ExtendedEventType) => { setTypeFilter(v); setPage(0); };
-  const handleNameChange = (v: string) => { setEventNameFilter(v); setPage(0); };
+  const handleTypeChange = (v: ExtendedEventType) => {
+    setTypeFilter(v);
+    setEventNameFilter('');
+    setSelectedEventName('');
+    setPage(0);
+  };
+  const handleNameChange = (v: string) => {
+    setEventNameFilter(v);
+    if (!v || v !== selectedEventName) setSelectedEventName('');
+    setPage(0);
+  };
   const handlePeriodChange = (v: Period) => { setPeriod(v); setPage(0); };
 
   return (
@@ -109,6 +131,24 @@ export function EventsExplorer({ siteId, client, onUserClick }: EventsExplorerPr
           onChange={(e) => handleNameChange(e.target.value)}
           className="bg-white border border-zinc-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-indigo-500 w-48"
         />
+
+        {/* Event name select */}
+        <select
+          value={selectedEventName}
+          onChange={(e) => {
+            const v = e.target.value;
+            setSelectedEventName(v);
+            setEventNameFilter(v);
+            setPage(0);
+          }}
+          disabled={typeFilter === 'pageview' || typeFilter === 'identify'}
+          className="bg-white border border-zinc-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-indigo-500"
+        >
+          <option value="">{isConversionFilter ? 'All Conversions' : 'All Events'}</option>
+          {(topEventsData ?? []).map((e) => (
+            <option key={e.key} value={e.key}>{e.key}</option>
+          ))}
+        </select>
 
         {/* Period */}
         <div className="flex gap-1 bg-zinc-100 rounded-lg p-1 border border-zinc-200">
