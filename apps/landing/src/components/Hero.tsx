@@ -40,7 +40,7 @@ export function Hero() {
           style={{ animationDelay: '0.4s', opacity: 0 }}
         >
           <a
-            href="#get-started"
+            href="#features"
             className="group relative px-8 py-3.5 rounded-xl bg-brand-600 text-white font-medium text-base hover:bg-brand-500 transition-all hover:shadow-lg hover:shadow-brand-500/25"
           >
             Get Started
