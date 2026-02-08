@@ -4,7 +4,7 @@ import type { LitemetricsClient, UserDetail, EventListItem } from '@litemetrics/
 import { queryKeys } from '../hooks/useAnalytics';
 import { getBrowserIcon, getOSIcon, getDeviceIcon } from './icons';
 import { ExportButton } from './ExportButton';
-import { Activity, Eye, Layers, Calendar, User, Monitor, Tag, Clock } from 'lucide-react';
+import { Activity, Eye, Layers, Calendar, User, Monitor, Tag, Clock, Smartphone } from 'lucide-react';
 
 interface UsersExplorerProps {
   siteId: string;
@@ -131,24 +131,34 @@ function UsersList({ siteId, client, onSelect }: { siteId: string; client: Litem
                 </td>
               </tr>
             ) : (
-              users.map((user) => (
+              users.map((user) => {
+                // Use userId as identifier for merged profiles, fallback to visitorId
+                const identifier = user.userId || user.visitorId;
+                const deviceCount = user.visitorIds?.length ?? 1;
+                return (
                 <tr
-                  key={user.visitorId}
+                  key={identifier}
                   className="border-b border-zinc-50 dark:border-zinc-800 hover:bg-zinc-50/50 dark:hover:bg-zinc-800/50 cursor-pointer transition-colors"
-                  onClick={() => onSelect(user.visitorId)}
+                  onClick={() => onSelect(identifier)}
                 >
                   <td className="px-4 py-2.5">
                     <div className="flex items-center gap-2.5">
                       <div
                         className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-medium flex-shrink-0"
-                        style={{ backgroundColor: hashColor(user.visitorId) }}
+                        style={{ backgroundColor: hashColor(identifier) }}
                       >
                         {(user.userId || user.visitorId).slice(0, 2).toUpperCase()}
                       </div>
                       <div>
-                        <div className="text-sm font-medium text-zinc-800 dark:text-zinc-200">
+                        <div className="text-sm font-medium text-zinc-800 dark:text-zinc-200 flex items-center gap-1.5">
                           {user.userId || (
                             <span className="text-zinc-400 dark:text-zinc-500">Anonymous</span>
+                          )}
+                          {deviceCount > 1 && (
+                            <span className="inline-flex items-center gap-0.5 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
+                              <Smartphone className="w-2.5 h-2.5" />
+                              {deviceCount}
+                            </span>
                           )}
                         </div>
                         <div className="text-xs text-zinc-400 dark:text-zinc-500 font-mono truncate max-w-[140px]">
@@ -175,7 +185,8 @@ function UsersList({ siteId, client, onSelect }: { siteId: string; client: Litem
                     ) : '—'}
                   </td>
                 </tr>
-              ))
+                );
+              })
             )}
           </tbody>
         </table>
@@ -209,23 +220,23 @@ function UsersList({ siteId, client, onSelect }: { siteId: string; client: Litem
 
 // ─── User Detail View ────────────────────────────────────
 
-function UserDetailView({ siteId, client, visitorId, onBack }: { siteId: string; client: LitemetricsClient; visitorId: string; onBack: () => void }) {
+function UserDetailView({ siteId, client, visitorId: identifier, onBack }: { siteId: string; client: LitemetricsClient; visitorId: string; onBack: () => void }) {
   const [eventsPage, setEventsPage] = useState(0);
   const eventsLimit = 30;
 
   const { data: user, isLoading: loading, error } = useQuery({
-    queryKey: queryKeys.userDetail(siteId, visitorId),
+    queryKey: queryKeys.userDetail(siteId, identifier),
     queryFn: async () => {
       client.setSiteId(siteId);
-      return client.getUserDetail(visitorId);
+      return client.getUserDetail(identifier);
     },
   });
 
   const { data: eventsData, isLoading: eventsLoading } = useQuery({
-    queryKey: queryKeys.userEvents(siteId, visitorId, { page: eventsPage }),
+    queryKey: queryKeys.userEvents(siteId, identifier, { page: eventsPage }),
     queryFn: async () => {
       client.setSiteId(siteId);
-      const result = await client.getUserEvents(visitorId, {
+      const result = await client.getUserEvents(identifier, {
         limit: eventsLimit,
         offset: eventsPage * eventsLimit,
       });
@@ -293,6 +304,16 @@ function UserDetailView({ siteId, client, visitorId, onBack }: { siteId: string;
           <div className="space-y-3">
             {user.userId && <ProfileField label="User ID" value={user.userId} />}
             <ProfileField label="Visitor ID" value={user.visitorId} mono />
+            {user.visitorIds && user.visitorIds.length > 1 && (
+              <div>
+                <p className="text-xs text-zinc-400 dark:text-zinc-500 mb-1">Linked Devices ({user.visitorIds.length})</p>
+                <div className="space-y-1">
+                  {user.visitorIds.map((vid) => (
+                    <p key={vid} className="text-xs text-zinc-500 dark:text-zinc-400 font-mono truncate">{vid}</p>
+                  ))}
+                </div>
+              </div>
+            )}
             <ProfileField label="First Seen" value={new Date(user.firstSeen).toLocaleString()} />
             <ProfileField label="Last Seen" value={new Date(user.lastSeen).toLocaleString()} />
             {user.lastUrl && <ProfileField label="Last Page" value={user.lastUrl} />}

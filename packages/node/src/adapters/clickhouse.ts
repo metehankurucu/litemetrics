@@ -4,6 +4,19 @@ import { resolvePeriod, previousPeriodRange, autoGranularity, fillBuckets, granu
 
 const EVENTS_TABLE = 'litemetrics_events';
 const SITES_TABLE = 'litemetrics_sites';
+const IDENTITY_MAP_TABLE = 'litemetrics_identity_map';
+
+const CREATE_IDENTITY_MAP_TABLE = `
+CREATE TABLE IF NOT EXISTS ${IDENTITY_MAP_TABLE} (
+    site_id        LowCardinality(String),
+    visitor_id     String,
+    user_id        String,
+    identified_at  DateTime64(3),
+    created_at     DateTime64(3) DEFAULT now64(3)
+) ENGINE = ReplacingMergeTree(created_at)
+  ORDER BY (site_id, visitor_id)
+  SETTINGS index_granularity = 8192
+`;
 
 const CREATE_EVENTS_TABLE = `
 CREATE TABLE IF NOT EXISTS ${EVENTS_TABLE} (
@@ -122,6 +135,7 @@ export class ClickHouseAdapter implements DBAdapter {
   async init(): Promise<void> {
     await this.client.command({ query: CREATE_EVENTS_TABLE });
     await this.client.command({ query: CREATE_SITES_TABLE });
+    await this.client.command({ query: CREATE_IDENTITY_MAP_TABLE });
     await this.client.command({ query: `ALTER TABLE ${EVENTS_TABLE} ADD COLUMN IF NOT EXISTS event_source LowCardinality(Nullable(String))` });
     await this.client.command({ query: `ALTER TABLE ${EVENTS_TABLE} ADD COLUMN IF NOT EXISTS event_subtype LowCardinality(Nullable(String))` });
     await this.client.command({ query: `ALTER TABLE ${EVENTS_TABLE} ADD COLUMN IF NOT EXISTS page_path Nullable(String)` });
@@ -896,45 +910,59 @@ export class ClickHouseAdapter implements DBAdapter {
 
     const [userRows, countRows] = await Promise.all([
       this.queryRows<Record<string, unknown>>(
-        `SELECT
-          visitor_id,
-          anyLast(user_id) AS userId,
-          anyLast(traits) AS traits,
-          min(timestamp) AS firstSeen,
-          max(timestamp) AS lastSeen,
+        `WITH identity AS (
+          SELECT visitor_id, user_id
+          FROM ${IDENTITY_MAP_TABLE} FINAL
+          WHERE site_id = {siteId:String}
+        )
+        SELECT
+          if(i.user_id IS NOT NULL AND i.user_id != '', i.user_id, e.visitor_id) AS group_key,
+          anyLast(e.visitor_id) AS visitor_id,
+          anyLast(i.user_id) AS userId,
+          anyLast(e.traits) AS traits,
+          min(e.timestamp) AS firstSeen,
+          max(e.timestamp) AS lastSeen,
           count() AS totalEvents,
-          countIf(type = 'pageview') AS totalPageviews,
-          uniq(session_id) AS totalSessions,
-          anyLast(url) AS lastUrl,
-          anyLast(referrer) AS referrer,
-          anyLast(device_type) AS device_type,
-          anyLast(browser) AS browser,
-          anyLast(os) AS os,
-          anyLast(country) AS country,
-          anyLast(city) AS city,
-          anyLast(region) AS region,
-          anyLast(language) AS language,
-          anyLast(timezone) AS timezone,
-          anyLast(screen_width) AS screen_width,
-          anyLast(screen_height) AS screen_height,
-          anyLast(utm_source) AS utm_source,
-          anyLast(utm_medium) AS utm_medium,
-          anyLast(utm_campaign) AS utm_campaign,
-          anyLast(utm_term) AS utm_term,
-          anyLast(utm_content) AS utm_content
-        FROM ${EVENTS_TABLE}
-        WHERE ${where}
-        GROUP BY visitor_id
+          countIf(e.type = 'pageview') AS totalPageviews,
+          uniq(e.session_id) AS totalSessions,
+          anyLast(e.url) AS lastUrl,
+          anyLast(e.referrer) AS referrer,
+          anyLast(e.device_type) AS device_type,
+          anyLast(e.browser) AS browser,
+          anyLast(e.os) AS os,
+          anyLast(e.country) AS country,
+          anyLast(e.city) AS city,
+          anyLast(e.region) AS region,
+          anyLast(e.language) AS language,
+          anyLast(e.timezone) AS timezone,
+          anyLast(e.screen_width) AS screen_width,
+          anyLast(e.screen_height) AS screen_height,
+          anyLast(e.utm_source) AS utm_source,
+          anyLast(e.utm_medium) AS utm_medium,
+          anyLast(e.utm_campaign) AS utm_campaign,
+          anyLast(e.utm_term) AS utm_term,
+          anyLast(e.utm_content) AS utm_content
+        FROM ${EVENTS_TABLE} e
+        LEFT JOIN identity i ON e.visitor_id = i.visitor_id
+        WHERE e.site_id = {siteId:String}${where.includes('ILIKE') ? ` AND (e.visitor_id ILIKE {search:String} OR i.user_id ILIKE {search:String})` : ''}
+        GROUP BY group_key
         ORDER BY lastSeen DESC
         LIMIT {limit:UInt32}
         OFFSET {offset:UInt32}`,
         queryParams,
       ),
       this.queryRows<{ total: string }>(
-        `SELECT count() AS total FROM (
-          SELECT visitor_id FROM ${EVENTS_TABLE}
-          WHERE ${where}
-          GROUP BY visitor_id
+        `WITH identity AS (
+          SELECT visitor_id, user_id
+          FROM ${IDENTITY_MAP_TABLE} FINAL
+          WHERE site_id = {siteId:String}
+        )
+        SELECT count() AS total FROM (
+          SELECT if(i.user_id IS NOT NULL AND i.user_id != '', i.user_id, e.visitor_id) AS group_key
+          FROM ${EVENTS_TABLE} e
+          LEFT JOIN identity i ON e.visitor_id = i.visitor_id
+          WHERE e.site_id = {siteId:String}${where.includes('ILIKE') ? ` AND (e.visitor_id ILIKE {search:String} OR i.user_id ILIKE {search:String})` : ''}
+          GROUP BY group_key
         )`,
         queryParams,
       ),
@@ -973,14 +1001,196 @@ export class ClickHouseAdapter implements DBAdapter {
     };
   }
 
-  async getUserDetail(siteId: string, visitorId: string): Promise<UserDetail | null> {
-    const result = await this.listUsers({ siteId, search: visitorId, limit: 1 });
-    const user = result.users.find((u) => u.visitorId === visitorId);
+  async getUserDetail(siteId: string, identifier: string): Promise<UserDetail | null> {
+    // Try as userId first (check identity map)
+    const visitorIds = await this.getVisitorIdsForUser(siteId, identifier);
+    if (visitorIds.length > 0) {
+      return this.getMergedUserDetail(siteId, identifier, visitorIds);
+    }
+    // Try as visitorId — check if it has a known userId
+    const userId = await this.getUserIdForVisitor(siteId, identifier);
+    if (userId) {
+      const allVisitorIds = await this.getVisitorIdsForUser(siteId, userId);
+      return this.getMergedUserDetail(siteId, userId, allVisitorIds.length > 0 ? allVisitorIds : [identifier]);
+    }
+    // Pure anonymous — single visitorId
+    const result = await this.listUsers({ siteId, search: identifier, limit: 1 });
+    const user = result.users.find((u) => u.visitorId === identifier);
     return user ?? null;
   }
 
-  async getUserEvents(siteId: string, visitorId: string, params: EventListParams): Promise<EventListResult> {
-    return this.listEvents({ ...params, siteId, visitorId });
+  async getUserEvents(siteId: string, identifier: string, params: EventListParams): Promise<EventListResult> {
+    // Resolve all linked visitorIds
+    const visitorIds = await this.getVisitorIdsForUser(siteId, identifier);
+    if (visitorIds.length > 0) {
+      return this.listEventsForVisitorIds(siteId, visitorIds, params);
+    }
+    // Check if identifier is a visitorId with a known userId
+    const userId = await this.getUserIdForVisitor(siteId, identifier);
+    if (userId) {
+      const allVisitorIds = await this.getVisitorIdsForUser(siteId, userId);
+      if (allVisitorIds.length > 0) {
+        return this.listEventsForVisitorIds(siteId, allVisitorIds, params);
+      }
+    }
+    // Pure anonymous — single visitorId
+    return this.listEvents({ ...params, siteId, visitorId: identifier });
+  }
+
+  // ─── Identity Mapping ──────────────────────────────────────
+
+  async upsertIdentity(siteId: string, visitorId: string, userId: string): Promise<void> {
+    await this.client.insert({
+      table: IDENTITY_MAP_TABLE,
+      values: [{
+        site_id: siteId,
+        visitor_id: visitorId,
+        user_id: userId,
+        identified_at: toCHDateTime(new Date()),
+      }],
+      format: 'JSONEachRow',
+    });
+  }
+
+  async getVisitorIdsForUser(siteId: string, userId: string): Promise<string[]> {
+    const rows = await this.queryRows<{ visitor_id: string }>(
+      `SELECT visitor_id FROM ${IDENTITY_MAP_TABLE} FINAL
+       WHERE site_id = {siteId:String} AND user_id = {userId:String}`,
+      { siteId, userId },
+    );
+    return rows.map((r) => r.visitor_id);
+  }
+
+  async getUserIdForVisitor(siteId: string, visitorId: string): Promise<string | null> {
+    const rows = await this.queryRows<{ user_id: string }>(
+      `SELECT user_id FROM ${IDENTITY_MAP_TABLE} FINAL
+       WHERE site_id = {siteId:String} AND visitor_id = {visitorId:String}
+       LIMIT 1`,
+      { siteId, visitorId },
+    );
+    return rows.length > 0 ? rows[0].user_id : null;
+  }
+
+  private async getMergedUserDetail(siteId: string, userId: string, visitorIds: string[]): Promise<UserDetail | null> {
+    const rows = await this.queryRows<Record<string, unknown>>(
+      `SELECT
+        anyLast(visitor_id) AS visitor_id,
+        anyLast(traits) AS traits,
+        min(timestamp) AS firstSeen,
+        max(timestamp) AS lastSeen,
+        count() AS totalEvents,
+        countIf(type = 'pageview') AS totalPageviews,
+        uniq(session_id) AS totalSessions,
+        anyLast(url) AS lastUrl,
+        anyLast(referrer) AS referrer,
+        anyLast(device_type) AS device_type,
+        anyLast(browser) AS browser,
+        anyLast(os) AS os,
+        anyLast(country) AS country,
+        anyLast(city) AS city,
+        anyLast(region) AS region,
+        anyLast(language) AS language,
+        anyLast(timezone) AS timezone,
+        anyLast(screen_width) AS screen_width,
+        anyLast(screen_height) AS screen_height,
+        anyLast(utm_source) AS utm_source,
+        anyLast(utm_medium) AS utm_medium,
+        anyLast(utm_campaign) AS utm_campaign,
+        anyLast(utm_term) AS utm_term,
+        anyLast(utm_content) AS utm_content
+      FROM ${EVENTS_TABLE}
+      WHERE site_id = {siteId:String}
+        AND visitor_id IN {visitorIds:Array(String)}`,
+      { siteId, visitorIds },
+    );
+    if (rows.length === 0) return null;
+    const u = rows[0];
+    return {
+      visitorId: String(u.visitor_id),
+      visitorIds,
+      userId,
+      traits: this.parseJSON(u.traits as string | null),
+      firstSeen: new Date(String(u.firstSeen)).toISOString(),
+      lastSeen: new Date(String(u.lastSeen)).toISOString(),
+      totalEvents: Number(u.totalEvents),
+      totalPageviews: Number(u.totalPageviews),
+      totalSessions: Number(u.totalSessions),
+      lastUrl: u.lastUrl ? String(u.lastUrl) : undefined,
+      referrer: u.referrer ? String(u.referrer) : undefined,
+      device: u.device_type ? { type: String(u.device_type), browser: String(u.browser ?? ''), os: String(u.os ?? '') } : undefined,
+      geo: u.country ? { country: String(u.country), city: u.city ? String(u.city) : undefined, region: u.region ? String(u.region) : undefined } : undefined,
+      language: u.language ? String(u.language) : undefined,
+      timezone: u.timezone ? String(u.timezone) : undefined,
+      screen: (u.screen_width || u.screen_height) ? { width: Number(u.screen_width ?? 0), height: Number(u.screen_height ?? 0) } : undefined,
+      utm: u.utm_source ? {
+        source: String(u.utm_source),
+        medium: u.utm_medium ? String(u.utm_medium) : undefined,
+        campaign: u.utm_campaign ? String(u.utm_campaign) : undefined,
+        term: u.utm_term ? String(u.utm_term) : undefined,
+        content: u.utm_content ? String(u.utm_content) : undefined,
+      } : undefined,
+    };
+  }
+
+  private async listEventsForVisitorIds(siteId: string, visitorIds: string[], params: EventListParams): Promise<EventListResult> {
+    const limit = Math.min(params.limit ?? 50, 200);
+    const offset = params.offset ?? 0;
+
+    const conditions: string[] = [`site_id = {siteId:String}`, `visitor_id IN {visitorIds:Array(String)}`];
+    const queryParams: Record<string, unknown> = { siteId, visitorIds, limit, offset };
+
+    if (params.type) {
+      conditions.push(`type = {type:String}`);
+      queryParams.type = params.type;
+    }
+    if (params.eventName) {
+      conditions.push(`event_name = {eventName:String}`);
+      queryParams.eventName = params.eventName;
+    }
+    if (params.eventNames && params.eventNames.length > 0) {
+      conditions.push(`event_name IN {eventNames:Array(String)}`);
+      queryParams.eventNames = params.eventNames;
+    }
+    if (params.period || params.dateFrom) {
+      const { dateRange } = resolvePeriod({
+        period: params.period,
+        dateFrom: params.dateFrom,
+        dateTo: params.dateTo,
+      });
+      conditions.push(`timestamp >= {from:String} AND timestamp <= {to:String}`);
+      queryParams.from = toCHDateTime(dateRange.from);
+      queryParams.to = toCHDateTime(dateRange.to);
+    }
+
+    const where = conditions.join(' AND ');
+
+    const [events, countRows] = await Promise.all([
+      this.queryRows<Record<string, unknown>>(
+        `SELECT event_id, type, timestamp, session_id, visitor_id, url, referrer, title,
+                event_name, properties, event_source, event_subtype, page_path, target_url_path,
+                element_selector, element_text, scroll_depth_pct,
+                user_id, traits, country, city, region,
+                device_type, browser, os, language,
+                utm_source, utm_medium, utm_campaign, utm_term, utm_content
+         FROM ${EVENTS_TABLE}
+         WHERE ${where}
+         ORDER BY timestamp DESC
+         LIMIT {limit:UInt32}
+         OFFSET {offset:UInt32}`,
+        queryParams,
+      ),
+      this.queryRows<{ total: string }>(
+        `SELECT count() AS total FROM ${EVENTS_TABLE} WHERE ${where}`,
+        queryParams,
+      ),
+    ]);
+
+    return {
+      events: events.map((e) => this.toEventListItem(e)),
+      total: Number(countRows[0]?.total ?? 0),
+      limit,
+      offset,
+    };
   }
 
   // ─── Site Management ──────────────────────────────────────

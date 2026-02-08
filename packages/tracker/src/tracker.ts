@@ -133,6 +133,7 @@ export function createTracker(config: TrackerConfig): LitemetricsInstance {
       title: title || (typeof document !== 'undefined' ? document.title : undefined),
       ...getContext(),
     };
+    if (session.userId) event.userId = session.userId;
     sendEvent(event);
   }
 
@@ -177,6 +178,7 @@ export function createTracker(config: TrackerConfig): LitemetricsInstance {
           scrollDepthPct: options?.scrollDepthPct,
           ...getContext(),
         };
+        if (session.userId) event.userId = session.userId;
         sendEvent(event);
       });
     },

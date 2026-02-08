@@ -181,13 +181,13 @@ export class LitemetricsClient {
     return data;
   }
 
-  async getUserDetail(visitorId: string): Promise<UserDetail> {
+  async getUserDetail(identifier: string): Promise<UserDetail> {
     const params: Record<string, string> = { siteId: this.siteId };
-    const { data } = await this.http.get<{ user: UserDetail }>(`/api/users/${encodeURIComponent(visitorId)}`, { params });
+    const { data } = await this.http.get<{ user: UserDetail }>(`/api/users/${encodeURIComponent(identifier)}`, { params });
     return data.user;
   }
 
-  async getUserEvents(visitorId: string, options?: EventsListOptions): Promise<EventListResult> {
+  async getUserEvents(identifier: string, options?: EventsListOptions): Promise<EventListResult> {
     const params: Record<string, string> = { siteId: this.siteId };
 
     if (options?.type) params.type = options.type;
@@ -200,7 +200,7 @@ export class LitemetricsClient {
     if (options?.limit) params.limit = String(options.limit);
     if (options?.offset) params.offset = String(options.offset);
 
-    const { data } = await this.http.get<EventListResult>(`/api/users/${encodeURIComponent(visitorId)}/events`, { params });
+    const { data } = await this.http.get<EventListResult>(`/api/users/${encodeURIComponent(identifier)}/events`, { params });
     return data;
   }
 

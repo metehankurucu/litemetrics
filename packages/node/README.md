@@ -87,6 +87,22 @@ await collector.track('site-id', 'Purchase', { amount: 99 }, { userId: 'user-123
 await collector.identify('site-id', 'user-123', { plan: 'pro' });
 ```
 
+## Identity Merging
+
+Litemetrics automatically links anonymous visitors to identified users. After a
+user is identified, subsequent events are merged across all linked visitor IDs.
+`GET /api/users/:identifier` accepts either a `visitorId` or a `userId` and
+returns a merged profile when available.
+
+### Backfill (one-time)
+
+If you already have identify events, run the backfill script once to populate
+the identity map:
+
+```bash
+bun packages/node/src/backfill-identity.ts --adapter clickhouse --url http://localhost:8123
+```
+
 ## Metrics
 
 | Metric | Description |

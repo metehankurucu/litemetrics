@@ -52,8 +52,17 @@ interface SiteDocument {
   updated_at: Date;
 }
 
+interface IdentityMapDocument {
+  site_id: string;
+  visitor_id: string;
+  user_id: string;
+  identified_at: Date;
+  created_at: Date;
+}
+
 const EVENTS_COLLECTION = 'litemetrics_events';
 const SITES_COLLECTION = 'litemetrics_sites';
+const IDENTITY_MAP_COLLECTION = 'litemetrics_identity_map';
 
 function buildFilterMatch(filters?: Record<string, string>): Record<string, unknown> {
   if (!filters) return {};
@@ -91,6 +100,7 @@ export class MongoDBAdapter implements DBAdapter {
   private db!: Db;
   private collection!: Collection<EventDocument>;
   private sites!: Collection<SiteDocument>;
+  private identityMap!: Collection<IdentityMapDocument>;
 
   constructor(url: string) {
     this.client = new MongoClient(url);
@@ -101,6 +111,7 @@ export class MongoDBAdapter implements DBAdapter {
     this.db = this.client.db();
     this.collection = this.db.collection<EventDocument>(EVENTS_COLLECTION);
     this.sites = this.db.collection<SiteDocument>(SITES_COLLECTION);
+    this.identityMap = this.db.collection<IdentityMapDocument>(IDENTITY_MAP_COLLECTION);
 
     await Promise.all([
       this.collection.createIndex({ site_id: 1, timestamp: -1 }),
@@ -109,6 +120,8 @@ export class MongoDBAdapter implements DBAdapter {
       this.collection.createIndex({ site_id: 1, session_id: 1 }),
       this.sites.createIndex({ site_id: 1 }, { unique: true }),
       this.sites.createIndex({ secret_key: 1 }),
+      this.identityMap.createIndex({ site_id: 1, visitor_id: 1 }, { unique: true }),
+      this.identityMap.createIndex({ site_id: 1, user_id: 1 }),
     ]);
   }
 
@@ -699,6 +712,29 @@ export class MongoDBAdapter implements DBAdapter {
     };
   }
 
+  // ─── Identity Mapping ──────────────────────────────────────
+
+  async upsertIdentity(siteId: string, visitorId: string, userId: string): Promise<void> {
+    await this.identityMap.updateOne(
+      { site_id: siteId, visitor_id: visitorId },
+      {
+        $set: { user_id: userId, identified_at: new Date() },
+        $setOnInsert: { site_id: siteId, visitor_id: visitorId, created_at: new Date() },
+      },
+      { upsert: true },
+    );
+  }
+
+  async getVisitorIdsForUser(siteId: string, userId: string): Promise<string[]> {
+    const docs = await this.identityMap.find({ site_id: siteId, user_id: userId }).toArray();
+    return docs.map((d) => d.visitor_id);
+  }
+
+  async getUserIdForVisitor(siteId: string, visitorId: string): Promise<string | null> {
+    const doc = await this.identityMap.findOne({ site_id: siteId, visitor_id: visitorId });
+    return doc?.user_id ?? null;
+  }
+
   // ─── User Listing ──────────────────────────────────────
 
   async listUsers(params: UserListParams): Promise<UserListResult> {
@@ -707,20 +743,51 @@ export class MongoDBAdapter implements DBAdapter {
 
     const match: Record<string, unknown> = { site_id: params.siteId };
 
-    if (params.search) {
-      match.$or = [
-        { visitor_id: { $regex: params.search, $options: 'i' } },
-        { user_id: { $regex: params.search, $options: 'i' } },
-      ];
-    }
-
     const pipeline: object[] = [
       { $match: match },
+      // Join with identity map to resolve visitor → user
+      {
+        $lookup: {
+          from: IDENTITY_MAP_COLLECTION,
+          let: { vid: '$visitor_id', sid: '$site_id' },
+          pipeline: [
+            { $match: { $expr: { $and: [{ $eq: ['$visitor_id', '$$vid'] }, { $eq: ['$site_id', '$$sid'] }] } } },
+          ],
+          as: '_identity',
+        },
+      },
+      {
+        $addFields: {
+          _resolved_id: {
+            $ifNull: [{ $arrayElemAt: ['$_identity.user_id', 0] }, '$visitor_id'],
+          },
+          _resolved_user_id: {
+            $arrayElemAt: ['$_identity.user_id', 0],
+          },
+        },
+      },
+    ];
+
+    // Search filter after $lookup so it can match identity_map userId
+    if (params.search) {
+      pipeline.push({
+        $match: {
+          $or: [
+            { visitor_id: { $regex: params.search, $options: 'i' } },
+            { user_id: { $regex: params.search, $options: 'i' } },
+            { _resolved_user_id: { $regex: params.search, $options: 'i' } },
+          ],
+        },
+      });
+    }
+
+    pipeline.push(
       { $sort: { timestamp: 1 } },
       {
         $group: {
-          _id: '$visitor_id',
-          userId: { $last: '$user_id' },
+          _id: '$_resolved_id',
+          visitorIds: { $addToSet: '$visitor_id' },
+          userId: { $last: { $ifNull: ['$_resolved_user_id', '$user_id'] } },
           traits: { $last: '$traits' },
           firstSeen: { $min: '$timestamp' },
           lastSeen: { $max: '$timestamp' },
@@ -753,11 +820,12 @@ export class MongoDBAdapter implements DBAdapter {
           count: [{ $count: 'total' }],
         },
       },
-    ];
+    );
 
     const [result] = await this.collection.aggregate<{
       data: Array<{
         _id: string;
+        visitorIds: string[];
         userId: string | null;
         traits: Record<string, unknown> | null;
         firstSeen: Date;
@@ -787,7 +855,8 @@ export class MongoDBAdapter implements DBAdapter {
     }>(pipeline).toArray();
 
     const users: UserDetail[] = (result?.data ?? []).map((u) => ({
-      visitorId: u._id,
+      visitorId: u.visitorIds[0] ?? u._id,
+      visitorIds: u.visitorIds.length > 1 ? u.visitorIds : undefined,
       userId: u.userId ?? undefined,
       traits: u.traits ?? undefined,
       firstSeen: u.firstSeen.toISOString(),
@@ -819,14 +888,170 @@ export class MongoDBAdapter implements DBAdapter {
     };
   }
 
-  async getUserDetail(siteId: string, visitorId: string): Promise<UserDetail | null> {
-    const result = await this.listUsers({ siteId, search: visitorId, limit: 1 });
-    const user = result.users.find((u) => u.visitorId === visitorId);
-    return user ?? null;
+  async getUserDetail(siteId: string, identifier: string): Promise<UserDetail | null> {
+    // Try as userId first — find all linked visitorIds
+    const visitorIds = await this.getVisitorIdsForUser(siteId, identifier);
+    if (visitorIds.length > 0) {
+      return this.getMergedUserDetail(siteId, identifier, visitorIds);
+    }
+    // Try as visitorId — resolve to userId
+    const userId = await this.getUserIdForVisitor(siteId, identifier);
+    if (userId) {
+      const allVisitorIds = await this.getVisitorIdsForUser(siteId, userId);
+      return this.getMergedUserDetail(siteId, userId, allVisitorIds);
+    }
+    // Pure anonymous — single visitorId
+    return this.getMergedUserDetail(siteId, undefined, [identifier]);
   }
 
-  async getUserEvents(siteId: string, visitorId: string, params: EventListParams): Promise<EventListResult> {
-    return this.listEvents({ ...params, siteId, visitorId });
+  async getUserEvents(siteId: string, identifier: string, params: EventListParams): Promise<EventListResult> {
+    // Resolve all visitorIds for this identifier
+    let visitorIds = await this.getVisitorIdsForUser(siteId, identifier);
+    if (visitorIds.length === 0) {
+      const userId = await this.getUserIdForVisitor(siteId, identifier);
+      if (userId) {
+        visitorIds = await this.getVisitorIdsForUser(siteId, userId);
+      }
+    }
+    if (visitorIds.length === 0) {
+      visitorIds = [identifier];
+    }
+    return this.listEventsForVisitorIds(siteId, visitorIds, params);
+  }
+
+  private async getMergedUserDetail(siteId: string, userId: string | undefined, visitorIds: string[]): Promise<UserDetail | null> {
+    const pipeline: object[] = [
+      { $match: { site_id: siteId, visitor_id: { $in: visitorIds } } },
+      { $sort: { timestamp: 1 } },
+      {
+        $group: {
+          _id: null,
+          visitorIds: { $addToSet: '$visitor_id' },
+          traits: { $last: '$traits' },
+          firstSeen: { $min: '$timestamp' },
+          lastSeen: { $max: '$timestamp' },
+          totalEvents: { $sum: 1 },
+          totalPageviews: { $sum: { $cond: [{ $eq: ['$type', 'pageview'] }, 1, 0] } },
+          sessions: { $addToSet: '$session_id' },
+          lastUrl: { $last: '$url' },
+          referrer: { $last: '$referrer' },
+          device_type: { $last: '$device_type' },
+          browser: { $last: '$browser' },
+          os: { $last: '$os' },
+          country: { $last: '$country' },
+          city: { $last: '$city' },
+          region: { $last: '$region' },
+          language: { $last: '$language' },
+          timezone: { $last: '$timezone' },
+          screen_width: { $last: '$screen_width' },
+          screen_height: { $last: '$screen_height' },
+          utm_source: { $last: '$utm_source' },
+          utm_medium: { $last: '$utm_medium' },
+          utm_campaign: { $last: '$utm_campaign' },
+          utm_term: { $last: '$utm_term' },
+          utm_content: { $last: '$utm_content' },
+        },
+      },
+    ];
+
+    const [row] = await this.collection.aggregate<{
+      visitorIds: string[];
+      traits: Record<string, unknown> | null;
+      firstSeen: Date;
+      lastSeen: Date;
+      totalEvents: number;
+      totalPageviews: number;
+      sessions: string[];
+      lastUrl: string | null;
+      referrer: string | null;
+      device_type: string | null;
+      browser: string | null;
+      os: string | null;
+      country: string | null;
+      city: string | null;
+      region: string | null;
+      language: string | null;
+      timezone: string | null;
+      screen_width: number | null;
+      screen_height: number | null;
+      utm_source: string | null;
+      utm_medium: string | null;
+      utm_campaign: string | null;
+      utm_term: string | null;
+      utm_content: string | null;
+    }>(pipeline).toArray();
+
+    if (!row) return null;
+
+    return {
+      visitorId: visitorIds[0],
+      visitorIds: row.visitorIds.length > 1 ? row.visitorIds : undefined,
+      userId: userId ?? undefined,
+      traits: row.traits ?? undefined,
+      firstSeen: row.firstSeen.toISOString(),
+      lastSeen: row.lastSeen.toISOString(),
+      totalEvents: row.totalEvents,
+      totalPageviews: row.totalPageviews,
+      totalSessions: row.sessions.length,
+      lastUrl: row.lastUrl ?? undefined,
+      referrer: row.referrer ?? undefined,
+      device: row.device_type ? { type: row.device_type, browser: row.browser ?? '', os: row.os ?? '' } : undefined,
+      geo: row.country ? { country: row.country, city: row.city ?? undefined, region: row.region ?? undefined } : undefined,
+      language: row.language ?? undefined,
+      timezone: row.timezone ?? undefined,
+      screen: (row.screen_width || row.screen_height) ? { width: row.screen_width ?? 0, height: row.screen_height ?? 0 } : undefined,
+      utm: row.utm_source ? {
+        source: row.utm_source ?? undefined,
+        medium: row.utm_medium ?? undefined,
+        campaign: row.utm_campaign ?? undefined,
+        term: row.utm_term ?? undefined,
+        content: row.utm_content ?? undefined,
+      } : undefined,
+    };
+  }
+
+  private async listEventsForVisitorIds(siteId: string, visitorIds: string[], params: EventListParams): Promise<EventListResult> {
+    const limit = Math.min(params.limit ?? 50, 200);
+    const offset = params.offset ?? 0;
+
+    const match: Record<string, unknown> = {
+      site_id: siteId,
+      visitor_id: { $in: visitorIds },
+    };
+
+    if (params.type) match.type = params.type;
+    if (params.eventName) {
+      match.event_name = params.eventName;
+    } else if (params.eventNames && params.eventNames.length > 0) {
+      match.event_name = { $in: params.eventNames };
+    }
+    if (params.eventSource) match.event_source = params.eventSource;
+
+    if (params.period || params.dateFrom) {
+      const { dateRange } = resolvePeriod({
+        period: params.period,
+        dateFrom: params.dateFrom,
+        dateTo: params.dateTo,
+      });
+      match.timestamp = { $gte: new Date(dateRange.from), $lte: new Date(dateRange.to) };
+    }
+
+    const [events, countResult] = await Promise.all([
+      this.collection
+        .find(match)
+        .sort({ timestamp: -1 })
+        .skip(offset)
+        .limit(limit)
+        .toArray(),
+      this.collection.countDocuments(match),
+    ]);
+
+    return {
+      events: events.map((e) => this.toEventListItem(e)),
+      total: countResult,
+      limit,
+      offset,
+    };
   }
 
   private toEventListItem(doc: EventDocument): EventListItem {

@@ -32,8 +32,8 @@ export interface Collector {
   query(params: QueryParams): Promise<QueryResult>;
   listEvents(params: EventListParams): Promise<EventListResult>;
   listUsers(params: UserListParams): Promise<UserListResult>;
-  getUserDetail(siteId: string, visitorId: string): Promise<UserDetail | null>;
-  getUserEvents(siteId: string, visitorId: string, params: EventListParams): Promise<EventListResult>;
+  getUserDetail(siteId: string, identifier: string): Promise<UserDetail | null>;
+  getUserEvents(siteId: string, identifier: string, params: EventListParams): Promise<EventListResult>;
   track(siteId: string, name: string, properties?: Record<string, unknown>, options?: { userId?: string; ip?: string }): Promise<void>;
   identify(siteId: string, userId: string, traits?: Record<string, unknown>, options?: { ip?: string }): Promise<void>;
   createSite(data: CreateSiteRequest): Promise<Site>;
@@ -100,6 +100,63 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
       const geo = resolveGeo(ip, event.timezone);
       return { ...event, ip, geo, device };
     });
+  }
+
+  // ─── Identity resolution ────────────────────────────────
+  // In-memory cache: siteId:visitorId → userId (5 min TTL)
+  const identityCache = new Map<string, { userId: string; expires: number }>();
+  const IDENTITY_CACHE_TTL = 5 * 60 * 1000;
+
+  function getCachedUserId(siteId: string, visitorId: string): string | undefined {
+    const key = `${siteId}:${visitorId}`;
+    const entry = identityCache.get(key);
+    if (!entry) return undefined;
+    if (Date.now() > entry.expires) {
+      identityCache.delete(key);
+      return undefined;
+    }
+    return entry.userId;
+  }
+
+  function setCachedUserId(siteId: string, visitorId: string, userId: string): void {
+    const key = `${siteId}:${visitorId}`;
+    identityCache.set(key, { userId, expires: Date.now() + IDENTITY_CACHE_TTL });
+    // Evict old entries if cache grows too large
+    if (identityCache.size > 10000) {
+      const now = Date.now();
+      for (const [k, v] of identityCache) {
+        if (now > v.expires) identityCache.delete(k);
+      }
+    }
+  }
+
+  async function processIdentity(events: EnrichedEvent[]): Promise<void> {
+    for (const event of events) {
+      // Skip sentinel visitorId used by server-side programmatic calls
+      if (!event.visitorId || event.visitorId === 'server') continue;
+
+      if (event.type === 'identify' && event.userId) {
+        // Identify event → upsert identity map and cache
+        await db.upsertIdentity(event.siteId, event.visitorId, event.userId);
+        setCachedUserId(event.siteId, event.visitorId, event.userId);
+      } else if (!event.userId) {
+        // Non-identify event without userId → try to resolve from cache or DB
+        const cached = getCachedUserId(event.siteId, event.visitorId);
+        if (cached) {
+          event.userId = cached;
+        } else {
+          const resolved = await db.getUserIdForVisitor(event.siteId, event.visitorId);
+          if (resolved) {
+            event.userId = resolved;
+            setCachedUserId(event.siteId, event.visitorId, resolved);
+          }
+        }
+      } else if (event.userId) {
+        // Event already has userId → persist and cache the mapping
+        setCachedUserId(event.siteId, event.visitorId, event.userId);
+        await db.upsertIdentity(event.siteId, event.visitorId, event.userId);
+      }
+    }
   }
 
   function extractIp(req: any): string {
@@ -176,12 +233,14 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
               sendJson(res, 200, { ok: true });
               return;
             }
+            await processIdentity(filtered);
             await db.insertEvents(filtered);
             sendJson(res, 200, { ok: true });
             return;
           }
         }
 
+        await processIdentity(enriched);
         await db.insertEvents(enriched);
         sendJson(res, 200, { ok: true });
       } catch (err) {
@@ -496,12 +555,12 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
       return db.listUsers(params);
     },
 
-    async getUserDetail(siteId: string, visitorId: string): Promise<UserDetail | null> {
-      return db.getUserDetail(siteId, visitorId);
+    async getUserDetail(siteId: string, identifier: string): Promise<UserDetail | null> {
+      return db.getUserDetail(siteId, identifier);
     },
 
-    async getUserEvents(siteId: string, visitorId: string, params: EventListParams): Promise<EventListResult> {
-      return db.getUserEvents(siteId, visitorId, params);
+    async getUserEvents(siteId: string, identifier: string, params: EventListParams): Promise<EventListResult> {
+      return db.getUserEvents(siteId, identifier, params);
     },
 
     async track(siteId, name, properties, options) {

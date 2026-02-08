@@ -227,13 +227,16 @@ List tracked visitors.
 | `page` | number | 1 | Page number |
 | `limit` | number | 50 | Users per page |
 
-## GET /api/users/:visitorId
+## GET /api/users/:identifier
 
-Get a single visitor's profile and summary stats.
+Get a single user's profile and summary stats. `identifier` can be either a
+`visitorId` (anonymous) or a `userId` (identified). If the user has multiple
+linked visitor IDs, the response is merged.
 
-## GET /api/users/:visitorId/events
+## GET /api/users/:identifier/events
 
-Get a visitor's event history.
+Get a user's event history. `identifier` can be either a `visitorId` or `userId`.
+If the user has multiple linked visitor IDs, events are merged across them.
 
 ---
 

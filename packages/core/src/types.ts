@@ -18,6 +18,7 @@ export interface BaseEvent {
   timestamp: number;
   sessionId: string;
   visitorId: string;
+  userId?: string;
 }
 
 export interface PageviewEvent extends BaseEvent {
@@ -42,7 +43,7 @@ export interface CustomEvent extends BaseEvent {
 
 export interface IdentifyEvent extends BaseEvent {
   type: 'identify';
-  userId: string;
+  userId: string;  // required for identify (overrides optional in BaseEvent)
   traits?: Record<string, unknown>;
 }
 
@@ -215,8 +216,13 @@ export interface DBAdapter {
   // Event & user listing
   listEvents(params: EventListParams): Promise<EventListResult>;
   listUsers(params: UserListParams): Promise<UserListResult>;
-  getUserDetail(siteId: string, visitorId: string): Promise<UserDetail | null>;
-  getUserEvents(siteId: string, visitorId: string, params: EventListParams): Promise<EventListResult>;
+  getUserDetail(siteId: string, identifier: string): Promise<UserDetail | null>;
+  getUserEvents(siteId: string, identifier: string, params: EventListParams): Promise<EventListResult>;
+
+  // Identity mapping
+  upsertIdentity(siteId: string, visitorId: string, userId: string): Promise<void>;
+  getVisitorIdsForUser(siteId: string, userId: string): Promise<string[]>;
+  getUserIdForVisitor(siteId: string, visitorId: string): Promise<string | null>;
 
   // Site management
   createSite(data: CreateSiteRequest): Promise<Site>;
@@ -370,6 +376,7 @@ export interface UserListParams {
 
 export interface UserDetail {
   visitorId: string;
+  visitorIds?: string[];
   userId?: string;
   traits?: Record<string, unknown>;
   firstSeen: string;

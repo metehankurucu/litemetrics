@@ -1,6 +1,6 @@
 {
   "name": "@litemetrics/core",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Shared types and utilities for Litemetrics analytics SDK",
   "license": "MIT",
   "author": "Metehan Kurucu",
