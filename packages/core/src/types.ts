@@ -249,7 +249,10 @@ export type Metric =
   | 'top_link_targets'
   | 'top_devices'
   | 'top_browsers'
-  | 'top_os';
+  | 'top_os'
+  | 'top_utm_sources'
+  | 'top_utm_mediums'
+  | 'top_utm_campaigns';
 
 export type Period = '1h' | '24h' | '7d' | '30d' | '90d' | 'custom';
 

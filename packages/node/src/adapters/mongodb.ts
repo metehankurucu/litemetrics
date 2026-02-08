@@ -429,6 +429,45 @@ export class MongoDBAdapter implements DBAdapter {
         total = data.reduce((sum, d) => sum + d.value, 0);
         break;
       }
+
+      case 'top_utm_sources': {
+        const rows = await this.collection.aggregate<{ _id: string; value: number }>([
+          { $match: { ...baseMatch, ...filterMatch, utm_source: { $nin: [null, ''] } } },
+          { $group: { _id: '$utm_source', value: { $addToSet: '$visitor_id' } } },
+          { $project: { _id: 1, value: { $size: '$value' } } },
+          { $sort: { value: -1 } },
+          { $limit: limit },
+        ]).toArray();
+        data = rows.map((r) => ({ key: r._id, value: r.value }));
+        total = data.reduce((sum, d) => sum + d.value, 0);
+        break;
+      }
+
+      case 'top_utm_mediums': {
+        const rows = await this.collection.aggregate<{ _id: string; value: number }>([
+          { $match: { ...baseMatch, ...filterMatch, utm_medium: { $nin: [null, ''] } } },
+          { $group: { _id: '$utm_medium', value: { $addToSet: '$visitor_id' } } },
+          { $project: { _id: 1, value: { $size: '$value' } } },
+          { $sort: { value: -1 } },
+          { $limit: limit },
+        ]).toArray();
+        data = rows.map((r) => ({ key: r._id, value: r.value }));
+        total = data.reduce((sum, d) => sum + d.value, 0);
+        break;
+      }
+
+      case 'top_utm_campaigns': {
+        const rows = await this.collection.aggregate<{ _id: string; value: number }>([
+          { $match: { ...baseMatch, ...filterMatch, utm_campaign: { $nin: [null, ''] } } },
+          { $group: { _id: '$utm_campaign', value: { $addToSet: '$visitor_id' } } },
+          { $project: { _id: 1, value: { $size: '$value' } } },
+          { $sort: { value: -1 } },
+          { $limit: limit },
+        ]).toArray();
+        data = rows.map((r) => ({ key: r._id, value: r.value }));
+        total = data.reduce((sum, d) => sum + d.value, 0);
+        break;
+      }
     }
 
     const result: QueryResult = { metric: q.metric, period, data, total };

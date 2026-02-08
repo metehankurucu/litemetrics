@@ -397,8 +397,8 @@ export class ClickHouseAdapter implements DBAdapter {
       }
       case 'top_exit_pages': {
         const rows = await this.queryRows<{ key: string; value: string }>(
-          `SELECT url AS key, count() AS value FROM (
-             SELECT session_id, argMax(url, timestamp) AS url
+          `SELECT exit_url AS key, count() AS value FROM (
+             SELECT session_id, argMax(url, timestamp) AS exit_url
              FROM ${EVENTS_TABLE}
              WHERE site_id = {siteId:String}
                AND timestamp >= {from:String}
@@ -407,7 +407,7 @@ export class ClickHouseAdapter implements DBAdapter {
                AND url IS NOT NULL${filterSql}
              GROUP BY session_id
            )
-           GROUP BY url
+           GROUP BY exit_url
            ORDER BY value DESC
            LIMIT {limit:UInt32}`,
           { ...params, ...filter.params },
@@ -418,9 +418,9 @@ export class ClickHouseAdapter implements DBAdapter {
       }
       case 'top_transitions': {
         const rows = await this.queryRows<{ key: string; value: string }>(
-          `SELECT concat(prev_url, ' → ', url) AS key, count() AS value FROM (
-             SELECT session_id, url,
-                    lag(url) OVER (PARTITION BY session_id ORDER BY timestamp) AS prev_url
+          `SELECT concat(prev_url, ' → ', curr_url) AS key, count() AS value FROM (
+             SELECT session_id, url AS curr_url,
+                    lagInFrame(url, 1) OVER (PARTITION BY session_id ORDER BY timestamp ASC) AS prev_url
              FROM ${EVENTS_TABLE}
              WHERE site_id = {siteId:String}
                AND timestamp >= {from:String}
@@ -428,7 +428,7 @@ export class ClickHouseAdapter implements DBAdapter {
                AND type = 'pageview'
                AND url IS NOT NULL${filterSql}
            )
-           WHERE prev_url IS NOT NULL
+           WHERE prev_url IS NOT NULL AND prev_url != ''
            GROUP BY key
            ORDER BY value DESC
            LIMIT {limit:UInt32}`,
@@ -538,6 +538,60 @@ export class ClickHouseAdapter implements DBAdapter {
              AND os IS NOT NULL
              ${filterSql}
            GROUP BY os
+           ORDER BY value DESC
+           LIMIT {limit:UInt32}`,
+          { ...params, ...filter.params },
+        );
+        data = rows.map((r) => ({ key: r.key, value: Number(r.value) }));
+        total = data.reduce((sum, d) => sum + d.value, 0);
+        break;
+      }
+
+      case 'top_utm_sources': {
+        const rows = await this.queryRows<{ key: string; value: string }>(
+          `SELECT utm_source AS key, uniq(visitor_id) AS value FROM ${EVENTS_TABLE}
+           WHERE site_id = {siteId:String}
+             AND timestamp >= {from:String}
+             AND timestamp <= {to:String}
+             AND utm_source IS NOT NULL AND utm_source != ''
+             ${filterSql}
+           GROUP BY utm_source
+           ORDER BY value DESC
+           LIMIT {limit:UInt32}`,
+          { ...params, ...filter.params },
+        );
+        data = rows.map((r) => ({ key: r.key, value: Number(r.value) }));
+        total = data.reduce((sum, d) => sum + d.value, 0);
+        break;
+      }
+
+      case 'top_utm_mediums': {
+        const rows = await this.queryRows<{ key: string; value: string }>(
+          `SELECT utm_medium AS key, uniq(visitor_id) AS value FROM ${EVENTS_TABLE}
+           WHERE site_id = {siteId:String}
+             AND timestamp >= {from:String}
+             AND timestamp <= {to:String}
+             AND utm_medium IS NOT NULL AND utm_medium != ''
+             ${filterSql}
+           GROUP BY utm_medium
+           ORDER BY value DESC
+           LIMIT {limit:UInt32}`,
+          { ...params, ...filter.params },
+        );
+        data = rows.map((r) => ({ key: r.key, value: Number(r.value) }));
+        total = data.reduce((sum, d) => sum + d.value, 0);
+        break;
+      }
+
+      case 'top_utm_campaigns': {
+        const rows = await this.queryRows<{ key: string; value: string }>(
+          `SELECT utm_campaign AS key, uniq(visitor_id) AS value FROM ${EVENTS_TABLE}
+           WHERE site_id = {siteId:String}
+             AND timestamp >= {from:String}
+             AND timestamp <= {to:String}
+             AND utm_campaign IS NOT NULL AND utm_campaign != ''
+             ${filterSql}
+           GROUP BY utm_campaign
            ORDER BY value DESC
            LIMIT {limit:UInt32}`,
           { ...params, ...filter.params },
