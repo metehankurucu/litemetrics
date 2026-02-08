@@ -1,14 +1,40 @@
 import { useState } from 'react';
 import type { QueryDataPoint } from '@litemetrics/client';
-import { getBrowserIcon, getOSIcon, getDeviceIcon, getReferrerIcon, countryToFlag } from './icons';
+import { getBrowserIcon, getOSIcon, getDeviceIcon, getReferrerIcon, getUtmIcon, getUtmMediumIcon, getBrowserLabel, countryToFlag } from './icons';
+import {
+  FileText,
+  Globe,
+  MapPin,
+  Zap,
+  Target,
+  Monitor,
+  Smartphone,
+  Link2,
+  Megaphone,
+  Tag,
+} from 'lucide-react';
 
 export type TopListType = 'pages' | 'referrers' | 'countries' | 'events' | 'conversions' | 'browsers' | 'devices' | 'utm_sources' | 'utm_mediums' | 'utm_campaigns';
+
+const titleIcons: Record<TopListType, React.ReactNode> = {
+  pages: <FileText className="w-3.5 h-3.5" />,
+  referrers: <Globe className="w-3.5 h-3.5" />,
+  countries: <MapPin className="w-3.5 h-3.5" />,
+  events: <Zap className="w-3.5 h-3.5" />,
+  conversions: <Target className="w-3.5 h-3.5" />,
+  browsers: <Monitor className="w-3.5 h-3.5" />,
+  devices: <Smartphone className="w-3.5 h-3.5" />,
+  utm_sources: <Link2 className="w-3.5 h-3.5" />,
+  utm_mediums: <Megaphone className="w-3.5 h-3.5" />,
+  utm_campaigns: <Tag className="w-3.5 h-3.5" />,
+};
 
 interface TopListProps {
   title: string;
   data: QueryDataPoint[] | null;
   loading?: boolean;
   type?: TopListType;
+  icon?: React.ReactNode;
 }
 
 function getIcon(type: TopListType | undefined, key: string): React.ReactNode {
@@ -43,7 +69,9 @@ function getIcon(type: TopListType | undefined, key: string): React.ReactNode {
     case 'devices':
       return getDeviceIcon(key);
     case 'utm_sources':
+      return getUtmIcon(key);
     case 'utm_mediums':
+      return getUtmMediumIcon(key);
     case 'utm_campaigns':
       return (
         <svg className="w-4 h-4 flex-shrink-0 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -53,14 +81,18 @@ function getIcon(type: TopListType | undefined, key: string): React.ReactNode {
   }
 }
 
-export function TopList({ title, data, loading, type }: TopListProps) {
+export function TopList({ title, data, loading, type, icon }: TopListProps) {
   const [tooltip, setTooltip] = useState<{ key: string; value: number; pct: number; x: number; y: number } | null>(null);
   const maxValue = data ? Math.max(...data.map((d) => d.value), 1) : 1;
   const totalValue = data ? data.reduce((sum, d) => sum + d.value, 0) : 0;
+  const titleIcon = icon ?? (type ? titleIcons[type] : null);
 
   return (
     <div className="rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800 shadow-sm p-5 h-full flex flex-col hover:shadow-md transition-all duration-200">
-      <h3 className="text-xs font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider mb-4">{title}</h3>
+      <div className="flex items-center gap-1.5 mb-4">
+        {titleIcon && <span className="text-zinc-400 dark:text-zinc-500">{titleIcon}</span>}
+        <h3 className="text-xs font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider">{title}</h3>
+      </div>
       {loading ? (
         <div className="space-y-2.5 flex-1">
           {[...Array(5)].map((_, i) => (
@@ -93,7 +125,7 @@ export function TopList({ title, data, loading, type }: TopListProps) {
                 <div className="relative flex items-center justify-between px-2.5 py-2 text-sm">
                   <div className="flex items-center gap-2 truncate mr-3">
                     {icon}
-                    <span className="truncate text-zinc-700 dark:text-zinc-300 font-medium">{item.key || '(direct)'}</span>
+                    <span className="truncate text-zinc-700 dark:text-zinc-300 font-medium">{type === 'browsers' ? getBrowserLabel(item.key) : (item.key || '(direct)')}</span>
                   </div>
                   <div className="flex items-center gap-2.5 flex-shrink-0">
                     <span className="text-zinc-600 dark:text-zinc-400 tabular-nums text-xs font-semibold">

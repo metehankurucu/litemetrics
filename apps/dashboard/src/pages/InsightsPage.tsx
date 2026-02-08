@@ -6,6 +6,7 @@ import { PeriodSelector } from '../components/PeriodSelector';
 import { SegmentFilters, type SegmentFilter, filtersToRecord } from '../components/SegmentFilters';
 import { TopList } from '../components/TopList';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
+import { Clock, LogOut, ArrowRightLeft, ChevronsDown, MousePointerClick, ExternalLink } from 'lucide-react';
 
 interface InsightsPageProps {
   siteId: string;
@@ -21,12 +22,12 @@ type InsightMetric =
   | 'top_button_clicks'
   | 'top_link_targets';
 
-const insightMetrics: { metric: InsightMetric; title: string }[] = [
-  { metric: 'top_exit_pages', title: 'Exit Pages' },
-  { metric: 'top_transitions', title: 'Top Transitions' },
-  { metric: 'top_scroll_pages', title: 'Most Scrolled Pages' },
-  { metric: 'top_button_clicks', title: 'Top Button Clicks' },
-  { metric: 'top_link_targets', title: 'Top Link Targets' },
+const insightMetrics: { metric: InsightMetric; title: string; icon: React.ReactNode }[] = [
+  { metric: 'top_exit_pages', title: 'Exit Pages', icon: <LogOut className="w-3.5 h-3.5" /> },
+  { metric: 'top_transitions', title: 'Top Transitions', icon: <ArrowRightLeft className="w-3.5 h-3.5" /> },
+  { metric: 'top_scroll_pages', title: 'Most Scrolled Pages', icon: <ChevronsDown className="w-3.5 h-3.5" /> },
+  { metric: 'top_button_clicks', title: 'Top Button Clicks', icon: <MousePointerClick className="w-3.5 h-3.5" /> },
+  { metric: 'top_link_targets', title: 'Top Link Targets', icon: <ExternalLink className="w-3.5 h-3.5" /> },
 ];
 
 function aggregateByHour(data: TimeSeriesPoint[]) {
@@ -47,7 +48,7 @@ function isDark() {
   return document.documentElement.classList.contains('dark');
 }
 
-function HourlyCard({ title, data, loading }: { title: string; data: ReturnType<typeof aggregateByHour>; loading: boolean }) {
+function HourlyCard({ title, data, loading, icon }: { title: string; data: ReturnType<typeof aggregateByHour>; loading: boolean; icon?: React.ReactNode }) {
   const maxPoint = data.reduce((max, d) => (d.value > max.value ? d : max), data[0]);
   const dark = isDark();
   const gridStroke = dark ? '#3f3f46' : '#f4f4f5';
@@ -56,7 +57,10 @@ function HourlyCard({ title, data, loading }: { title: string; data: ReturnType<
   return (
     <div className="rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800 shadow-sm p-5 h-full">
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-xs font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider">{title}</h3>
+        <div className="flex items-center gap-1.5">
+          {icon && <span className="text-zinc-400 dark:text-zinc-500">{icon}</span>}
+          <h3 className="text-xs font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider">{title}</h3>
+        </div>
         {!loading && (
           <span className="text-xs text-zinc-500 dark:text-zinc-400">Peak: {maxPoint.label}</span>
         )}
@@ -174,8 +178,8 @@ export function InsightsPage({ siteId, client, period, onPeriodChange }: Insight
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-6">
-        <HourlyCard title="Busy Hours (Events)" data={hourlyEvents} loading={loadingHourly} />
-        <HourlyCard title="Conversion Hours" data={hourlyConversions} loading={loadingHourly} />
+        <HourlyCard title="Busy Hours (Events)" data={hourlyEvents} loading={loadingHourly} icon={<Clock className="w-3.5 h-3.5" />} />
+        <HourlyCard title="Conversion Hours" data={hourlyConversions} loading={loadingHourly} icon={<Clock className="w-3.5 h-3.5" />} />
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
@@ -185,6 +189,7 @@ export function InsightsPage({ siteId, client, period, onPeriodChange }: Insight
             title={metric.title}
             data={insightsData?.[metric.metric]?.data ?? null}
             loading={loadingLists}
+            icon={metric.icon}
           />
         ))}
       </div>

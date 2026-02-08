@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { QueryDataPoint } from '@litemetrics/core';
 import type { TopListType } from '../types';
-import { getBrowserIcon, getDeviceIcon, getReferrerIcon, countryToFlag } from '../utils/icons';
+import { getBrowserIcon, getOSIcon, getDeviceIcon, getReferrerIcon, getUtmIcon, getUtmMediumIcon, getBrowserLabel, countryToFlag } from '../utils/icons';
 
 interface TopListProps {
   title: string;
@@ -40,8 +40,20 @@ function getIcon(type: TopListType | undefined, key: string): React.ReactNode {
       );
     case 'browsers':
       return getBrowserIcon(key);
+    case 'os':
+      return getOSIcon(key);
     case 'devices':
       return getDeviceIcon(key);
+    case 'utm_sources':
+      return getUtmIcon(key);
+    case 'utm_mediums':
+      return getUtmMediumIcon(key);
+    case 'utm_campaigns':
+      return (
+        <svg className="w-4 h-4 flex-shrink-0 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+        </svg>
+      );
   }
 }
 
@@ -85,7 +97,7 @@ export function TopList({ title, data, loading, type, className }: TopListProps)
                 <div className="relative flex items-center justify-between px-2.5 py-1.5 text-sm">
                   <div className="flex items-center gap-2 truncate mr-3">
                     {icon}
-                    <span className="truncate text-[rgb(var(--lm-text-secondary))]">{item.key || '(direct)'}</span>
+                    <span className="truncate text-[rgb(var(--lm-text-secondary))]">{type === 'browsers' ? getBrowserLabel(item.key) : (item.key || '(direct)')}</span>
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
                     <span className="text-[rgb(var(--lm-text-secondary))] tabular-nums text-xs font-medium">

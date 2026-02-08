@@ -1,4 +1,5 @@
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
+import { PieChart as PieChartIcon } from 'lucide-react';
 
 const COLORS = ['#6366f1', '#8b5cf6', '#3b82f6', '#14b8a6', '#10b981', '#f59e0b', '#ef4444', '#ec4899'];
 
@@ -6,16 +7,20 @@ interface PieChartCardProps {
   title: string;
   data: { name: string; value: number }[];
   loading?: boolean;
+  icon?: React.ReactNode;
 }
 
-export function PieChartCard({ title, data, loading }: PieChartCardProps) {
+export function PieChartCard({ title, data, loading, icon }: PieChartCardProps) {
   const total = data.reduce((sum, d) => sum + d.value, 0);
   const dark = document.documentElement.classList.contains('dark');
   const pieStroke = dark ? '#18181b' : '#fff';
 
   return (
     <div className="rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800 shadow-sm p-5 h-full flex flex-col hover:shadow-md transition-all duration-200">
-      <h3 className="text-xs font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider mb-4">{title}</h3>
+      <div className="flex items-center gap-1.5 mb-4">
+        {icon && <span className="text-zinc-400 dark:text-zinc-500">{icon}</span>}
+        <h3 className="text-xs font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider">{title}</h3>
+      </div>
       {loading ? (
         <div className="h-48 bg-zinc-50 dark:bg-zinc-800 rounded-lg animate-pulse flex-1" />
       ) : data.length === 0 ? (

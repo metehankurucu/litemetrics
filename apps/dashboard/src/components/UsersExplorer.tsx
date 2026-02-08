@@ -4,6 +4,7 @@ import type { LitemetricsClient, UserDetail, EventListItem } from '@litemetrics/
 import { queryKeys } from '../hooks/useAnalytics';
 import { getBrowserIcon, getOSIcon, getDeviceIcon } from './icons';
 import { ExportButton } from './ExportButton';
+import { Activity, Eye, Layers, Calendar, User, Monitor, Tag, Clock } from 'lucide-react';
 
 interface UsersExplorerProps {
   siteId: string;
@@ -275,17 +276,20 @@ function UserDetailView({ siteId, client, visitorId, onBack }: { siteId: string;
 
       {/* User info cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <InfoCard label="Total Events" value={user.totalEvents.toLocaleString()} />
-        <InfoCard label="Pageviews" value={user.totalPageviews.toLocaleString()} />
-        <InfoCard label="Sessions" value={user.totalSessions.toLocaleString()} />
-        <InfoCard label="First Seen" value={formatRelative(user.firstSeen)} />
+        <InfoCard label="Total Events" value={user.totalEvents.toLocaleString()} icon={<Activity className="w-3.5 h-3.5" />} />
+        <InfoCard label="Pageviews" value={user.totalPageviews.toLocaleString()} icon={<Eye className="w-3.5 h-3.5" />} />
+        <InfoCard label="Sessions" value={user.totalSessions.toLocaleString()} icon={<Layers className="w-3.5 h-3.5" />} />
+        <InfoCard label="First Seen" value={formatRelative(user.firstSeen)} icon={<Calendar className="w-3.5 h-3.5" />} />
       </div>
 
       {/* User profile */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Profile */}
         <div className="rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800 shadow-sm p-5 h-full">
-          <h3 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300 mb-4">Profile</h3>
+          <div className="flex items-center gap-1.5 mb-4">
+            <span className="text-zinc-400 dark:text-zinc-500"><User className="w-3.5 h-3.5" /></span>
+            <h3 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">Profile</h3>
+          </div>
           <div className="space-y-3">
             {user.userId && <ProfileField label="User ID" value={user.userId} />}
             <ProfileField label="Visitor ID" value={user.visitorId} mono />
@@ -298,7 +302,10 @@ function UserDetailView({ siteId, client, visitorId, onBack }: { siteId: string;
 
         {/* Environment */}
         <div className="rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800 shadow-sm p-5 h-full">
-          <h3 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300 mb-4">Environment</h3>
+          <div className="flex items-center gap-1.5 mb-4">
+            <span className="text-zinc-400 dark:text-zinc-500"><Monitor className="w-3.5 h-3.5" /></span>
+            <h3 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">Environment</h3>
+          </div>
           <div className="space-y-3">
             {user.device && (
               <div>
@@ -326,7 +333,10 @@ function UserDetailView({ siteId, client, visitorId, onBack }: { siteId: string;
 
         {/* Attribution + Traits */}
         <div className="rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800 shadow-sm p-5 h-full">
-          <h3 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300 mb-4">Attribution & Traits</h3>
+          <div className="flex items-center gap-1.5 mb-4">
+            <span className="text-zinc-400 dark:text-zinc-500"><Tag className="w-3.5 h-3.5" /></span>
+            <h3 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">Attribution & Traits</h3>
+          </div>
           <div className="space-y-3">
             {user.utm ? (
               <div className="space-y-2">
@@ -354,10 +364,13 @@ function UserDetailView({ siteId, client, visitorId, onBack }: { siteId: string;
 
       {/* Event timeline */}
       <div className="rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800 shadow-sm p-5">
-        <h3 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300 mb-4">
-          Event Timeline
-          <span className="text-zinc-400 dark:text-zinc-500 font-normal ml-2">({eventsTotal})</span>
-        </h3>
+        <div className="flex items-center gap-1.5 mb-4">
+          <span className="text-zinc-400 dark:text-zinc-500"><Clock className="w-3.5 h-3.5" /></span>
+          <h3 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">
+            Event Timeline
+            <span className="text-zinc-400 dark:text-zinc-500 font-normal ml-2">({eventsTotal})</span>
+          </h3>
+        </div>
 
         {eventsLoading ? (
           <div className="space-y-3">
@@ -404,10 +417,13 @@ function UserDetailView({ siteId, client, visitorId, onBack }: { siteId: string;
 
 // ─── Shared components ──────────────────────────────────
 
-function InfoCard({ label, value }: { label: string; value: string }) {
+function InfoCard({ label, value, icon }: { label: string; value: string; icon?: React.ReactNode }) {
   return (
     <div className="rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800 shadow-sm p-4">
-      <p className="text-xs font-medium text-zinc-400 dark:text-zinc-500 uppercase tracking-wider mb-1">{label}</p>
+      <div className="flex items-center gap-1.5 mb-1">
+        {icon && <span className="text-zinc-400 dark:text-zinc-500">{icon}</span>}
+        <p className="text-xs font-medium text-zinc-400 dark:text-zinc-500 uppercase tracking-wider">{label}</p>
+      </div>
       <p className="text-xl font-bold text-zinc-900 dark:text-zinc-100 tabular-nums">{value}</p>
     </div>
   );

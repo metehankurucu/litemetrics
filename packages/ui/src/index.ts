@@ -33,6 +33,6 @@ export {
 } from './widgets';
 
 // Utils
-export { getBrowserIcon, getOSIcon, getDeviceIcon, getReferrerIcon, countryToFlag } from './utils';
+export { getBrowserIcon, getOSIcon, getDeviceIcon, getReferrerIcon, getUtmIcon, getUtmMediumIcon, getBrowserLabel, FaviconImg, countryToFlag } from './utils';
 export { formatDate, formatTooltipDate } from './utils';
 export { cssVar, getPieColors } from './utils';

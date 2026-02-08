@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { createSitesClient, type Site } from '@litemetrics/client';
 import { queryKeys } from '../hooks/useAnalytics';
 import { useAuth } from '../auth';
+import { Globe, BookOpen, Shield, Target } from 'lucide-react';
 
 type Platform = 'html' | 'react' | 'react-native' | 'nextjs' | 'node';
 
@@ -250,7 +251,10 @@ export function SiteManager() {
       {/* Site List */}
       <div className="rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800 shadow-sm p-4">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">Sites</h3>
+          <div className="flex items-center gap-1.5">
+            <span className="text-zinc-400 dark:text-zinc-500"><Globe className="w-3.5 h-3.5" /></span>
+            <h3 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">Sites</h3>
+          </div>
           <button
             onClick={() => setShowCreate(true)}
             className="text-xs font-semibold bg-gradient-to-b from-indigo-500 to-indigo-600 hover:from-indigo-400 hover:to-indigo-500 text-white px-3 py-1.5 rounded-lg shadow-sm transition-all"
@@ -411,7 +415,10 @@ function AllowedHostnames({ hostnames, onUpdate, saving }: {
 
   return (
     <div>
-      <p className="text-xs text-zinc-400 mb-2">Allowed Hostnames</p>
+      <div className="flex items-center gap-1.5 mb-2">
+        <span className="text-zinc-400 dark:text-zinc-500"><Shield className="w-3.5 h-3.5" /></span>
+        <p className="text-xs text-zinc-400">Allowed Hostnames</p>
+      </div>
       <div className="flex flex-wrap gap-2 mb-2">
         {hostnames.map((h) => (
           <span key={h} className="inline-flex items-center gap-1 bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg px-2.5 py-1 text-sm font-mono text-zinc-700 dark:text-zinc-300">
@@ -471,7 +478,10 @@ function ConversionEvents({ events, onUpdate, saving }: {
 
   return (
     <div>
-      <p className="text-xs text-zinc-400 mb-2">Conversion Events</p>
+      <div className="flex items-center gap-1.5 mb-2">
+        <span className="text-zinc-400 dark:text-zinc-500"><Target className="w-3.5 h-3.5" /></span>
+        <p className="text-xs text-zinc-400">Conversion Events</p>
+      </div>
       <div className="flex flex-wrap gap-2 mb-2">
         {events.map((e) => (
           <span key={e} className="inline-flex items-center gap-1 bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 rounded-lg px-2.5 py-1 text-sm font-mono text-emerald-700 dark:text-emerald-400">
@@ -528,7 +538,10 @@ function SetupGuide({ site }: { site: Site }) {
   return (
     <div>
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">Setup Guide</h3>
+        <div className="flex items-center gap-1.5">
+          <span className="text-zinc-400 dark:text-zinc-500"><BookOpen className="w-3.5 h-3.5" /></span>
+          <h3 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">Setup Guide</h3>
+        </div>
         <div className="flex gap-1">
           {PLATFORMS.map((p) => (
             <button

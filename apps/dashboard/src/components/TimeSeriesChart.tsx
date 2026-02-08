@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import type { LitemetricsClient, Period, TimeSeriesPoint } from '@litemetrics/client';
 import { queryKeys } from '../hooks/useAnalytics';
+import { BarChart3 } from 'lucide-react';
 
 interface TimeSeriesChartProps {
   client: LitemetricsClient;
@@ -59,7 +60,10 @@ export function TimeSeriesChart({ client, siteId, period, filters }: TimeSeriesC
   return (
     <div className="rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800 shadow-sm p-5 md:p-6 mb-6">
       <div className="flex items-center justify-between mb-5">
-        <h3 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">Overview</h3>
+        <div className="flex items-center gap-1.5">
+          <BarChart3 className="w-4 h-4 text-zinc-400 dark:text-zinc-500" />
+          <h3 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">Overview</h3>
+        </div>
         <div className="inline-flex gap-0.5 bg-zinc-100/80 dark:bg-zinc-800 rounded-lg p-0.5">
           {metrics.map((m) => (
             <button

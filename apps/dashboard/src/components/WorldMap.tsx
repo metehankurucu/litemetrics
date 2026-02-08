@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { ComposableMap, Geographies, Geography, ZoomableGroup } from 'react-simple-maps';
 import type { LitemetricsClient, Period } from '@litemetrics/client';
 import { queryKeys } from '../hooks/useAnalytics';
+import { MapPin } from 'lucide-react';
 
 const geoUrl = 'https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json';
 
@@ -91,7 +92,10 @@ export const WorldMap = memo(function WorldMap({ client, siteId, period, filters
 
   return (
     <div className="rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800 shadow-sm p-5 mb-6">
-      <h3 className="text-xs font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider mb-3">Visitors by Country</h3>
+      <div className="flex items-center gap-1.5 mb-3">
+        <MapPin className="w-3.5 h-3.5 text-zinc-400 dark:text-zinc-500" />
+        <h3 className="text-xs font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider">Visitors by Country</h3>
+      </div>
       {loading ? (
         <div className="h-64 bg-zinc-50 dark:bg-zinc-800 rounded-lg animate-pulse" />
       ) : (

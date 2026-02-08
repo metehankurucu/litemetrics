@@ -4,17 +4,20 @@ interface StatCardProps {
   loading?: boolean;
   previousValue?: number;
   changePercent?: number;
+  icon?: React.ReactNode;
 }
 
-export function StatCard({ title, value, loading, previousValue, changePercent }: StatCardProps) {
+export function StatCard({ title, value, loading, previousValue, changePercent, icon }: StatCardProps) {
   const hasComparison = changePercent !== undefined && changePercent !== null;
   const isPositive = hasComparison && changePercent! > 0;
   const isNegative = hasComparison && changePercent! < 0;
 
   return (
     <div className="relative rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800 shadow-sm p-5 hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 overflow-hidden group">
-      <div className="absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-indigo-500/80 to-violet-500/60 opacity-0 group-hover:opacity-100 transition-opacity" />
-      <p className="text-xs font-medium text-zinc-400 dark:text-zinc-500 uppercase tracking-wider mb-2">{title}</p>
+      <div className="flex items-center gap-1.5 mb-2">
+        {icon && <span className="text-zinc-400 dark:text-zinc-500">{icon}</span>}
+        <p className="text-xs font-medium text-zinc-400 dark:text-zinc-500 uppercase tracking-wider">{title}</p>
+      </div>
       {loading ? (
         <div className="h-8 w-20 bg-zinc-100 dark:bg-zinc-800 rounded-lg animate-pulse" />
       ) : (

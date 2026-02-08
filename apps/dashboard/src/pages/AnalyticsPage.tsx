@@ -12,6 +12,7 @@ import { PieChartCard } from '../components/PieChartCard';
 import { ExportButton } from '../components/ExportButton';
 import { SegmentFilters, type SegmentFilter, filtersToRecord } from '../components/SegmentFilters';
 import { useAuth } from '../auth';
+import { Eye, Users, MousePointerClick, Zap, Target, RefreshCw, Monitor, Smartphone } from 'lucide-react';
 
 type TopMetric = 'top_pages' | 'top_referrers' | 'top_countries' | 'top_events' | 'top_conversions' | 'top_browsers' | 'top_devices' | 'top_utm_sources' | 'top_utm_mediums' | 'top_utm_campaigns';
 
@@ -140,9 +141,7 @@ export function AnalyticsPage({ siteId, client, period, onPeriodChange }: Analyt
             className="p-2 rounded-lg bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 shadow-sm text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:border-zinc-300 dark:hover:border-zinc-600 hover:shadow transition-all"
             title="Refresh"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-            </svg>
+            <RefreshCw className="w-4 h-4" />
           </button>
         </div>
       </div>
@@ -162,30 +161,35 @@ export function AnalyticsPage({ siteId, client, period, onPeriodChange }: Analyt
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 md:gap-5 mb-6">
         <StatCard
           title="Pageviews"
+          icon={<Eye className="w-3.5 h-3.5" />}
           value={overview.pageviews?.total ?? 0}
           changePercent={overview.pageviews?.changePercent}
           loading={loading}
         />
         <StatCard
           title="Visitors"
+          icon={<Users className="w-3.5 h-3.5" />}
           value={overview.visitors?.total ?? 0}
           changePercent={overview.visitors?.changePercent}
           loading={loading}
         />
         <StatCard
           title="Sessions"
+          icon={<MousePointerClick className="w-3.5 h-3.5" />}
           value={overview.sessions?.total ?? 0}
           changePercent={overview.sessions?.changePercent}
           loading={loading}
         />
         <StatCard
           title="Events"
+          icon={<Zap className="w-3.5 h-3.5" />}
           value={overview.events?.total ?? 0}
           changePercent={overview.events?.changePercent}
           loading={loading}
         />
         <StatCard
           title="Conversions"
+          icon={<Target className="w-3.5 h-3.5" />}
           value={overview.conversions?.total ?? 0}
           changePercent={overview.conversions?.changePercent}
           loading={loading}
@@ -202,8 +206,8 @@ export function AnalyticsPage({ siteId, client, period, onPeriodChange }: Analyt
 
       {/* Pie Charts */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-6">
-        <PieChartCard title="Browsers" data={browserPieData} loading={loading} />
-        <PieChartCard title="Devices" data={devicePieData} loading={loading} />
+        <PieChartCard title="Browsers" data={browserPieData} loading={loading} icon={<Monitor className="w-3.5 h-3.5" />} />
+        <PieChartCard title="Devices" data={devicePieData} loading={loading} icon={<Smartphone className="w-3.5 h-3.5" />} />
       </div>
 
       {/* Top Lists */}

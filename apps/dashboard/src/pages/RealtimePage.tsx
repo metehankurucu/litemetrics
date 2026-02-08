@@ -3,6 +3,7 @@ import type { LitemetricsClient } from '@litemetrics/client';
 import { queryKeys } from '../hooks/useAnalytics';
 import { getBrowserIcon, getDeviceIcon } from '../components/icons';
 import { WorldMap } from '../components/WorldMap';
+import { FileText, Activity } from 'lucide-react';
 
 interface RealtimePageProps {
   siteId: string;
@@ -57,7 +58,10 @@ export function RealtimePage({ siteId, client }: RealtimePageProps) {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Active pages */}
         <div className="rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800 shadow-sm p-5 h-full">
-          <h3 className="text-xs font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider mb-4">Active Pages</h3>
+          <div className="flex items-center gap-1.5 mb-4">
+            <FileText className="w-3.5 h-3.5 text-zinc-400 dark:text-zinc-500" />
+            <h3 className="text-xs font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider">Active Pages</h3>
+          </div>
           {loading ? (
             <div className="space-y-3">
               {[...Array(5)].map((_, i) => (
@@ -80,7 +84,10 @@ export function RealtimePage({ siteId, client }: RealtimePageProps) {
 
         {/* Recent events feed */}
         <div className="rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800 shadow-sm p-5 h-full">
-          <h3 className="text-xs font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider mb-4">Recent Events</h3>
+          <div className="flex items-center gap-1.5 mb-4">
+            <Activity className="w-3.5 h-3.5 text-zinc-400 dark:text-zinc-500" />
+            <h3 className="text-xs font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider">Recent Events</h3>
+          </div>
           {loading ? (
             <div className="space-y-3">
               {[...Array(8)].map((_, i) => (

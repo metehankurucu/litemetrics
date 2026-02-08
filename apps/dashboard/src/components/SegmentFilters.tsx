@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { SlidersHorizontal, X } from 'lucide-react';
 
 export interface SegmentFilter {
   id: string;
@@ -78,7 +79,10 @@ export function SegmentFilters({ value, onChange }: SegmentFiltersProps) {
     <div className="rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800 shadow-sm p-4 mb-6">
       <div className="flex items-center justify-between gap-3 mb-3">
         <div>
-          <h3 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">Segmentation</h3>
+          <div className="flex items-center gap-1.5">
+            <SlidersHorizontal className="w-4 h-4 text-zinc-400 dark:text-zinc-500" />
+            <h3 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">Segmentation</h3>
+          </div>
           <p className="text-xs text-zinc-400 dark:text-zinc-500">Filter analytics by audience, device, UTM, or event metadata.</p>
         </div>
         <div className="flex items-center gap-2">
@@ -160,9 +164,7 @@ export function SegmentFilters({ value, onChange }: SegmentFiltersProps) {
                   className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
                   title="Remove"
                 >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
+                  <X className="w-4 h-4" />
                 </button>
               </div>
             );

@@ -42,8 +42,7 @@
   },
   "dependencies": {
     "@litemetrics/client": "workspace:*",
-    "@litemetrics/core": "workspace:*",
-    "react-icons": "^5.5.0"
+    "@litemetrics/core": "workspace:*"
   },
   "peerDependencies": {
     "react": ">=18",
