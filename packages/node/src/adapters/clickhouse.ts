@@ -1074,7 +1074,7 @@ export class ClickHouseAdapter implements DBAdapter {
   private async getMergedUserDetail(siteId: string, userId: string, visitorIds: string[]): Promise<UserDetail | null> {
     const rows = await this.queryRows<Record<string, unknown>>(
       `SELECT
-        anyLast(visitor_id) AS visitor_id,
+        anyLast(visitor_id) AS last_visitor_id,
         anyLast(traits) AS traits,
         min(timestamp) AS firstSeen,
         max(timestamp) AS lastSeen,
@@ -1106,7 +1106,7 @@ export class ClickHouseAdapter implements DBAdapter {
     if (rows.length === 0) return null;
     const u = rows[0];
     return {
-      visitorId: String(u.visitor_id),
+      visitorId: String(u.last_visitor_id),
       visitorIds,
       userId,
       traits: this.parseJSON(u.traits as string | null),
