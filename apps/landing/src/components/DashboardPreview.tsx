@@ -9,7 +9,7 @@ export function DashboardPreview() {
             This is what your<br />users get
           </h2>
           <p className="text-lg text-zinc-400 max-w-xl mx-auto">
-            Embed this dashboard in your product. Fully themeable, dark mode included. No iframe — native React components.
+            Ship this dashboard as part of your product. Fully themeable, dark mode included. No iframe — native React components.
           </p>
         </div>
 

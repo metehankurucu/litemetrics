@@ -3,7 +3,7 @@ import { useState, useMemo } from 'react';
 type Tab = 'embed' | 'react' | 'html' | 'node';
 
 const tabs: { key: Tab; label: string }[] = [
-  { key: 'embed', label: 'Embed Dashboard' },
+  { key: 'embed', label: 'Dashboard' },
   { key: 'react', label: 'React' },
   { key: 'html', label: 'HTML' },
   { key: 'node', label: 'Node.js' },
@@ -233,7 +233,7 @@ export function CodeExample() {
             Five lines. That's it.
           </h2>
           <p className="text-lg text-zinc-400">
-            Embed a full analytics dashboard in under a minute.
+            Integrate a full analytics dashboard in under a minute.
           </p>
         </div>
 

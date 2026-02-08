@@ -27,7 +27,7 @@ export function EmbedShowcase() {
         <div className="text-center mb-16">
           <p className="text-sm font-medium text-brand-400 uppercase tracking-wider mb-3">How it works</p>
           <h2 className="font-display text-4xl sm:text-5xl text-white tracking-tight mb-4">
-            Embed analytics in<br />three steps
+            Integrate analytics in<br />three steps
           </h2>
           <p className="text-lg text-zinc-400 max-w-xl mx-auto">
             Give your customers a full analytics dashboard. No building from scratch.

@@ -4,15 +4,15 @@
 
 <h1 align="center">Litemetrics</h1>
 
-<p align="center">Open-source analytics SDK you can embed in your product. Give your users a beautiful analytics dashboard in 5 minutes.</p>
+<p align="center">Open-source analytics SDK you can integrate into your product. Give your users a beautiful analytics dashboard in 5 minutes.</p>
 
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/template/OQI8lX?referralCode=LpQIoM)
 
 ## Why Litemetrics?
 
-### Embed in your product
+### Integrate into your product
 
-Drop a full analytics dashboard into your React app with `@litemetrics/ui`. Charts, maps, tables — all pre-built. Your customers get analytics without you building anything.
+Drop a full analytics stack into your app — tracker, server, query API, and a pre-built dashboard UI. Your customers get analytics without you building anything.
 
 ```tsx
 import { LitemetricsProvider, AnalyticsDashboard } from '@litemetrics/ui';
@@ -36,7 +36,7 @@ Each customer gets their own isolated analytics via `site_id`. One database, zer
 
 ## Quick Start
 
-### Embed a dashboard (recommended)
+### Add a dashboard (recommended)
 
 ```bash
 npm install @litemetrics/ui
@@ -147,7 +147,7 @@ The tracker handles session management, visitor IDs, batching, and SPA detection
 
 | Package | Description |
 |---------|-------------|
-| [`@litemetrics/ui`](./packages/ui) | Embeddable React dashboard components (10 themes, dark mode, CSS variables) |
+| [`@litemetrics/ui`](./packages/ui) | Pre-built React dashboard components (10 themes, dark mode, CSS variables) |
 | [`@litemetrics/core`](./packages/core) | Shared types and constants |
 | [`@litemetrics/tracker`](./packages/tracker) | Browser tracker (~3KB gzipped) |
 | [`@litemetrics/node`](./packages/node) | Server collector, ClickHouse/MongoDB adapters, query API |

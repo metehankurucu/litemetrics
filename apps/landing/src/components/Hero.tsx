@@ -29,7 +29,7 @@ export function Hero() {
           className="text-lg sm:text-xl text-zinc-400 max-w-2xl mx-auto mb-10 leading-relaxed animate-fade-up"
           style={{ animationDelay: '0.25s', opacity: 0 }}
         >
-          Open-source analytics SDK you can embed in your app.
+          Open-source analytics SDK you can integrate into your app.
           White-label, themeable, multi-tenant.{' '}
           <span className="text-white font-medium">5 lines of code</span>.
         </p>

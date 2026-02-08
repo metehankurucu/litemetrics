@@ -1,5 +1,5 @@
 const stats = [
-  { value: '5 Lines', label: 'To Embed' },
+  { value: '5 Lines', label: 'To Integrate' },
   { value: '10', label: 'Theme Presets' },
   { value: 'Multi', label: 'Tenant' },
   { value: '<3.5KB', label: 'Tracker' },
