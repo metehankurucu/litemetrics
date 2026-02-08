@@ -36,6 +36,7 @@
       "name": "@litemetrics/landing",
       "version": "0.1.1",
       "dependencies": {
+        "@litemetrics/react": "workspace:*",
         "motion": "^12",
         "react": "^19",
         "react-dom": "^19",
@@ -126,7 +127,7 @@
     },
     "packages/client": {
       "name": "@litemetrics/client",
-      "version": "0.1.2",
+      "version": "0.1.3",
       "dependencies": {
         "@litemetrics/core": "workspace:*",
         "axios": "^1.13.4",
@@ -138,7 +139,7 @@
     },
     "packages/core": {
       "name": "@litemetrics/core",
-      "version": "0.1.2",
+      "version": "0.1.3",
       "devDependencies": {
         "tsup": "^8",
         "typescript": "^5.7",
@@ -146,7 +147,7 @@
     },
     "packages/node": {
       "name": "@litemetrics/node",
-      "version": "0.1.2",
+      "version": "0.1.3",
       "dependencies": {
         "@clickhouse/client": "^1.17.0",
         "@litemetrics/core": "workspace:*",
@@ -162,7 +163,7 @@
     },
     "packages/react": {
       "name": "@litemetrics/react",
-      "version": "0.1.2",
+      "version": "0.1.3",
       "dependencies": {
         "@litemetrics/tracker": "workspace:*",
       },
@@ -178,7 +179,7 @@
     },
     "packages/react-native": {
       "name": "@litemetrics/react-native",
-      "version": "0.1.2",
+      "version": "0.1.3",
       "dependencies": {
         "@litemetrics/core": "workspace:*",
       },
@@ -195,7 +196,7 @@
     },
     "packages/tracker": {
       "name": "@litemetrics/tracker",
-      "version": "0.1.2",
+      "version": "0.1.3",
       "dependencies": {
         "@litemetrics/core": "workspace:*",
       },
@@ -206,7 +207,7 @@
     },
     "packages/ui": {
       "name": "@litemetrics/ui",
-      "version": "0.1.2",
+      "version": "0.1.3",
       "dependencies": {
         "@litemetrics/client": "workspace:*",
         "@litemetrics/core": "workspace:*",

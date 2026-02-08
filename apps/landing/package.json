@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@litemetrics/react": "workspace:*",
     "react": "^19",
     "react-dom": "^19",
     "motion": "^12"
