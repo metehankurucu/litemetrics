@@ -11,9 +11,9 @@ export function Footer() {
 
           {/* Links */}
           <div className="flex items-center gap-8">
-            <a href="https://github.com/metehankurucu/litemetrics#readme" target="_blank" rel="noopener" className="text-sm text-zinc-500 hover:text-zinc-300 transition-colors">Docs</a>
-            <a href="https://github.com/metehankurucu/litemetrics" target="_blank" rel="noopener" className="text-sm text-zinc-500 hover:text-zinc-300 transition-colors">GitHub</a>
-            <a href="https://www.npmjs.com/org/litemetrics" target="_blank" rel="noopener" className="text-sm text-zinc-500 hover:text-zinc-300 transition-colors">npm</a>
+            <a href="https://github.com/metehankurucu/litemetrics#readme" target="_blank" rel="noopener noreferrer" className="text-sm text-zinc-500 hover:text-zinc-300 transition-colors">Docs</a>
+            <a href="https://github.com/metehankurucu/litemetrics" target="_blank" rel="noopener noreferrer" className="text-sm text-zinc-500 hover:text-zinc-300 transition-colors">GitHub</a>
+            <a href="https://www.npmjs.com/org/litemetrics" target="_blank" rel="noopener noreferrer" className="text-sm text-zinc-500 hover:text-zinc-300 transition-colors">npm</a>
             <a href="#features" className="text-sm text-zinc-500 hover:text-zinc-300 transition-colors">Features</a>
           </div>
 

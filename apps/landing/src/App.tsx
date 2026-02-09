@@ -12,13 +12,15 @@ export function App() {
   return (
     <div className="min-h-screen bg-zinc-950 font-body">
       <Navbar />
-      <Hero />
-      <StatsBar />
-      <EmbedShowcase />
-      <Features />
-      <CodeExample />
-      <DashboardPreview />
-      <OpenSource />
+      <main>
+        <Hero />
+        <StatsBar />
+        <EmbedShowcase />
+        <Features />
+        <CodeExample />
+        <DashboardPreview />
+        <OpenSource />
+      </main>
       <Footer />
     </div>
   );

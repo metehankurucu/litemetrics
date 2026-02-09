@@ -5,12 +5,84 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Litemetrics — Privacy-first analytics SDK</title>
     <meta name="description" content="Open-source, self-hosted web analytics SDK. Drop-in tracker under 3.5KB. No cookies, no third parties, full control." />
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+
+    <!-- Canonical -->
+    <link rel="canonical" href="https://litemetrics.dev/" />
+
+    <!-- Theme -->
+    <meta name="theme-color" content="#09090b" />
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Litemetrics" />
+    <meta property="og:title" content="Litemetrics — Privacy-first analytics SDK" />
+    <meta property="og:description" content="Open-source, self-hosted web analytics SDK. Drop-in tracker under 3.5KB. No cookies, no third parties, full control." />
+    <meta property="og:url" content="https://litemetrics.dev/" />
+    <meta property="og:image" content="https://litemetrics.dev/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Litemetrics — Open-source analytics SDK for your product" />
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Litemetrics — Privacy-first analytics SDK" />
+    <meta name="twitter:description" content="Open-source, self-hosted web analytics SDK. Drop-in tracker under 3.5KB. No cookies, no third parties, full control." />
+    <meta name="twitter:image" content="https://litemetrics.dev/og-image.png" />
+
+    <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+    <!-- Structured Data -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "SoftwareApplication",
+          "name": "Litemetrics",
+          "applicationCategory": "DeveloperApplication",
+          "operatingSystem": "Any",
+          "description": "Open-source, self-hosted web analytics SDK. Drop-in tracker under 3.5KB. No cookies, no third parties, full control.",
+          "url": "https://litemetrics.dev/",
+          "offers": {
+            "@type": "Offer",
+            "price": "0",
+            "priceCurrency": "USD"
+          },
+          "license": "https://opensource.org/licenses/MIT",
+          "codeRepository": "https://github.com/metehankurucu/litemetrics"
+        },
+        {
+          "@type": "Organization",
+          "name": "Litemetrics",
+          "url": "https://litemetrics.dev/",
+          "logo": "https://litemetrics.dev/logo.png",
+          "sameAs": [
+            "https://github.com/metehankurucu/litemetrics",
+            "https://www.npmjs.com/org/litemetrics"
+          ]
+        }
+      ]
+    }
+    </script>
   </head>
   <body>
     <div id="root"></div>
+    <noscript>
+      <div style="padding: 2rem; text-align: center; color: #a1a1aa; font-family: system-ui, sans-serif;">
+        <h1>Litemetrics — Privacy-first analytics SDK</h1>
+        <p>Open-source, self-hosted web analytics SDK. Drop-in tracker under 3.5KB. No cookies, no third parties, full control.</p>
+        <p><a href="https://github.com/metehankurucu/litemetrics" style="color: #818cf8;">View on GitHub</a></p>
+      </div>
+    </noscript>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

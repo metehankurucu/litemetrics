@@ -14,8 +14,8 @@ export function Navbar() {
         <div className="hidden md:flex items-center gap-8">
           <a href="#features" className="text-sm text-zinc-400 hover:text-white transition-colors">Features</a>
           <a href="#setup" className="text-sm text-zinc-400 hover:text-white transition-colors">Setup</a>
-          <a href="https://github.com/metehankurucu/litemetrics" target="_blank" rel="noopener" className="text-sm text-zinc-400 hover:text-white transition-colors">GitHub</a>
-          <a href="https://github.com/metehankurucu/litemetrics#readme" target="_blank" rel="noopener" className="text-sm text-zinc-400 hover:text-white transition-colors">Docs</a>
+          <a href="https://github.com/metehankurucu/litemetrics" target="_blank" rel="noopener noreferrer" className="text-sm text-zinc-400 hover:text-white transition-colors">GitHub</a>
+          <a href="https://github.com/metehankurucu/litemetrics#readme" target="_blank" rel="noopener noreferrer" className="text-sm text-zinc-400 hover:text-white transition-colors">Docs</a>
           <a
             href="#get-started"
             className="text-sm font-medium text-white bg-brand-600 hover:bg-brand-500 px-4 py-2 rounded-lg transition-colors"
@@ -27,6 +27,8 @@ export function Navbar() {
         <button
           onClick={() => setMobileOpen(!mobileOpen)}
           className="md:hidden p-2 text-zinc-400 hover:text-white"
+          aria-label={mobileOpen ? 'Close menu' : 'Open menu'}
+          aria-expanded={mobileOpen}
         >
           <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             {mobileOpen ? (
@@ -42,8 +44,8 @@ export function Navbar() {
         <div className="md:hidden border-t border-white/5 bg-zinc-950/95 backdrop-blur-xl px-6 py-4 space-y-3">
           <a href="#features" className="block text-sm text-zinc-400 hover:text-white">Features</a>
           <a href="#setup" className="block text-sm text-zinc-400 hover:text-white">Setup</a>
-          <a href="https://github.com/metehankurucu/litemetrics" target="_blank" rel="noopener" className="block text-sm text-zinc-400 hover:text-white">GitHub</a>
-          <a href="https://github.com/metehankurucu/litemetrics#readme" target="_blank" rel="noopener" className="block text-sm text-zinc-400 hover:text-white">Docs</a>
+          <a href="https://github.com/metehankurucu/litemetrics" target="_blank" rel="noopener noreferrer" className="block text-sm text-zinc-400 hover:text-white">GitHub</a>
+          <a href="https://github.com/metehankurucu/litemetrics#readme" target="_blank" rel="noopener noreferrer" className="block text-sm text-zinc-400 hover:text-white">Docs</a>
           <a href="#get-started" className="block text-sm font-medium text-white bg-brand-600 px-4 py-2 rounded-lg text-center">
             Get Started
           </a>

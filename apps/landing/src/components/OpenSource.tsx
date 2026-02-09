@@ -23,7 +23,7 @@ export function OpenSource() {
           <a
             href="https://github.com/metehankurucu/litemetrics"
             target="_blank"
-            rel="noopener"
+            rel="noopener noreferrer"
             className="group px-8 py-3.5 rounded-xl bg-white text-zinc-900 font-medium text-base hover:bg-zinc-100 transition-all shadow-lg shadow-white/5"
           >
             <svg className="inline-block w-5 h-5 mr-2 -mt-0.5" fill="currentColor" viewBox="0 0 24 24">
@@ -34,7 +34,7 @@ export function OpenSource() {
           <a
             href="https://www.npmjs.com/org/litemetrics"
             target="_blank"
-            rel="noopener"
+            rel="noopener noreferrer"
             className="px-8 py-3.5 rounded-xl border border-zinc-700 text-zinc-300 font-medium text-base hover:border-zinc-500 hover:text-white transition-all hover:bg-white/5"
           >
             View on npm
