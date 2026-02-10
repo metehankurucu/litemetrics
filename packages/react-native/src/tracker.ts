@@ -68,8 +68,8 @@ export function createRNTracker(config: RNTrackerConfig): RNTrackerInstance {
   // Generate visitorId if not already set (will be overwritten by AsyncStorage if available)
   if (!visitorId) visitorId = generateId().slice(0, 16);
 
-  // Attempt to load persisted visitorId (non-blocking)
-  loadVisitorId();
+  // Load persisted visitorId — events are gated behind this promise
+  const readyPromise = loadVisitorId();
 
   const queue: ClientEvent[] = [];
   let flushTimer: ReturnType<typeof setInterval> | null = null;
@@ -161,7 +161,10 @@ export function createRNTracker(config: RNTrackerConfig): RNTrackerInstance {
     });
   }
 
-  function send(event: ClientEvent) {
+  async function send(event: ClientEvent) {
+    await readyPromise;
+    // Patch visitorId at send-time so it uses the persisted value
+    (event as any).visitorId = visitorId!;
     queue.push(event);
     if (queue.length >= (config.batchSize ?? 10)) {
       flush();
