@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { QueryDataPoint } from '@litemetrics/client';
-import { getBrowserIcon, getOSIcon, getDeviceIcon, getReferrerIcon, getUtmIcon, getUtmMediumIcon, getChannelIcon, getBrowserLabel, countryToFlag } from './icons';
+import { getBrowserIcon, getOSIcon, getDeviceIcon, getReferrerIcon, getUtmIcon, getUtmMediumIcon, getChannelIcon, getBrowserLabel, countryToFlag, countryToName } from './icons';
 import {
   FileText,
   Globe,
@@ -14,6 +14,7 @@ import {
   Tag,
   Search,
   Radio,
+  ChevronDown,
 } from 'lucide-react';
 
 export type TopListType = 'pages' | 'referrers' | 'countries' | 'events' | 'conversions' | 'browsers' | 'devices' | 'utm_sources' | 'utm_mediums' | 'utm_campaigns' | 'utm_terms' | 'utm_contents' | 'channels';
@@ -40,6 +41,11 @@ interface TopListProps {
   loading?: boolean;
   type?: TopListType;
   icon?: React.ReactNode;
+  breakdowns?: {
+    buttonClicks?: QueryDataPoint[];
+    linkTargets?: QueryDataPoint[];
+    scrollPages?: QueryDataPoint[];
+  };
 }
 
 function getIcon(type: TopListType | undefined, key: string): React.ReactNode {
@@ -100,11 +106,26 @@ function getIcon(type: TopListType | undefined, key: string): React.ReactNode {
   }
 }
 
-export function TopList({ title, data, loading, type, icon }: TopListProps) {
+export function TopList({ title, data, loading, type, icon, breakdowns }: TopListProps) {
   const [tooltip, setTooltip] = useState<{ key: string; value: number; pct: number; x: number; y: number } | null>(null);
+  const [expandedKey, setExpandedKey] = useState<string | null>(null);
   const maxValue = data ? Math.max(...data.map((d) => d.value), 1) : 1;
   const totalValue = data ? data.reduce((sum, d) => sum + d.value, 0) : 0;
   const titleIcon = icon ?? (type ? titleIcons[type] : null);
+  const activeBreakdowns = type === 'events' ? breakdowns : undefined;
+
+  const getBreakdownForEvent = (name: string) => {
+    if (!activeBreakdowns) return null;
+    if (name === 'Button Click') return { data: activeBreakdowns.buttonClicks ?? [] };
+    if (name === 'Link Click' || name === 'Outbound Link') return { data: activeBreakdowns.linkTargets ?? [] };
+    if (name === 'Scroll Depth') return { data: activeBreakdowns.scrollPages ?? [] };
+    return null;
+  };
+
+  const formatBreakdownLabel = (value: string) => {
+    const cleaned = value.replace(/\s+/g, ' ').trim();
+    return cleaned || '(unknown)';
+  };
 
   return (
     <div className="rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800 shadow-sm p-5 h-full flex flex-col hover:shadow-md transition-all duration-200">
@@ -127,34 +148,102 @@ export function TopList({ title, data, loading, type, icon }: TopListProps) {
           {data.map((item) => {
             const pct = totalValue > 0 ? Math.round((item.value / totalValue) * 100) : 0;
             const icon = getIcon(type, item.key);
+            const breakdown = getBreakdownForEvent(item.key);
+            const isExpandable = !!breakdown;
+            const isOpen = expandedKey === item.key;
+
             return (
-              <div
-                key={item.key}
-                className="relative group"
-                onMouseEnter={(e) => {
-                  const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                  setTooltip({ key: item.key, value: item.value, pct, x: rect.left + rect.width / 2, y: rect.top });
-                }}
-                onMouseLeave={() => setTooltip(null)}
-              >
+              <div key={item.key}>
                 <div
-                  className="absolute inset-0 bg-indigo-50/80 dark:bg-indigo-500/10 rounded-lg transition-all group-hover:bg-indigo-100/80 dark:group-hover:bg-indigo-500/20"
-                  style={{ width: `${(item.value / maxValue) * 100}%` }}
-                />
-                <div className="relative flex items-center justify-between px-2.5 py-2 text-sm">
-                  <div className="flex items-center gap-2 truncate mr-3">
-                    {icon}
-                    <span className="truncate text-zinc-700 dark:text-zinc-300 font-medium">{type === 'browsers' ? getBrowserLabel(item.key) : (item.key || '(direct)')}</span>
-                  </div>
-                  <div className="flex items-center gap-2.5 flex-shrink-0">
-                    <span className="text-zinc-600 dark:text-zinc-400 tabular-nums text-xs font-semibold">
-                      {item.value.toLocaleString()}
+                  className="relative group"
+                  onMouseEnter={(e) => {
+                    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                    setTooltip({ key: item.key, value: item.value, pct, x: rect.left + rect.width / 2, y: rect.top });
+                  }}
+                  onMouseLeave={() => setTooltip(null)}
+                >
+                  <div
+                    className="absolute inset-0 bg-indigo-50/80 dark:bg-indigo-500/10 rounded-lg transition-all group-hover:bg-indigo-100/80 dark:group-hover:bg-indigo-500/20"
+                    style={{ width: `${(item.value / maxValue) * 100}%` }}
+                  />
+                  <div className="relative flex items-center justify-between px-2.5 py-2 text-sm">
+                    <div className="flex items-center gap-2 truncate mr-3">
+                      {icon}
+                    <span className="truncate text-zinc-700 dark:text-zinc-300 font-medium">
+                      {type === 'browsers'
+                        ? getBrowserLabel(item.key)
+                        : type === 'countries'
+                          ? countryToName(item.key)
+                          : (item.key || '(direct)')}
                     </span>
-                    <span className="text-zinc-400 dark:text-zinc-500 tabular-nums text-xs w-8 text-right">
-                      {pct}%
-                    </span>
+                    </div>
+                    <div className="flex items-center gap-2.5 flex-shrink-0">
+                      <span className="text-zinc-600 dark:text-zinc-400 tabular-nums text-xs font-semibold">
+                        {item.value.toLocaleString()}
+                      </span>
+                      <span className="text-zinc-400 dark:text-zinc-500 tabular-nums text-xs w-8 text-right">
+                        {pct}%
+                      </span>
+                      {type === 'events' && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (!isExpandable) return;
+                            setExpandedKey(isOpen ? null : item.key);
+                          }}
+                          disabled={!isExpandable}
+                          title={isExpandable ? 'Show breakdown' : 'No breakdown available'}
+                          className={`p-1 rounded-md border transition-colors ${
+                            isExpandable
+                              ? 'border-zinc-200 dark:border-zinc-700 text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200 hover:border-zinc-300 dark:hover:border-zinc-600 bg-white/60 dark:bg-zinc-900/60'
+                              : 'border-transparent text-zinc-300 dark:text-zinc-700 cursor-not-allowed'
+                          }`}
+                        >
+                          <ChevronDown className={`w-3.5 h-3.5 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
+
+                {isOpen && (
+                  <div className="mt-1 mb-2 ml-6 mr-2.5 text-xs">
+                    {(() => {
+                      const breakdownData = breakdown?.data ?? [];
+                      const breakdownTotal = breakdownData.reduce((sum, d) => sum + d.value, 0);
+                      const breakdownMax = breakdownData.length > 0 ? Math.max(...breakdownData.map((d) => d.value), 1) : 1;
+                      if (breakdownData.length === 0) {
+                        return <p className="text-zinc-400 dark:text-zinc-500">No breakdown yet</p>;
+                      }
+                      return (
+                        <div className="space-y-1">
+                          {breakdownData.slice(0, 10).map((b) => {
+                            const label = formatBreakdownLabel(b.key);
+                            const breakdownPct = breakdownTotal > 0 ? Math.round((b.value / breakdownTotal) * 100) : 0;
+                            return (
+                              <div key={b.key} className="relative group">
+                                <div
+                                  className="absolute inset-0 bg-indigo-50/70 dark:bg-indigo-500/10 rounded-md transition-all group-hover:bg-indigo-100/70 dark:group-hover:bg-indigo-500/20"
+                                  style={{ width: `${(b.value / breakdownMax) * 100}%` }}
+                                />
+                                <div className="relative flex items-center gap-2 px-2 py-1.5">
+                                  <span className="truncate text-zinc-700 dark:text-zinc-300" title={label}>{label}</span>
+                                  <span className="ml-auto text-zinc-600 dark:text-zinc-400 tabular-nums text-[11px] font-semibold">
+                                    {b.value.toLocaleString()}
+                                  </span>
+                                  <span className="text-zinc-400 dark:text-zinc-500 tabular-nums text-[11px] w-8 text-right">
+                                    {breakdownPct}%
+                                  </span>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
               </div>
             );
           })}

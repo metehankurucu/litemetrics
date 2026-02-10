@@ -171,6 +171,25 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
     return req.ip || req.socket?.remoteAddress || req.connection?.remoteAddress || '';
   }
 
+  function extractRequestHostname(req: any): string | undefined {
+    const headerValue = (value: unknown): string | undefined => {
+      if (Array.isArray(value)) return value[0];
+      if (typeof value === 'string') return value;
+      return undefined;
+    };
+
+    const origin = headerValue(req.headers?.origin);
+    const referer = headerValue(req.headers?.referer) || headerValue(req.headers?.referrer);
+    const raw = origin ?? referer;
+    if (!raw || raw === 'null') return undefined;
+
+    try {
+      return new URL(raw).hostname.toLowerCase();
+    } catch {
+      return undefined;
+    }
+  }
+
   // ─── Handlers ─────────────────────────────────────────
 
   function handler(): (req: any, res: any) => void | Promise<void> {
@@ -203,6 +222,13 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
           return;
         }
 
+        const siteIds = new Set(payload.events.map((event) => event.siteId).filter(Boolean));
+        if (siteIds.size !== 1) {
+          sendJson(res, 200, { ok: true });
+          return;
+        }
+        const siteId = Array.from(siteIds)[0] as string;
+
         const userAgent = req.headers?.['user-agent'] || '';
 
         // Bot check - silent drop
@@ -214,27 +240,16 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
         const ip = extractIp(req);
         const enriched = enrichEvents(payload.events, ip, userAgent);
 
-        // Hostname filtering: check site's allowedOrigins
-        const siteId = enriched[0]?.siteId;
-        if (siteId) {
-          const site = await db.getSite(siteId);
-          if (site?.allowedOrigins && site.allowedOrigins.length > 0) {
-            const allowed = new Set(site.allowedOrigins.map((h) => h.toLowerCase()));
-            const filtered = enriched.filter((event) => {
-              if (!event.url) return true; // non-pageview events pass through
-              try {
-                const hostname = new URL(event.url).hostname.toLowerCase();
-                return allowed.has(hostname);
-              } catch {
-                return true; // malformed URLs pass through
-              }
-            });
-            if (filtered.length === 0) {
-              sendJson(res, 200, { ok: true });
-              return;
-            }
-            await processIdentity(filtered);
-            await db.insertEvents(filtered);
+        // Hostname filtering: check request's Origin/Referer against site's allowedOrigins
+        const site = await db.getSite(siteId);
+        if (site?.allowedOrigins && site.allowedOrigins.length > 0) {
+          const requestHostname = extractRequestHostname(req);
+          if (!requestHostname) {
+            sendJson(res, 200, { ok: true });
+            return;
+          }
+          const allowed = new Set(site.allowedOrigins.map((h) => h.toLowerCase()));
+          if (!allowed.has(requestHostname)) {
             sendJson(res, 200, { ok: true });
             return;
           }

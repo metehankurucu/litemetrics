@@ -64,9 +64,14 @@ export function AnalyticsPage({ siteId, client, period, onPeriodChange }: Analyt
     queryFn: async () => {
       client.setSiteId(siteId);
       const withFilters = { ...statsOptions, filters: filterMap };
-      const [overviewResults, ...topResults] = await Promise.all([
+      const [overviewResults, topResults, breakdownResults] = await Promise.all([
         client.getOverview(['pageviews', 'visitors', 'sessions', 'events', 'conversions'], { ...withFilters, compare: true }),
-        ...topMetrics.map((t) => client.getStats(t.metric, { ...withFilters, limit: 10 })),
+        Promise.all(topMetrics.map((t) => client.getStats(t.metric, { ...withFilters, limit: 10 }))),
+        Promise.all([
+          client.getStats('top_button_clicks', { ...withFilters, limit: 20 }),
+          client.getStats('top_link_targets', { ...withFilters, limit: 20 }),
+          client.getStats('top_scroll_pages', { ...withFilters, limit: 20 }),
+        ]),
       ]);
 
       const topMap: Record<string, QueryResult> = {};
@@ -77,6 +82,11 @@ export function AnalyticsPage({ siteId, client, period, onPeriodChange }: Analyt
       return {
         overview: overviewResults as unknown as Record<string, QueryResult>,
         tops: topMap,
+        breakdowns: {
+          buttonClicks: breakdownResults[0]?.data ?? [],
+          linkTargets: breakdownResults[1]?.data ?? [],
+          scrollPages: breakdownResults[2]?.data ?? [],
+        },
       };
     },
     enabled: period !== 'custom' || (!!dateFrom && !!dateTo),
@@ -84,6 +94,7 @@ export function AnalyticsPage({ siteId, client, period, onPeriodChange }: Analyt
 
   const overview = data?.overview ?? {};
   const tops = data?.tops ?? {};
+  const breakdowns = data?.breakdowns;
   const conversionEvents = site?.conversionEvents ?? [];
   const showConversionWarning = !!site && conversionEvents.length === 0;
 
@@ -216,6 +227,7 @@ export function AnalyticsPage({ siteId, client, period, onPeriodChange }: Analyt
             type={t.type}
             data={tops[t.metric]?.data ?? null}
             loading={loading}
+            breakdowns={t.metric === 'top_events' ? breakdowns : undefined}
           />
         ))}
       </div>

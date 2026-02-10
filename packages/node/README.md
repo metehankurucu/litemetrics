@@ -69,7 +69,7 @@ const collector = await createCollector({
 - **Bot Filtering** - Automatically drops events from known bots and crawlers
 - **GeoIP Enrichment** - Resolves country/city from IP using MaxMind GeoLite2
 - **User-Agent Parsing** - Extracts browser, OS, and device type
-- **Hostname Filtering** - Only count events from allowed hostnames per site
+- **Hostname Filtering** - Only count events from allowed hostnames per site (matched against request Origin/Referer)
 - **Query API** - Built-in metrics for pages, events, conversions, and behavioral insights
 - **Segmentation Filters** - Filter any metric/time series by geo, device, UTM, referrer, or event metadata
 - **Time Series** - Hourly/daily/weekly/monthly breakdowns

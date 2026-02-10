@@ -269,3 +269,17 @@ export function countryToFlag(code: string): string {
     ...Array.from(upper).map((c) => 0x1F1E6 + c.charCodeAt(0) - 65)
   );
 }
+
+let countryNameFormatter: Intl.DisplayNames | null = null;
+
+export function countryToName(code: string, locale = 'en'): string {
+  if (!code || code.length !== 2) return code || '';
+  try {
+    if (!countryNameFormatter) {
+      countryNameFormatter = new Intl.DisplayNames([locale], { type: 'region' });
+    }
+    return countryNameFormatter.of(code.toUpperCase()) || code.toUpperCase();
+  } catch {
+    return code.toUpperCase();
+  }
+}
