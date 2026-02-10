@@ -22,7 +22,7 @@ export interface RNTrackerInstance {
 }
 
 const SDK_NAME = 'litemetrics-react-native';
-const SDK_VERSION = '0.2.0';
+const SDK_VERSION = '0.2.2';
 
 let sessionId: string | null = null;
 let visitorId: string | null = null;
@@ -37,11 +37,7 @@ function generateId(): string {
   });
 }
 
-// AsyncStorage helper — optional dependency
-let asyncStorage: any = null;
-try {
-  asyncStorage = require('@react-native-async-storage/async-storage')?.default;
-} catch {}
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const VISITOR_KEY = '@litemetrics_vid';
 
@@ -49,13 +45,13 @@ async function loadVisitorId(): Promise<void> {
   if (visitorIdLoaded) return;
   visitorIdLoaded = true;
 
-  if (!asyncStorage) return;
+  if (!AsyncStorage) return;
   try {
-    const stored = await asyncStorage.getItem(VISITOR_KEY);
+    const stored = await AsyncStorage.getItem(VISITOR_KEY);
     if (stored) {
       visitorId = stored;
     } else if (visitorId) {
-      await asyncStorage.setItem(VISITOR_KEY, visitorId);
+      await AsyncStorage.setItem(VISITOR_KEY, visitorId);
     }
   } catch {}
 }
@@ -225,9 +221,7 @@ export function createRNTracker(config: RNTrackerConfig): RNTrackerInstance {
       visitorIdLoaded = false;
       userId = null;
       // Persist the new visitorId
-      if (asyncStorage) {
-        asyncStorage.setItem(VISITOR_KEY, visitorId).catch(() => {});
-      }
+      AsyncStorage.setItem(VISITOR_KEY, visitorId).catch(() => {});
     },
 
     destroy() {
