@@ -38,6 +38,13 @@ interface EventDocument {
   utm_term: string | null;
   utm_content: string | null;
   ip: string | null;
+  os_version: string | null;
+  device_model: string | null;
+  device_brand: string | null;
+  app_version: string | null;
+  app_build: string | null;
+  sdk_name: string | null;
+  sdk_version: string | null;
   created_at: Date;
 }
 
@@ -45,6 +52,7 @@ interface SiteDocument {
   site_id: string;
   secret_key: string;
   name: string;
+  type: string | null;
   domain: string | null;
   allowed_origins: string[] | null;
   conversion_events: string[] | null;
@@ -206,6 +214,10 @@ function buildFilterMatch(filters?: Record<string, string>): Record<string, unkn
     'device.type': 'device_type',
     'device.browser': 'browser',
     'device.os': 'os',
+    'device.osVersion': 'os_version',
+    'device.deviceModel': 'device_model',
+    'device.deviceBrand': 'device_brand',
+    'device.appVersion': 'app_version',
     'utm.source': 'utm_source',
     'utm.medium': 'utm_medium',
     'utm.campaign': 'utm_campaign',
@@ -299,6 +311,13 @@ export class MongoDBAdapter implements DBAdapter {
       utm_term: e.utm?.term ?? null,
       utm_content: e.utm?.content ?? null,
       ip: e.ip ?? null,
+      os_version: e.device?.osVersion ?? null,
+      device_model: e.device?.deviceModel ?? null,
+      device_brand: e.device?.deviceBrand ?? null,
+      app_version: e.device?.appVersion ?? null,
+      app_build: e.device?.appBuild ?? null,
+      sdk_name: e.device?.sdkName ?? null,
+      sdk_version: e.device?.sdkVersion ?? null,
       created_at: new Date(),
     }));
 
@@ -573,6 +592,45 @@ export class MongoDBAdapter implements DBAdapter {
         const rows = await this.collection.aggregate<{ _id: string; value: number }>([
           ...matchStages({ os: { $ne: null } }),
           { $group: { _id: '$os', value: { $addToSet: '$visitor_id' } } },
+          { $project: { _id: 1, value: { $size: '$value' } } },
+          { $sort: { value: -1 } },
+          { $limit: limit },
+        ]).toArray();
+        data = rows.map((r) => ({ key: r._id, value: r.value }));
+        total = data.reduce((sum, d) => sum + d.value, 0);
+        break;
+      }
+
+      case 'top_os_versions': {
+        const rows = await this.collection.aggregate<{ _id: string; value: number }>([
+          ...matchStages({ os: { $ne: null }, os_version: { $ne: null } }),
+          { $group: { _id: { $concat: ['$os', ' ', '$os_version'] }, value: { $addToSet: '$visitor_id' } } },
+          { $project: { _id: 1, value: { $size: '$value' } } },
+          { $sort: { value: -1 } },
+          { $limit: limit },
+        ]).toArray();
+        data = rows.map((r) => ({ key: r._id, value: r.value }));
+        total = data.reduce((sum, d) => sum + d.value, 0);
+        break;
+      }
+
+      case 'top_device_models': {
+        const rows = await this.collection.aggregate<{ _id: string; value: number }>([
+          ...matchStages({ device_model: { $ne: null } }),
+          { $group: { _id: { $trim: { input: { $concat: [{ $ifNull: ['$device_brand', ''] }, ' ', '$device_model'] } } }, value: { $addToSet: '$visitor_id' } } },
+          { $project: { _id: 1, value: { $size: '$value' } } },
+          { $sort: { value: -1 } },
+          { $limit: limit },
+        ]).toArray();
+        data = rows.map((r) => ({ key: r._id, value: r.value }));
+        total = data.reduce((sum, d) => sum + d.value, 0);
+        break;
+      }
+
+      case 'top_app_versions': {
+        const rows = await this.collection.aggregate<{ _id: string; value: number }>([
+          ...matchStages({ app_version: { $ne: null } }),
+          { $group: { _id: '$app_version', value: { $addToSet: '$visitor_id' } } },
           { $project: { _id: 1, value: { $size: '$value' } } },
           { $sort: { value: -1 } },
           { $limit: limit },
@@ -1257,7 +1315,18 @@ export class MongoDBAdapter implements DBAdapter {
       userId: doc.user_id ?? undefined,
       traits: doc.traits ?? undefined,
       geo: doc.country ? { country: doc.country, city: doc.city ?? undefined, region: doc.region ?? undefined } : undefined,
-      device: doc.device_type ? { type: doc.device_type, browser: doc.browser ?? '', os: doc.os ?? '' } : undefined,
+      device: doc.device_type ? {
+        type: doc.device_type,
+        browser: doc.browser ?? '',
+        os: doc.os ?? '',
+        osVersion: doc.os_version ?? undefined,
+        deviceModel: doc.device_model ?? undefined,
+        deviceBrand: doc.device_brand ?? undefined,
+        appVersion: doc.app_version ?? undefined,
+        appBuild: doc.app_build ?? undefined,
+        sdkName: doc.sdk_name ?? undefined,
+        sdkVersion: doc.sdk_version ?? undefined,
+      } : undefined,
       language: doc.language ?? undefined,
       utm: doc.utm_source ? {
         source: doc.utm_source ?? undefined,
@@ -1277,6 +1346,7 @@ export class MongoDBAdapter implements DBAdapter {
       site_id: generateSiteId(),
       secret_key: generateSecretKey(),
       name: data.name,
+      type: data.type ?? 'web',
       domain: data.domain ?? null,
       allowed_origins: data.allowedOrigins ?? null,
       conversion_events: data.conversionEvents ?? null,
@@ -1305,6 +1375,7 @@ export class MongoDBAdapter implements DBAdapter {
   async updateSite(siteId: string, data: UpdateSiteRequest): Promise<Site | null> {
     const updates: Record<string, unknown> = { updated_at: new Date() };
     if (data.name !== undefined) updates.name = data.name;
+    if (data.type !== undefined) updates.type = data.type;
     if (data.domain !== undefined) updates.domain = data.domain || null;
     if (data.allowedOrigins !== undefined) updates.allowed_origins = data.allowedOrigins.length > 0 ? data.allowedOrigins : null;
     if (data.conversionEvents !== undefined) updates.conversion_events = data.conversionEvents.length > 0 ? data.conversionEvents : null;
@@ -1342,6 +1413,7 @@ export class MongoDBAdapter implements DBAdapter {
       siteId: doc.site_id,
       secretKey: doc.secret_key,
       name: doc.name,
+      type: (doc.type ?? 'web') as 'web' | 'app',
       domain: doc.domain ?? undefined,
       allowedOrigins: doc.allowed_origins ?? undefined,
       conversionEvents: doc.conversion_events ?? undefined,

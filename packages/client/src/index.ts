@@ -11,6 +11,7 @@ export type {
   QueryResult,
   QueryDataPoint,
   Site,
+  SiteType,
   CreateSiteRequest,
   UpdateSiteRequest,
   EventType,

@@ -56,6 +56,13 @@ CREATE TABLE IF NOT EXISTS ${EVENTS_TABLE} (
     utm_term       Nullable(String),
     utm_content    Nullable(String),
     ip             Nullable(String),
+    os_version     LowCardinality(Nullable(String)),
+    device_model   LowCardinality(Nullable(String)),
+    device_brand   LowCardinality(Nullable(String)),
+    app_version    LowCardinality(Nullable(String)),
+    app_build      Nullable(String),
+    sdk_name       LowCardinality(Nullable(String)),
+    sdk_version    LowCardinality(Nullable(String)),
     created_at     DateTime64(3) DEFAULT now64(3)
 ) ENGINE = MergeTree()
   PARTITION BY toYYYYMM(timestamp)
@@ -68,6 +75,7 @@ CREATE TABLE IF NOT EXISTS ${SITES_TABLE} (
     site_id          String,
     secret_key       String,
     name             String,
+    type             LowCardinality(Nullable(String)) DEFAULT 'web',
     domain           Nullable(String),
     allowed_origins  Nullable(String),
     conversion_events Nullable(String),
@@ -161,6 +169,10 @@ function buildFilterConditions(filters?: Record<string, string>): { conditions: 
     'device.type': 'device_type',
     'device.browser': 'browser',
     'device.os': 'os',
+    'device.osVersion': 'os_version',
+    'device.deviceModel': 'device_model',
+    'device.deviceBrand': 'device_brand',
+    'device.appVersion': 'app_version',
     'utm.source': 'utm_source',
     'utm.medium': 'utm_medium',
     'utm.campaign': 'utm_campaign',
@@ -219,6 +231,15 @@ export class ClickHouseAdapter implements DBAdapter {
     await this.client.command({
       query: `ALTER TABLE ${SITES_TABLE} ADD COLUMN IF NOT EXISTS conversion_events Nullable(String)`,
     });
+    // Mobile support columns
+    await this.client.command({ query: `ALTER TABLE ${EVENTS_TABLE} ADD COLUMN IF NOT EXISTS os_version LowCardinality(Nullable(String))` });
+    await this.client.command({ query: `ALTER TABLE ${EVENTS_TABLE} ADD COLUMN IF NOT EXISTS device_model LowCardinality(Nullable(String))` });
+    await this.client.command({ query: `ALTER TABLE ${EVENTS_TABLE} ADD COLUMN IF NOT EXISTS device_brand LowCardinality(Nullable(String))` });
+    await this.client.command({ query: `ALTER TABLE ${EVENTS_TABLE} ADD COLUMN IF NOT EXISTS app_version LowCardinality(Nullable(String))` });
+    await this.client.command({ query: `ALTER TABLE ${EVENTS_TABLE} ADD COLUMN IF NOT EXISTS app_build Nullable(String)` });
+    await this.client.command({ query: `ALTER TABLE ${EVENTS_TABLE} ADD COLUMN IF NOT EXISTS sdk_name LowCardinality(Nullable(String))` });
+    await this.client.command({ query: `ALTER TABLE ${EVENTS_TABLE} ADD COLUMN IF NOT EXISTS sdk_version LowCardinality(Nullable(String))` });
+    await this.client.command({ query: `ALTER TABLE ${SITES_TABLE} ADD COLUMN IF NOT EXISTS type LowCardinality(Nullable(String)) DEFAULT 'web'` });
   }
 
   async close(): Promise<void> {
@@ -266,6 +287,13 @@ export class ClickHouseAdapter implements DBAdapter {
       utm_term: e.utm?.term ?? null,
       utm_content: e.utm?.content ?? null,
       ip: e.ip ?? null,
+      os_version: e.device?.osVersion ?? null,
+      device_model: e.device?.deviceModel ?? null,
+      device_brand: e.device?.deviceBrand ?? null,
+      app_version: e.device?.appVersion ?? null,
+      app_build: e.device?.appBuild ?? null,
+      sdk_name: e.device?.sdkName ?? null,
+      sdk_version: e.device?.sdkVersion ?? null,
     }));
 
     await this.client.insert({
@@ -625,6 +653,61 @@ export class ClickHouseAdapter implements DBAdapter {
              AND os IS NOT NULL
              ${filterSql}
            GROUP BY os
+           ORDER BY value DESC
+           LIMIT {limit:UInt32}`,
+          { ...params, ...filter.params },
+        );
+        data = rows.map((r) => ({ key: r.key, value: Number(r.value) }));
+        total = data.reduce((sum, d) => sum + d.value, 0);
+        break;
+      }
+
+      case 'top_os_versions': {
+        const rows = await this.queryRows<{ key: string; value: string }>(
+          `SELECT concat(os, ' ', ifNull(os_version, '')) AS key, uniq(visitor_id) AS value FROM ${EVENTS_TABLE}
+           WHERE site_id = {siteId:String}
+             AND timestamp >= {from:String}
+             AND timestamp <= {to:String}
+             AND os IS NOT NULL
+             AND os_version IS NOT NULL
+             ${filterSql}
+           GROUP BY key
+           ORDER BY value DESC
+           LIMIT {limit:UInt32}`,
+          { ...params, ...filter.params },
+        );
+        data = rows.map((r) => ({ key: r.key, value: Number(r.value) }));
+        total = data.reduce((sum, d) => sum + d.value, 0);
+        break;
+      }
+
+      case 'top_device_models': {
+        const rows = await this.queryRows<{ key: string; value: string }>(
+          `SELECT trim(concat(ifNull(device_brand, ''), ' ', device_model)) AS key, uniq(visitor_id) AS value FROM ${EVENTS_TABLE}
+           WHERE site_id = {siteId:String}
+             AND timestamp >= {from:String}
+             AND timestamp <= {to:String}
+             AND device_model IS NOT NULL
+             ${filterSql}
+           GROUP BY key
+           ORDER BY value DESC
+           LIMIT {limit:UInt32}`,
+          { ...params, ...filter.params },
+        );
+        data = rows.map((r) => ({ key: r.key, value: Number(r.value) }));
+        total = data.reduce((sum, d) => sum + d.value, 0);
+        break;
+      }
+
+      case 'top_app_versions': {
+        const rows = await this.queryRows<{ key: string; value: string }>(
+          `SELECT app_version AS key, uniq(visitor_id) AS value FROM ${EVENTS_TABLE}
+           WHERE site_id = {siteId:String}
+             AND timestamp >= {from:String}
+             AND timestamp <= {to:String}
+             AND app_version IS NOT NULL
+             ${filterSql}
+           GROUP BY app_version
            ORDER BY value DESC
            LIMIT {limit:UInt32}`,
           { ...params, ...filter.params },
@@ -1329,6 +1412,7 @@ export class ClickHouseAdapter implements DBAdapter {
       siteId: generateSiteId(),
       secretKey: generateSecretKey(),
       name: data.name,
+      type: data.type ?? 'web',
       domain: data.domain,
       allowedOrigins: data.allowedOrigins,
       conversionEvents: data.conversionEvents,
@@ -1342,6 +1426,7 @@ export class ClickHouseAdapter implements DBAdapter {
         site_id: site.siteId,
         secret_key: site.secretKey,
         name: site.name,
+        type: site.type ?? 'web',
         domain: site.domain ?? null,
         allowed_origins: site.allowedOrigins ? JSON.stringify(site.allowedOrigins) : null,
         conversion_events: site.conversionEvents ? JSON.stringify(site.conversionEvents) : null,
@@ -1358,7 +1443,7 @@ export class ClickHouseAdapter implements DBAdapter {
 
   async getSite(siteId: string): Promise<Site | null> {
     const rows = await this.queryRows<Record<string, unknown>>(
-      `SELECT site_id, secret_key, name, domain, allowed_origins, conversion_events, created_at, updated_at
+      `SELECT site_id, secret_key, name, type, domain, allowed_origins, conversion_events, created_at, updated_at
        FROM ${SITES_TABLE} FINAL
        WHERE site_id = {siteId:String} AND is_deleted = 0`,
       { siteId },
@@ -1368,7 +1453,7 @@ export class ClickHouseAdapter implements DBAdapter {
 
   async getSiteBySecret(secretKey: string): Promise<Site | null> {
     const rows = await this.queryRows<Record<string, unknown>>(
-      `SELECT site_id, secret_key, name, domain, allowed_origins, conversion_events, created_at, updated_at
+      `SELECT site_id, secret_key, name, type, domain, allowed_origins, conversion_events, created_at, updated_at
        FROM ${SITES_TABLE} FINAL
        WHERE secret_key = {secretKey:String} AND is_deleted = 0`,
       { secretKey },
@@ -1378,7 +1463,7 @@ export class ClickHouseAdapter implements DBAdapter {
 
   async listSites(): Promise<Site[]> {
     const rows = await this.queryRows<Record<string, unknown>>(
-      `SELECT site_id, secret_key, name, domain, allowed_origins, conversion_events, created_at, updated_at
+      `SELECT site_id, secret_key, name, type, domain, allowed_origins, conversion_events, created_at, updated_at
        FROM ${SITES_TABLE} FINAL
        WHERE is_deleted = 0
        ORDER BY created_at DESC`,
@@ -1390,7 +1475,7 @@ export class ClickHouseAdapter implements DBAdapter {
   async updateSite(siteId: string, data: UpdateSiteRequest): Promise<Site | null> {
     // Read current site with version
     const currentRows = await this.queryRows<Record<string, unknown>>(
-      `SELECT site_id, secret_key, name, domain, allowed_origins, conversion_events, created_at, updated_at, version
+      `SELECT site_id, secret_key, name, type, domain, allowed_origins, conversion_events, created_at, updated_at, version
        FROM ${SITES_TABLE} FINAL
        WHERE site_id = {siteId:String} AND is_deleted = 0`,
       { siteId },
@@ -1404,6 +1489,7 @@ export class ClickHouseAdapter implements DBAdapter {
     const newVersion = Number(current.version) + 1;
 
     const newName = data.name !== undefined ? data.name : String(current.name);
+    const newType = data.type !== undefined ? data.type : (current.type ? String(current.type) as 'web' | 'app' : 'web');
     const newDomain = data.domain !== undefined ? (data.domain || null) : (current.domain ? String(current.domain) : null);
     const newOrigins = data.allowedOrigins !== undefined
       ? (data.allowedOrigins.length > 0 ? JSON.stringify(data.allowedOrigins) : null)
@@ -1418,6 +1504,7 @@ export class ClickHouseAdapter implements DBAdapter {
         site_id: String(current.site_id),
         secret_key: String(current.secret_key),
         name: newName,
+        type: newType,
         domain: newDomain,
         allowed_origins: newOrigins,
         conversion_events: newConversions,
@@ -1433,6 +1520,7 @@ export class ClickHouseAdapter implements DBAdapter {
       siteId: String(current.site_id),
       secretKey: String(current.secret_key),
       name: newName,
+      type: newType,
       domain: newDomain ?? undefined,
       allowedOrigins: newOrigins ? JSON.parse(newOrigins) : undefined,
       conversionEvents: newConversions ? JSON.parse(newConversions) : undefined,
@@ -1443,7 +1531,7 @@ export class ClickHouseAdapter implements DBAdapter {
 
   async deleteSite(siteId: string): Promise<boolean> {
     const currentRows = await this.queryRows<Record<string, unknown>>(
-      `SELECT site_id, secret_key, name, domain, allowed_origins, conversion_events, created_at, version
+      `SELECT site_id, secret_key, name, type, domain, allowed_origins, conversion_events, created_at, version
        FROM ${SITES_TABLE} FINAL
        WHERE site_id = {siteId:String} AND is_deleted = 0`,
       { siteId },
@@ -1459,6 +1547,7 @@ export class ClickHouseAdapter implements DBAdapter {
         site_id: String(current.site_id),
         secret_key: String(current.secret_key),
         name: String(current.name),
+        type: current.type ? String(current.type) : 'web',
         domain: current.domain ? String(current.domain) : null,
         allowed_origins: current.allowed_origins ? String(current.allowed_origins) : null,
         conversion_events: current.conversion_events ? String(current.conversion_events) : null,
@@ -1475,7 +1564,7 @@ export class ClickHouseAdapter implements DBAdapter {
 
   async regenerateSecret(siteId: string): Promise<Site | null> {
     const currentRows = await this.queryRows<Record<string, unknown>>(
-      `SELECT site_id, secret_key, name, domain, allowed_origins, conversion_events, created_at, version
+      `SELECT site_id, secret_key, name, type, domain, allowed_origins, conversion_events, created_at, version
        FROM ${SITES_TABLE} FINAL
        WHERE site_id = {siteId:String} AND is_deleted = 0`,
       { siteId },
@@ -1494,6 +1583,7 @@ export class ClickHouseAdapter implements DBAdapter {
         site_id: String(current.site_id),
         secret_key: newSecret,
         name: String(current.name),
+        type: current.type ? String(current.type) : 'web',
         domain: current.domain ? String(current.domain) : null,
         allowed_origins: current.allowed_origins ? String(current.allowed_origins) : null,
         conversion_events: current.conversion_events ? String(current.conversion_events) : null,
@@ -1509,6 +1599,7 @@ export class ClickHouseAdapter implements DBAdapter {
       siteId: String(current.site_id),
       secretKey: newSecret,
       name: String(current.name),
+      type: (current.type ? String(current.type) : 'web') as 'web' | 'app',
       domain: current.domain ? String(current.domain) : undefined,
       allowedOrigins: current.allowed_origins ? JSON.parse(String(current.allowed_origins)) : undefined,
       conversionEvents: current.conversion_events ? JSON.parse(String(current.conversion_events)) : undefined,
@@ -1533,6 +1624,7 @@ export class ClickHouseAdapter implements DBAdapter {
       siteId: String(row.site_id),
       secretKey: String(row.secret_key),
       name: String(row.name),
+      type: (row.type ? String(row.type) : 'web') as 'web' | 'app',
       domain: row.domain ? String(row.domain) : undefined,
       allowedOrigins: row.allowed_origins ? JSON.parse(String(row.allowed_origins)) : undefined,
       conversionEvents: row.conversion_events ? JSON.parse(String(row.conversion_events)) : undefined,

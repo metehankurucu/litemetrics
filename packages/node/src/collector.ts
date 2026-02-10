@@ -95,9 +95,29 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
   // ─── Event helpers ────────────────────────────────────
 
   function enrichEvents(events: ClientEvent[], ip: string, userAgent: string): EnrichedEvent[] {
-    const device = parseUserAgent(userAgent);
+    const uaDevice = parseUserAgent(userAgent);
     return events.map((event) => {
       const geo = resolveGeo(ip, event.timezone);
+
+      // If client sent mobile context (React Native SDK), prefer it over UA parsing
+      let device: typeof uaDevice;
+      if (event.mobile?.platform) {
+        device = {
+          type: 'mobile',
+          browser: 'App',
+          os: event.mobile.platform === 'ios' ? 'iOS' : 'Android',
+          osVersion: event.mobile.osVersion,
+          deviceModel: event.mobile.deviceModel,
+          deviceBrand: event.mobile.deviceBrand,
+          appVersion: event.mobile.appVersion,
+          appBuild: event.mobile.appBuild,
+          sdkName: event.mobile.sdkName,
+          sdkVersion: event.mobile.sdkVersion,
+        };
+      } else {
+        device = uaDevice;
+      }
+
       return { ...event, ip, geo, device };
     });
   }

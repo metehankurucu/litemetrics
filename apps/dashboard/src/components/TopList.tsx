@@ -17,7 +17,7 @@ import {
   ChevronDown,
 } from 'lucide-react';
 
-export type TopListType = 'pages' | 'referrers' | 'countries' | 'events' | 'conversions' | 'browsers' | 'devices' | 'utm_sources' | 'utm_mediums' | 'utm_campaigns' | 'utm_terms' | 'utm_contents' | 'channels';
+export type TopListType = 'pages' | 'referrers' | 'countries' | 'events' | 'conversions' | 'browsers' | 'devices' | 'os' | 'os_versions' | 'device_models' | 'app_versions' | 'utm_sources' | 'utm_mediums' | 'utm_campaigns' | 'utm_terms' | 'utm_contents' | 'channels';
 
 const titleIcons: Record<TopListType, React.ReactNode> = {
   pages: <FileText className="w-3.5 h-3.5" />,
@@ -27,6 +27,10 @@ const titleIcons: Record<TopListType, React.ReactNode> = {
   conversions: <Target className="w-3.5 h-3.5" />,
   browsers: <Monitor className="w-3.5 h-3.5" />,
   devices: <Smartphone className="w-3.5 h-3.5" />,
+  os: <Smartphone className="w-3.5 h-3.5" />,
+  os_versions: <Smartphone className="w-3.5 h-3.5" />,
+  device_models: <Smartphone className="w-3.5 h-3.5" />,
+  app_versions: <Tag className="w-3.5 h-3.5" />,
   utm_sources: <Link2 className="w-3.5 h-3.5" />,
   utm_mediums: <Megaphone className="w-3.5 h-3.5" />,
   utm_campaigns: <Tag className="w-3.5 h-3.5" />,
@@ -103,6 +107,13 @@ function getIcon(type: TopListType | undefined, key: string): React.ReactNode {
       );
     case 'channels':
       return getChannelIcon(key);
+    case 'os':
+    case 'os_versions':
+      return getOSIcon(key.split(' ')[0]);
+    case 'device_models':
+      return <Smartphone className="w-4 h-4 flex-shrink-0 text-zinc-400" />;
+    case 'app_versions':
+      return <Tag className="w-4 h-4 flex-shrink-0 text-indigo-500" />;
   }
 }
 

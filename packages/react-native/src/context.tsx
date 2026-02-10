@@ -1,6 +1,5 @@
 import { createContext, useContext, useEffect, useRef, useMemo } from "react";
-import type { TrackerConfig } from "@litemetrics/core";
-import { createRNTracker, type RNTrackerInstance } from "./tracker";
+import { createRNTracker, type RNTrackerConfig, type RNTrackerInstance } from "./tracker";
 
 interface LitemetricsRNContextValue {
   tracker: RNTrackerInstance;
@@ -9,8 +8,7 @@ interface LitemetricsRNContextValue {
 
 const LitemetricsRNContext = createContext<LitemetricsRNContextValue | null>(null);
 
-export interface LitemetricsProviderProps
-  extends Omit<TrackerConfig, "autoTrack" | "autoSpa"> {
+export interface LitemetricsProviderProps extends RNTrackerConfig {
   children: React.ReactNode;
 }
 

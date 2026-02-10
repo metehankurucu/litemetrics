@@ -3,7 +3,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { createSitesClient, type Site } from '@litemetrics/client';
 import { queryKeys } from '../hooks/useAnalytics';
 import { useAuth } from '../auth';
-import { Globe, BookOpen, Shield, Target } from 'lucide-react';
+import { Globe, BookOpen, Shield, Target, Smartphone } from 'lucide-react';
+import type { SiteType } from '@litemetrics/core';
 
 type Platform = 'html' | 'react' | 'react-native' | 'nextjs' | 'node';
 
@@ -147,6 +148,7 @@ export function SiteManager() {
   // Create form
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState('');
+  const [newType, setNewType] = useState<SiteType>('web');
   const [newDomain, setNewDomain] = useState('');
 
   const { data: sites = [], isLoading: loading } = useQuery({
@@ -158,14 +160,15 @@ export function SiteManager() {
   });
 
   const createMutation = useMutation({
-    mutationFn: async ({ name, domain }: { name: string; domain?: string }) => {
-      const { site } = await sitesClient.createSite({ name, domain });
+    mutationFn: async ({ name, type, domain }: { name: string; type?: SiteType; domain?: string }) => {
+      const { site } = await sitesClient.createSite({ name, type, domain });
       return site;
     },
     onSuccess: (site) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.sites() });
       setShowCreate(false);
       setNewName('');
+      setNewType('web');
       setNewDomain('');
       setSelected(site);
       setError(null);
@@ -222,7 +225,7 @@ export function SiteManager() {
 
   const handleCreate = () => {
     if (!newName.trim()) return;
-    createMutation.mutate({ name: newName.trim(), domain: newDomain.trim() || undefined });
+    createMutation.mutate({ name: newName.trim(), type: newType, domain: newDomain.trim() || undefined });
   };
 
   const handleDelete = (siteId: string) => {
@@ -273,17 +276,41 @@ export function SiteManager() {
               autoFocus
               className="w-full bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg px-3 py-1.5 text-sm dark:text-zinc-200"
             />
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setNewType('web')}
+                className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors ${
+                  newType === 'web'
+                    ? 'bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/30 text-emerald-700 dark:text-emerald-400'
+                    : 'bg-white dark:bg-zinc-800 border-zinc-300 dark:border-zinc-700 text-zinc-500 dark:text-zinc-400'
+                }`}
+              >
+                <Globe className="w-3.5 h-3.5" /> Website
+              </button>
+              <button
+                type="button"
+                onClick={() => setNewType('app')}
+                className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors ${
+                  newType === 'app'
+                    ? 'bg-indigo-50 dark:bg-indigo-500/10 border-indigo-200 dark:border-indigo-500/30 text-indigo-700 dark:text-indigo-400'
+                    : 'bg-white dark:bg-zinc-800 border-zinc-300 dark:border-zinc-700 text-zinc-500 dark:text-zinc-400'
+                }`}
+              >
+                <Smartphone className="w-3.5 h-3.5" /> Mobile App
+              </button>
+            </div>
             <input
               value={newDomain}
               onChange={(e) => setNewDomain(e.target.value)}
-              placeholder="Domain (optional)"
+              placeholder={newType === 'app' ? 'Bundle ID (optional)' : 'Domain (optional)'}
               className="w-full bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg px-3 py-1.5 text-sm dark:text-zinc-200"
             />
             <div className="flex gap-2">
               <button onClick={handleCreate} className="text-xs font-medium bg-gradient-to-b from-indigo-500 to-indigo-600 hover:from-indigo-400 hover:to-indigo-500 text-white px-3 py-1.5 rounded-lg shadow-sm transition-all">
                 Create
               </button>
-              <button onClick={() => { setShowCreate(false); setNewName(''); setNewDomain(''); }} className="text-xs text-zinc-500 hover:text-zinc-700 px-3 py-1.5">
+              <button onClick={() => { setShowCreate(false); setNewName(''); setNewType('web'); setNewDomain(''); }} className="text-xs text-zinc-500 hover:text-zinc-700 px-3 py-1.5">
                 Cancel
               </button>
             </div>
@@ -310,8 +337,15 @@ export function SiteManager() {
                     : 'hover:bg-zinc-50 dark:hover:bg-zinc-800 border border-transparent'
                 }`}
               >
-                <p className="text-sm font-medium text-zinc-800 dark:text-zinc-200 truncate">{site.name}</p>
-                <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-0.5 font-mono">{site.siteId}</p>
+                <div className="flex items-center gap-2">
+                  {site.type === 'app'
+                    ? <Smartphone className="w-3.5 h-3.5 text-indigo-500 flex-shrink-0" />
+                    : <Globe className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0" />}
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-zinc-800 dark:text-zinc-200 truncate">{site.name}</p>
+                    <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-0.5 font-mono">{site.siteId}</p>
+                  </div>
+                </div>
               </button>
             ))}
           </div>

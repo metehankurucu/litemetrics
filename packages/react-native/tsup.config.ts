@@ -6,5 +6,5 @@ export default defineConfig({
   dts: true,
   clean: true,
   sourcemap: true,
-  external: ['react', 'react-native', '@react-navigation/native'],
+  external: ['react', 'react-native', '@react-navigation/native', '@react-native-async-storage/async-storage'],
 });

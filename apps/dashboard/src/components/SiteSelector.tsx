@@ -3,6 +3,14 @@ import { useQuery } from '@tanstack/react-query';
 import { createSitesClient, type Site } from '@litemetrics/client';
 import { queryKeys } from '../hooks/useAnalytics';
 import { useAuth } from '../auth';
+import { Globe, Smartphone } from 'lucide-react';
+
+function SiteTypeIcon({ type }: { type?: string }) {
+  if (type === 'app') {
+    return <Smartphone className="w-3.5 h-3.5 text-indigo-500 flex-shrink-0" />;
+  }
+  return <Globe className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0" />;
+}
 
 interface SiteSelectorProps {
   siteId: string;
@@ -46,7 +54,7 @@ export function SiteSelector({ siteId, onChange }: SiteSelectorProps) {
         }}
         className="w-full flex items-center gap-2 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg px-3 py-1.5 text-sm dark:text-zinc-200 hover:border-zinc-300 dark:hover:border-zinc-600 transition-colors"
       >
-        <span className="w-2 h-2 rounded-full bg-emerald-500 flex-shrink-0" />
+        <Globe className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0" />
         <span className="truncate">{siteId}</span>
       </button>
     );
@@ -58,7 +66,7 @@ export function SiteSelector({ siteId, onChange }: SiteSelectorProps) {
         onClick={() => setOpen(!open)}
         className="w-full flex items-center gap-2 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg px-3 py-1.5 text-sm dark:text-zinc-200 hover:border-zinc-300 dark:hover:border-zinc-600 transition-colors"
       >
-        <span className="w-2 h-2 rounded-full bg-emerald-500 flex-shrink-0" />
+        <SiteTypeIcon type={currentSite?.type} />
         <span className="truncate">{currentSite?.name || siteId}</span>
         <svg className="w-3 h-3 text-zinc-400 ml-auto flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -71,12 +79,15 @@ export function SiteSelector({ siteId, onChange }: SiteSelectorProps) {
             <button
               key={site.siteId}
               onClick={() => { onChange(site.siteId); setOpen(false); }}
-              className={`w-full text-left px-3 py-2 text-sm hover:bg-zinc-50 dark:hover:bg-zinc-700 transition-colors ${
+              className={`w-full text-left px-3 py-2 text-sm hover:bg-zinc-50 dark:hover:bg-zinc-700 transition-colors flex items-center gap-2 ${
                 site.siteId === siteId ? 'text-indigo-600 dark:text-indigo-400' : 'text-zinc-700 dark:text-zinc-300'
               }`}
             >
-              <p className="truncate">{site.name}</p>
-              <p className="text-xs text-zinc-400 dark:text-zinc-500 font-mono">{site.siteId}</p>
+              <SiteTypeIcon type={site.type} />
+              <div className="min-w-0">
+                <p className="truncate">{site.name}</p>
+                <p className="text-xs text-zinc-400 dark:text-zinc-500 font-mono">{site.siteId}</p>
+              </div>
             </button>
           ))}
         </div>

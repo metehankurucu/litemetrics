@@ -58,12 +58,25 @@ export interface ConnectionInfo {
   effectiveType?: string;
 }
 
+export interface MobileContext {
+  platform?: 'ios' | 'android';
+  osVersion?: string;
+  deviceModel?: string;
+  deviceBrand?: string;
+  appVersion?: string;
+  appBuild?: string;
+  sdkName?: string;
+  sdkVersion?: string;
+  isEmulator?: boolean;
+}
+
 export interface ClientContext {
   screen?: { width: number; height: number };
   language?: string;
   timezone?: string;
   connection?: ConnectionInfo;
   utm?: UTMParams;
+  mobile?: MobileContext;
 }
 
 export interface UTMParams {
@@ -88,6 +101,13 @@ export interface DeviceInfo {
   type: string;    // desktop, mobile, tablet
   browser: string;
   os: string;
+  osVersion?: string;
+  deviceModel?: string;
+  deviceBrand?: string;
+  appVersion?: string;
+  appBuild?: string;
+  sdkName?: string;
+  sdkVersion?: string;
 }
 
 export interface EnrichedEvent extends ClientContext {
@@ -178,10 +198,13 @@ export interface CORSConfig {
 
 // ─── Site Management ────────────────────────────────────────
 
+export type SiteType = 'web' | 'app';
+
 export interface Site {
   siteId: string;
   secretKey: string;
   name: string;
+  type?: SiteType;
   domain?: string;
   allowedOrigins?: string[];
   conversionEvents?: string[];
@@ -191,6 +214,7 @@ export interface Site {
 
 export interface CreateSiteRequest {
   name: string;
+  type?: SiteType;
   domain?: string;
   allowedOrigins?: string[];
   conversionEvents?: string[];
@@ -198,6 +222,7 @@ export interface CreateSiteRequest {
 
 export interface UpdateSiteRequest {
   name?: string;
+  type?: SiteType;
   domain?: string;
   allowedOrigins?: string[];
   conversionEvents?: string[];
@@ -256,6 +281,9 @@ export type Metric =
   | 'top_devices'
   | 'top_browsers'
   | 'top_os'
+  | 'top_os_versions'
+  | 'top_device_models'
+  | 'top_app_versions'
   | 'top_utm_sources'
   | 'top_utm_mediums'
   | 'top_utm_campaigns'

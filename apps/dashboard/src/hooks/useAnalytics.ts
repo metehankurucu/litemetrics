@@ -10,8 +10,8 @@ export { client };
 
 // Query key factory - all query keys in one place
 export const queryKeys = {
-  analytics: (siteId: string, period: string, dateFrom?: string, dateTo?: string, filters?: Record<string, string>) =>
-    ['analytics', siteId, period, dateFrom, dateTo, filters] as const,
+  analytics: (siteId: string, period: string, dateFrom?: string, dateTo?: string, filters?: Record<string, string>, siteType?: string) =>
+    ['analytics', siteId, period, dateFrom, dateTo, filters, siteType] as const,
   timeSeries: (siteId: string, period: string, metric: string, filters?: Record<string, string>) =>
     ['timeSeries', siteId, period, metric, filters] as const,
   worldMap: (siteId: string, period: string, filters?: Record<string, string>) =>
