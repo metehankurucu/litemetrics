@@ -117,6 +117,28 @@ curl "http://localhost:3002/api/stats?siteId=YOUR_SITE_ID&metric=pageviews&perio
 
 Or use the [Dashboard](./dashboard.md).
 
+## 5. Run the Mobile App (Optional)
+
+Litemetrics includes a native mobile app (`apps/mobile`) for viewing analytics and managing sites.
+
+```bash
+cd apps/mobile
+bun install
+bun run start
+```
+
+Then open the Expo launcher for iOS/Android:
+
+```bash
+bun run ios
+bun run android
+```
+
+When the app opens:
+- Add your provider URL (for example `https://analytics.yoursite.com`)
+- Enter the admin secret for that server
+- Select a site to start viewing analytics
+
 ## Data-Attribute Tracking
 
 Track clicks without writing JavaScript. Add `data-litemetrics-event` to any element:
@@ -141,4 +163,5 @@ const site = await collector.createSite({ name: customerName, domain: customerDo
 - [Integration Guide](./integration-guide.md) -- React, Next.js, Vue, React Native, and more
 - [API Reference](./api-reference.md) -- Full endpoint docs
 - [Dashboard](./dashboard.md) -- Analytics dashboard
+- [Mobile App](../apps/mobile/README.md) -- Mobile app usage and pre-release checklist
 - [Self-Hosting](./self-hosting.md) -- Docker and production deployment

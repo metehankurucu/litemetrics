@@ -1,0 +1,17 @@
+export const queryKeys = {
+  analytics: (siteId: string, period: string) => ['analytics', siteId, period] as const,
+  overview: (siteId: string, period: string) => ['overview', siteId, period] as const,
+  timeSeries: (siteId: string, metric: string, period: string) => ['timeseries', siteId, metric, period] as const,
+  topMetrics: (siteId: string, period: string) => ['topMetrics', siteId, period] as const,
+  sites: () => ['sites'] as const,
+  site: (siteId: string) => ['site', siteId] as const,
+  events: (siteId: string, filters?: unknown) => ['events', siteId, JSON.stringify(filters ?? null)] as const,
+  users: (siteId: string, filters?: unknown) => ['users', siteId, JSON.stringify(filters ?? null)] as const,
+  user: (userId: string) => ['user', userId] as const,
+  realtime: (siteId: string) => ['realtime', siteId] as const,
+  userEvents: (siteId: string, userId: string, page: number) => ['userEvents', siteId, userId, page] as const,
+  insights: (siteId: string, period: string) => ['insights', siteId, period] as const,
+  insightsHourly: (siteId: string, period: string) => ['insightsHourly', siteId, period] as const,
+  campaigns: (siteId: string, period: string, tab: string) => ['campaigns', siteId, period, tab] as const,
+  retention: (siteId: string, period: string, weeks: number) => ['retention', siteId, period, weeks] as const,
+};

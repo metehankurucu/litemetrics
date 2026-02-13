@@ -1,4 +1,5 @@
 import { useEffect, useRef, useCallback } from 'react';
+import { AppState } from 'react-native';
 import { useLitemetricsRNContext } from './context';
 
 /**
@@ -78,15 +79,7 @@ export function useAppStateTracking() {
   const appStateRef = useRef<string>('active');
 
   useEffect(() => {
-    let AppState: any;
     let subscription: any;
-
-    // Dynamic import to avoid crash if not in RN environment
-    try {
-      AppState = require('react-native').AppState;
-    } catch {
-      return;
-    }
 
     appStateRef.current = AppState.currentState;
 

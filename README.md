@@ -106,6 +106,21 @@ app.listen(3002);
 
 > For MongoDB: `db: { adapter: 'mongodb', url: 'mongodb://localhost:27017/myapp' }`
 
+### 4. Run the mobile app (Expo)
+
+```bash
+cd apps/mobile
+bun install
+bun run start
+```
+
+For platform-specific launches:
+
+```bash
+bun run ios
+bun run android
+```
+
 <br/>
 
 ## Deploy
@@ -189,6 +204,7 @@ The tracker handles session management, visitor IDs, batching, and SPA detection
 |-----|-------------|
 | [`@litemetrics/dashboard`](./apps/dashboard) | Analytics dashboard (React + Vite + Tailwind) |
 | [`@litemetrics/server`](./apps/server) | Self-hosted server (serves dashboard + API) |
+| [`@litemetrics/mobile`](./apps/mobile) | Native mobile analytics app (Expo Router + React Native) |
 
 <br/>
 
@@ -213,6 +229,7 @@ The tracker handles session management, visitor IDs, batching, and SPA detection
 - [Integration Guide](./docs/integration-guide.md) — React, React Native, Next.js, Vue, Python, PHP, Ruby, Go
 - [API Reference](./docs/api-reference.md)
 - [Dashboard](./docs/dashboard.md)
+- [Mobile App](./apps/mobile/README.md)
 - [Self-Hosting](./docs/self-hosting.md)
 - [Scaling](./docs/scaling.md)
 

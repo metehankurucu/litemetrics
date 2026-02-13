@@ -4,7 +4,9 @@
   "workspaces": [
     "packages/*",
     "examples/*",
-    "apps/*"
+    "apps/dashboard",
+    "apps/landing",
+    "apps/server"
   ],
   "scripts": {
     "build": "turbo build",

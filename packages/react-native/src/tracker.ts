@@ -1,4 +1,4 @@
-import { Platform, Dimensions } from 'react-native';
+import { Platform, Dimensions, NativeModules } from 'react-native';
 import type {
   TrackerConfig,
   ClientEvent,
@@ -100,7 +100,7 @@ export function createRNTracker(config: RNTrackerConfig): RNTrackerInstance {
     // 2) Fallback to RN native modules when Intl is unavailable (JSC, older Hermes)
     if (!language || !timezone) {
       try {
-        const { NativeModules } = require('react-native');
+        // NativeModules already imported statically
         if (!language) {
           if (Platform.OS === 'ios') {
             // iOS: SettingsManager provides locale info

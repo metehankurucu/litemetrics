@@ -2,6 +2,9 @@
 
 React-based analytics dashboard. Shows metrics, charts, maps, and user data.
 
+This page documents the web dashboard in `apps/dashboard`.
+For the native mobile client, see [`apps/mobile/README.md`](../apps/mobile/README.md).
+
 ## Setup
 
 Requires a running Litemetrics server and a site with `siteId` + `secretKey`.
@@ -9,9 +12,9 @@ Requires a running Litemetrics server and a site with `siteId` + `secretKey`.
 Create `apps/dashboard/.env`:
 
 ```env
-VITE_LITEMETRICS_API_URL=http://localhost:3002
+VITE_LITEMETRICS_URL=http://localhost:3002
 VITE_LITEMETRICS_SITE_ID=your_site_id
-VITE_LITEMETRICS_SECRET=your_secret_key
+VITE_LITEMETRICS_ADMIN_SECRET=your_admin_secret
 ```
 
 Run locally:

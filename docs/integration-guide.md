@@ -158,6 +158,9 @@ function NavigationTracker({ navigationRef }) {
 }
 ```
 
+> Note: The example above is for integrating tracking into your own React Native app.
+> If you want to run the bundled Litemetrics mobile client from this repository, see [`apps/mobile/README.md`](../apps/mobile/README.md).
+
 ### Vue
 
 ```bash
