@@ -19,6 +19,7 @@
   "packageManager": "bun@1.2.1",
   "devDependencies": {
     "turbo": "^2",
-    "typescript": "^5.7"
+    "typescript": "^5.7",
+    "vitest": "^4.0.18"
   }
 }

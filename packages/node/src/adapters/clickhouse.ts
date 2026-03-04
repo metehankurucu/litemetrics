@@ -1,6 +1,7 @@
 import type { DBAdapter, EnrichedEvent, QueryParams, QueryResult, QueryDataPoint, Granularity, TimeSeriesParams, TimeSeriesResult, RetentionParams, RetentionResult, RetentionCohort, Site, CreateSiteRequest, UpdateSiteRequest, EventListParams, EventListResult, EventListItem, UserListParams, UserListResult, UserDetail } from '@litemetrics/core';
 import { createClient, type ClickHouseClient } from '@clickhouse/client';
 import { resolvePeriod, previousPeriodRange, autoGranularity, fillBuckets, granularityToDateFormat, getISOWeek, generateSiteId, generateSecretKey, toUTCDate } from './utils';
+import { isValidTimezone } from '../query-helpers.js';
 
 const EVENTS_TABLE = 'litemetrics_events';
 const SITES_TABLE = 'litemetrics_sites';
@@ -932,7 +933,8 @@ export class ClickHouseAdapter implements DBAdapter {
   }
 
   private granularityToClickHouseFunc(g: Granularity, timezone?: string): string {
-    const tz = timezone ? `, '${timezone}'` : '';
+    const safeTz = timezone && isValidTimezone(timezone) ? timezone : undefined;
+    const tz = safeTz ? `, '${safeTz}'` : '';
     switch (g) {
       case 'hour': return `toStartOfHour(timestamp${tz})`;
       case 'day': return `toStartOfDay(timestamp${tz})`;

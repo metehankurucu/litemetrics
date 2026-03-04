@@ -26,7 +26,7 @@ export function toUTCDate(value: string | Date | number): Date {
   if (typeof value === 'number') return new Date(value);
   const s = String(value).trim();
   // If string has no timezone indicator (Z, +, -offset), treat as UTC
-  if (s.length >= 10 && !s.endsWith('Z') && !/[+-]\d{2}:\d{2}$/.test(s)) {
+  if (s.length >= 10 && !s.endsWith('Z') && !/[+-]\d{2}:?\d{2}$/.test(s)) {
     return new Date(s.replace(' ', 'T') + 'Z');
   }
   return new Date(s);
@@ -97,9 +97,11 @@ export function fillBuckets(
 
   // When timezone is provided, shift from/to to wall-clock so bucket keys
   // align with ClickHouse's timezone-aware toStartOf* output.
-  const offset = timezone ? getTimezoneOffsetMs(from, timezone) : 0;
-  const current = new Date(from.getTime() + offset);
-  const toWall = new Date(to.getTime() + offset);
+  // Use separate offsets for from/to to handle DST transitions correctly.
+  const fromOffset = timezone ? getTimezoneOffsetMs(from, timezone) : 0;
+  const toOffset = timezone ? getTimezoneOffsetMs(to, timezone) : 0;
+  const current = new Date(from.getTime() + fromOffset);
+  const toWall = new Date(to.getTime() + toOffset);
 
   // Align to bucket start (using UTC methods on wall-clock shifted dates)
   if (granularity === 'hour') {
@@ -118,8 +120,11 @@ export function fillBuckets(
 
   while (current <= toWall) {
     const key = formatDateBucket(current, dateFormat);
-    // Shift back to real UTC for the date field
-    const realUtc = new Date(current.getTime() - offset);
+    // Shift back to real UTC for the date field.
+    // Recompute offset per-bucket to handle DST transitions correctly.
+    const approxUtc = new Date(current.getTime() - fromOffset);
+    const exactOffset = timezone ? getTimezoneOffsetMs(approxUtc, timezone) : 0;
+    const realUtc = new Date(current.getTime() - exactOffset);
     points.push({ date: realUtc.toISOString(), value: map.get(key) ?? 0 });
 
     if (granularity === 'hour') {
