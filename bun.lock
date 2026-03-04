@@ -1,5 +1,6 @@
 {
   "lockfileVersion": 1,
+  "configVersion": 0,
   "workspaces": {
     "": {
       "name": "litemetrics",
@@ -129,7 +130,7 @@
       "name": "@litemetrics/cli",
       "version": "0.2.0",
       "bin": {
-        "litemetrics": "./dist/index.js"
+        "litemetrics": "./dist/index.js",
       },
       "dependencies": {
         "@litemetrics/client": "workspace:*",
