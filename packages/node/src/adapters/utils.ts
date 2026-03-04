@@ -1,6 +1,25 @@
 import type { QueryParams, Period, Granularity, TimeSeriesPoint } from '@litemetrics/core';
 import { randomBytes } from 'crypto';
 
+/** Get the offset in ms between UTC and the given IANA timezone at a specific instant. */
+export function getTimezoneOffsetMs(date: Date, timezone: string): number {
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    hour12: false,
+  });
+  const parts = formatter.formatToParts(date);
+  const get = (type: Intl.DateTimeFormatPartTypes) => parts.find((p) => p.type === type)!.value;
+  const y = parseInt(get('year'));
+  const m = parseInt(get('month')) - 1;
+  const d = parseInt(get('day'));
+  const h = parseInt(get('hour') === '24' ? '0' : get('hour'));
+  const mi = parseInt(get('minute'));
+  const s = parseInt(get('second'));
+  return Date.UTC(y, m, d, h, mi, s) - date.getTime();
+}
+
 /** Parse a value as UTC. Appends 'Z' to bare datetime strings so they aren't parsed as local. */
 export function toUTCDate(value: string | Date | number): Date {
   if (value instanceof Date) return value;
@@ -71,12 +90,18 @@ export function fillBuckets(
   granularity: Granularity,
   dateFormat: string,
   rows: { _id: string; value: number }[],
+  timezone?: string,
 ): TimeSeriesPoint[] {
   const map = new Map(rows.map((r) => [r._id, r.value]));
   const points: TimeSeriesPoint[] = [];
-  const current = new Date(from);
 
-  // Align to bucket start (UTC)
+  // When timezone is provided, shift from/to to wall-clock so bucket keys
+  // align with ClickHouse's timezone-aware toStartOf* output.
+  const offset = timezone ? getTimezoneOffsetMs(from, timezone) : 0;
+  const current = new Date(from.getTime() + offset);
+  const toWall = new Date(to.getTime() + offset);
+
+  // Align to bucket start (using UTC methods on wall-clock shifted dates)
   if (granularity === 'hour') {
     current.setUTCMinutes(0, 0, 0);
   } else if (granularity === 'day') {
@@ -91,9 +116,11 @@ export function fillBuckets(
     current.setUTCHours(0, 0, 0, 0);
   }
 
-  while (current <= to) {
+  while (current <= toWall) {
     const key = formatDateBucket(current, dateFormat);
-    points.push({ date: current.toISOString(), value: map.get(key) ?? 0 });
+    // Shift back to real UTC for the date field
+    const realUtc = new Date(current.getTime() - offset);
+    points.push({ date: realUtc.toISOString(), value: map.get(key) ?? 0 });
 
     if (granularity === 'hour') {
       current.setUTCHours(current.getUTCHours() + 1);

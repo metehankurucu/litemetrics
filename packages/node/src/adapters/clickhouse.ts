@@ -925,6 +925,7 @@ export class ClickHouseAdapter implements DBAdapter {
       granularity,
       dateFormat,
       mappedRows,
+      params.timezone,
     );
 
     return { metric: params.metric, granularity, data };
