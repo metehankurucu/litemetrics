@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { LitemetricsClient, Period, QueryResult, TimeSeriesPoint } from '@litemetrics/client';
-import { queryKeys } from '../hooks/useAnalytics';
+import { queryKeys, BROWSER_TIMEZONE } from '../hooks/useAnalytics';
 import { PeriodSelector } from '../components/PeriodSelector';
 import { SegmentFilters, type SegmentFilter, filtersToRecord } from '../components/SegmentFilters';
 import { TopList } from '../components/TopList';
@@ -113,8 +113,8 @@ export function InsightsPage({ siteId, client, period, onPeriodChange }: Insight
   const filterMap = useMemo(() => filtersToRecord(filters), [filters]);
 
   const statsOptions = period === 'custom' && dateFrom && dateTo
-    ? { period, dateFrom: new Date(dateFrom).toISOString(), dateTo: new Date(dateTo + 'T23:59:59').toISOString() }
-    : { period };
+    ? { period, dateFrom: new Date(dateFrom).toISOString(), dateTo: new Date(dateTo + 'T23:59:59').toISOString(), timezone: BROWSER_TIMEZONE }
+    : { period, timezone: BROWSER_TIMEZONE };
 
   const { data: insightsData, isLoading: loadingLists, error } = useQuery({
     queryKey: queryKeys.insights(siteId, period, dateFrom, dateTo, filterMap),

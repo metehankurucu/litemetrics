@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Period, LitemetricsClient, Metric } from '@litemetrics/client';
-import { queryKeys } from '../hooks/useAnalytics';
+import { queryKeys, BROWSER_TIMEZONE } from '../hooks/useAnalytics';
 import { TopList, type TopListType } from '../components/TopList';
 import { PieChartCard } from '../components/PieChartCard';
 import { PeriodSelector } from '../components/PeriodSelector';
@@ -36,8 +36,8 @@ export function CampaignsPage({ siteId, client, period, onPeriodChange }: Campai
   const filterMap = useMemo(() => filtersToRecord(filters), [filters]);
 
   const statsOptions = period === 'custom' && dateFrom && dateTo
-    ? { period, dateFrom: new Date(dateFrom).toISOString(), dateTo: new Date(dateTo + 'T23:59:59').toISOString() }
-    : { period };
+    ? { period, dateFrom: new Date(dateFrom).toISOString(), dateTo: new Date(dateTo + 'T23:59:59').toISOString(), timezone: BROWSER_TIMEZONE }
+    : { period, timezone: BROWSER_TIMEZONE };
 
   const activeTabConfig = tabs.find((t) => t.id === activeTab)!;
 

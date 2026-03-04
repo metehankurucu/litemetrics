@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { LitemetricsClient, EventListItem, EventType, Period, Site } from '@litemetrics/client';
 import { createSitesClient } from '@litemetrics/client';
-import { queryKeys } from '../hooks/useAnalytics';
+import { queryKeys, BROWSER_TIMEZONE } from '../hooks/useAnalytics';
 import { getBrowserIcon, getOSIcon, getDeviceIcon, countryToFlag } from './icons';
 import { ExportButton } from './ExportButton';
 import { useAuth } from '../auth';
@@ -69,7 +69,7 @@ export function EventsExplorer({ siteId, client, onUserClick }: EventsExplorerPr
       if (isConversionFilter) {
         return conversionEvents.map((name) => ({ key: name }));
       }
-      const result = await client.getStats('top_events', { period, limit: 50 });
+      const result = await client.getStats('top_events', { period, limit: 50, timezone: BROWSER_TIMEZONE });
       return result.data;
     },
   });

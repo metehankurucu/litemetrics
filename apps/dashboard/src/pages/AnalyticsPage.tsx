@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { QueryResult, Period, LitemetricsClient, Site, Metric } from '@litemetrics/client';
 import { createSitesClient } from '@litemetrics/client';
-import { queryKeys } from '../hooks/useAnalytics';
+import { queryKeys, BROWSER_TIMEZONE } from '../hooks/useAnalytics';
 import { StatCard } from '../components/StatCard';
 import { TopList, type TopListType } from '../components/TopList';
 import { TimeSeriesChart } from '../components/TimeSeriesChart';
@@ -54,8 +54,8 @@ export function AnalyticsPage({ siteId, client, period, onPeriodChange }: Analyt
 
   const effectivePeriod = period;
   const statsOptions = period === 'custom' && dateFrom && dateTo
-    ? { period, dateFrom: new Date(dateFrom).toISOString(), dateTo: new Date(dateTo + 'T23:59:59').toISOString() }
-    : { period };
+    ? { period, dateFrom: new Date(dateFrom).toISOString(), dateTo: new Date(dateTo + 'T23:59:59').toISOString(), timezone: BROWSER_TIMEZONE }
+    : { period, timezone: BROWSER_TIMEZONE };
 
   const { data: site } = useQuery({
     queryKey: ['site', siteId],
@@ -116,7 +116,7 @@ export function AnalyticsPage({ siteId, client, period, onPeriodChange }: Analyt
     queryKey: queryKeys.live(siteId),
     queryFn: async () => {
       client.setSiteId(siteId);
-      const result = await client.getStats('visitors', { period: '1h' });
+      const result = await client.getStats('visitors', { period: '1h', timezone: BROWSER_TIMEZONE });
       return { activeVisitors: result.total };
     },
     refetchInterval: 10_000,

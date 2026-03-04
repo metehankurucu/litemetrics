@@ -10,12 +10,12 @@ interface UseStatsOptions {
 }
 
 export function useStats(metric: Metric, options?: UseStatsOptions) {
-  const { client, siteId, period: ctxPeriod, dateFrom, dateTo, staleTime } = useLitemetricsUI();
+  const { client, siteId, period: ctxPeriod, dateFrom, dateTo, staleTime, timezone } = useLitemetricsUI();
   const period = options?.period ?? ctxPeriod;
 
   const statsOptions = period === 'custom' && dateFrom && dateTo
-    ? { period, dateFrom: new Date(dateFrom).toISOString(), dateTo: new Date(dateTo + 'T23:59:59').toISOString(), limit: options?.limit, compare: true }
-    : { period, limit: options?.limit, compare: true };
+    ? { period, dateFrom: new Date(dateFrom).toISOString(), dateTo: new Date(dateTo + 'T23:59:59').toISOString(), limit: options?.limit, compare: true, timezone }
+    : { period, limit: options?.limit, compare: true, timezone };
 
   return useQuery<QueryResult>({
     queryKey: queryKeys.stats(siteId, metric, period, dateFrom, dateTo),

@@ -21,6 +21,7 @@ export interface StatsOptions {
   limit?: number;
   filters?: Record<string, string>;
   compare?: boolean;
+  timezone?: string;
 }
 
 export interface RetentionOptions {
@@ -48,6 +49,7 @@ export interface TimeSeriesOptions {
   dateTo?: string;
   granularity?: Granularity;
   filters?: Record<string, string>;
+  timezone?: string;
 }
 
 export interface UsersListOptions {
@@ -94,6 +96,7 @@ export class LitemetricsClient {
     if (options?.limit) params.limit = String(options.limit);
     if (options?.filters) params.filters = JSON.stringify(options.filters);
     if (options?.compare) params.compare = 'true';
+    if (options?.timezone) params.timezone = options.timezone;
 
     const { data } = await this.http.get<QueryResult>(this.endpoint, { params });
     return data;
@@ -142,6 +145,7 @@ export class LitemetricsClient {
     if (options?.dateTo) params.dateTo = options.dateTo;
     if (options?.granularity) params.granularity = options.granularity;
     if (options?.filters) params.filters = JSON.stringify(options.filters);
+    if (options?.timezone) params.timezone = options.timezone;
 
     const { data } = await this.http.get<TimeSeriesResult>(this.endpoint, { params });
     return data;

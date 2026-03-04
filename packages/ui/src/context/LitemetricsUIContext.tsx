@@ -12,6 +12,7 @@ export interface LitemetricsUIContextValue {
   dateTo: string;
   setDateTo: (date: string) => void;
   staleTime: number;
+  timezone: string;
 }
 
 export const LitemetricsUIContext = createContext<LitemetricsUIContextValue | null>(null);

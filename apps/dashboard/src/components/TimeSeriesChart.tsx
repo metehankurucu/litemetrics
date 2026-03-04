@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import type { LitemetricsClient, Period, TimeSeriesPoint } from '@litemetrics/client';
-import { queryKeys } from '../hooks/useAnalytics';
+import { queryKeys, BROWSER_TIMEZONE } from '../hooks/useAnalytics';
 import { BarChart3 } from 'lucide-react';
 
 interface TimeSeriesChartProps {
@@ -47,7 +47,7 @@ export function TimeSeriesChart({ client, siteId, period, filters }: TimeSeriesC
     queryKey: queryKeys.timeSeries(siteId, period, metric, filters),
     queryFn: async () => {
       client.setSiteId(siteId);
-      const result = await client.getTimeSeries(metric, { period, filters });
+      const result = await client.getTimeSeries(metric, { period, filters, timezone: BROWSER_TIMEZONE });
       return result.data;
     },
   });

@@ -1,6 +1,6 @@
 import type { DBAdapter, EnrichedEvent, QueryParams, QueryResult, QueryDataPoint, Granularity, TimeSeriesParams, TimeSeriesResult, RetentionParams, RetentionResult, RetentionCohort, Site, CreateSiteRequest, UpdateSiteRequest, EventListParams, EventListResult, EventListItem, UserListParams, UserListResult, UserDetail } from '@litemetrics/core';
 import { createClient, type ClickHouseClient } from '@clickhouse/client';
-import { resolvePeriod, previousPeriodRange, autoGranularity, fillBuckets, granularityToDateFormat, getISOWeek, generateSiteId, generateSecretKey } from './utils';
+import { resolvePeriod, previousPeriodRange, autoGranularity, fillBuckets, granularityToDateFormat, getISOWeek, generateSiteId, generateSecretKey, toUTCDate } from './utils';
 
 const EVENTS_TABLE = 'litemetrics_events';
 const SITES_TABLE = 'litemetrics_sites';
@@ -90,8 +90,15 @@ CREATE TABLE IF NOT EXISTS ${SITES_TABLE} (
 
 /** Convert JS date/ISO string to ClickHouse DateTime64 format: '2026-02-07 14:22:08.339' */
 function toCHDateTime(d: string | Date): string {
-  const iso = typeof d === 'string' ? d : d.toISOString();
-  return iso.replace('T', ' ').replace('Z', '');
+  const date = d instanceof Date ? d : toUTCDate(d);
+  const y = date.getUTCFullYear();
+  const mo = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const da = String(date.getUTCDate()).padStart(2, '0');
+  const h = String(date.getUTCHours()).padStart(2, '0');
+  const mi = String(date.getUTCMinutes()).padStart(2, '0');
+  const s = String(date.getUTCSeconds()).padStart(2, '0');
+  const ms = String(date.getUTCMilliseconds()).padStart(3, '0');
+  return `${y}-${mo}-${da} ${h}:${mi}:${s}.${ms}`;
 }
 
 /** ClickHouse multiIf expression that normalizes utm_source abbreviations */
@@ -860,7 +867,7 @@ export class ClickHouseAdapter implements DBAdapter {
     });
 
     const granularity = params.granularity ?? autoGranularity(period);
-    const bucketFn = this.granularityToClickHouseFunc(granularity);
+    const bucketFn = this.granularityToClickHouseFunc(granularity, params.timezone);
     const dateFormat = granularityToDateFormat(granularity);
 
     const filter = buildFilterConditions(params.filters);
@@ -923,30 +930,31 @@ export class ClickHouseAdapter implements DBAdapter {
     return { metric: params.metric, granularity, data };
   }
 
-  private granularityToClickHouseFunc(g: Granularity): string {
+  private granularityToClickHouseFunc(g: Granularity, timezone?: string): string {
+    const tz = timezone ? `, '${timezone}'` : '';
     switch (g) {
-      case 'hour': return 'toStartOfHour(timestamp)';
-      case 'day': return 'toStartOfDay(timestamp)';
-      case 'week': return 'toStartOfWeek(timestamp, 1)';  // 1 = Monday
-      case 'month': return 'toStartOfMonth(timestamp)';
+      case 'hour': return `toStartOfHour(timestamp${tz})`;
+      case 'day': return `toStartOfDay(timestamp${tz})`;
+      case 'week': return `toStartOfWeek(timestamp, 1${tz})`;  // 1 = Monday
+      case 'month': return `toStartOfMonth(timestamp${tz})`;
     }
   }
 
   private convertClickHouseBucket(bucket: string, granularity: Granularity): string {
-    // ClickHouse returns ISO datetime strings, convert to the format used by fillBuckets
-    const date = new Date(bucket);
-    const y = date.getFullYear();
-    const m = String(date.getMonth() + 1).padStart(2, '0');
-    const d = String(date.getDate()).padStart(2, '0');
-    const h = String(date.getHours()).padStart(2, '0');
+    // ClickHouse returns datetime strings, convert to the format used by fillBuckets
+    const date = toUTCDate(bucket);
+    const y = date.getUTCFullYear();
+    const m = String(date.getUTCMonth() + 1).padStart(2, '0');
+    const d = String(date.getUTCDate()).padStart(2, '0');
+    const h = String(date.getUTCHours()).padStart(2, '0');
 
     switch (granularity) {
       case 'hour': return `${y}-${m}-${d}T${h}:00`;
       case 'day': return `${y}-${m}-${d}`;
       case 'week': {
-        const jan4 = new Date(y, 0, 4);
-        const dayOfYear = Math.ceil((date.getTime() - new Date(y, 0, 1).getTime()) / 86400000) + 1;
-        const jan4Day = jan4.getDay() || 7;
+        const jan4 = new Date(Date.UTC(y, 0, 4));
+        const dayOfYear = Math.ceil((date.getTime() - Date.UTC(y, 0, 1)) / 86400000) + 1;
+        const jan4Day = jan4.getUTCDay() || 7;
         const weekNum = Math.ceil((dayOfYear + jan4Day - 1) / 7);
         return `${y}-W${String(weekNum).padStart(2, '0')}`;
       }
@@ -984,7 +992,7 @@ export class ClickHouseAdapter implements DBAdapter {
     const cohortMap = new Map<string, { visitors: Set<string>; weekSets: Map<string, Set<string>> }>();
 
     for (const v of rows) {
-      const firstDate = new Date(v.first_event);
+      const firstDate = toUTCDate(v.first_event);
       const cohortWeek = getISOWeek(firstDate);
       if (!cohortMap.has(cohortWeek)) {
         cohortMap.set(cohortWeek, { visitors: new Set(), weekSets: new Map() });
@@ -994,7 +1002,7 @@ export class ClickHouseAdapter implements DBAdapter {
 
       // active_weeks from ClickHouse are DateTime strings
       const eventWeeks = (Array.isArray(v.active_weeks) ? v.active_weeks : []).map((w: string) => {
-        const d = new Date(w);
+        const d = toUTCDate(w);
         return getISOWeek(d);
       });
 
@@ -1181,8 +1189,8 @@ export class ClickHouseAdapter implements DBAdapter {
       visitorId: String(u.visitor_id),
       userId: u.userId ? String(u.userId) : undefined,
       traits: this.parseJSON(u.traits as string | null),
-      firstSeen: new Date(String(u.firstSeen)).toISOString(),
-      lastSeen: new Date(String(u.lastSeen)).toISOString(),
+      firstSeen: toUTCDate(String(u.firstSeen)).toISOString(),
+      lastSeen: toUTCDate(String(u.lastSeen)).toISOString(),
       totalEvents: Number(u.totalEvents),
       totalPageviews: Number(u.totalPageviews),
       totalSessions: Number(u.totalSessions),
@@ -1319,8 +1327,8 @@ export class ClickHouseAdapter implements DBAdapter {
       visitorIds,
       userId,
       traits: this.parseJSON(u.traits as string | null),
-      firstSeen: new Date(String(u.firstSeen)).toISOString(),
-      lastSeen: new Date(String(u.lastSeen)).toISOString(),
+      firstSeen: toUTCDate(String(u.firstSeen)).toISOString(),
+      lastSeen: toUTCDate(String(u.lastSeen)).toISOString(),
       totalEvents: Number(u.totalEvents),
       totalPageviews: Number(u.totalPageviews),
       totalSessions: Number(u.totalSessions),
@@ -1628,8 +1636,8 @@ export class ClickHouseAdapter implements DBAdapter {
       domain: row.domain ? String(row.domain) : undefined,
       allowedOrigins: row.allowed_origins ? JSON.parse(String(row.allowed_origins)) : undefined,
       conversionEvents: row.conversion_events ? JSON.parse(String(row.conversion_events)) : undefined,
-      createdAt: new Date(String(row.created_at)).toISOString(),
-      updatedAt: new Date(String(row.updated_at)).toISOString(),
+      createdAt: toUTCDate(String(row.created_at)).toISOString(),
+      updatedAt: toUTCDate(String(row.updated_at)).toISOString(),
     };
   }
 
@@ -1637,7 +1645,7 @@ export class ClickHouseAdapter implements DBAdapter {
     return {
       id: String(row.event_id ?? ''),
       type: String(row.type) as EventListItem['type'],
-      timestamp: new Date(String(row.timestamp)).toISOString(),
+      timestamp: toUTCDate(String(row.timestamp)).toISOString(),
       visitorId: String(row.visitor_id),
       sessionId: String(row.session_id),
       url: row.url ? String(row.url) : undefined,

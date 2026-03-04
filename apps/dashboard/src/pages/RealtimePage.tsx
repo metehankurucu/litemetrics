@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import type { LitemetricsClient } from '@litemetrics/client';
-import { queryKeys } from '../hooks/useAnalytics';
+import { queryKeys, BROWSER_TIMEZONE } from '../hooks/useAnalytics';
 import { getBrowserIcon, getDeviceIcon } from '../components/icons';
 import { WorldMap } from '../components/WorldMap';
 import { FileText, Activity } from 'lucide-react';
@@ -16,9 +16,9 @@ export function RealtimePage({ siteId, client }: RealtimePageProps) {
     queryFn: async () => {
       client.setSiteId(siteId);
       const [visitorsResult, eventsResult, pagesResult] = await Promise.all([
-        client.getStats('visitors', { period: '1h' }),
+        client.getStats('visitors', { period: '1h', timezone: BROWSER_TIMEZONE }),
         client.getEventsList({ period: '1h', limit: 30 }),
-        client.getStats('top_pages', { period: '1h', limit: 10 }),
+        client.getStats('top_pages', { period: '1h', limit: 10, timezone: BROWSER_TIMEZONE }),
       ]);
 
       return {

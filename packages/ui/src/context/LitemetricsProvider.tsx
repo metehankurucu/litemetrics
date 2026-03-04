@@ -14,6 +14,7 @@ interface LitemetricsProviderProps {
   staleTime?: number;
   theme?: Partial<LitemetricsTheme>;
   darkTheme?: Partial<LitemetricsTheme>;
+  timezone?: string;
   children: ReactNode;
 }
 
@@ -26,8 +27,10 @@ export function LitemetricsProvider({
   staleTime = 30_000,
   theme,
   darkTheme: darkThemeProp,
+  timezone: timezoneProp,
   children,
 }: LitemetricsProviderProps) {
+  const timezone = timezoneProp ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
   const [period, setPeriod] = useState<Period>(defaultPeriod);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
@@ -60,8 +63,8 @@ export function LitemetricsProvider({
   }, [theme, darkThemeProp]);
 
   const value = useMemo<LitemetricsUIContextValue>(
-    () => ({ client, siteId, period, setPeriod, dateFrom, setDateFrom, dateTo, setDateTo, staleTime }),
-    [client, siteId, period, dateFrom, dateTo, staleTime],
+    () => ({ client, siteId, period, setPeriod, dateFrom, setDateFrom, dateTo, setDateTo, staleTime, timezone }),
+    [client, siteId, period, dateFrom, dateTo, staleTime, timezone],
   );
 
   const content = (

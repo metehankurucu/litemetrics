@@ -1,6 +1,8 @@
 import { useState, useCallback } from 'react';
 import { createClient } from '@litemetrics/client';
 
+export const BROWSER_TIMEZONE = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
 const client = createClient({
   baseUrl: import.meta.env.VITE_LITEMETRICS_URL || '',
   siteId: import.meta.env.VITE_LITEMETRICS_SITE_ID || 'demo',

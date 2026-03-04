@@ -10,14 +10,14 @@ interface UseTimeSeriesOptions {
 }
 
 export function useTimeSeries(metric: ChartMetric, options?: UseTimeSeriesOptions) {
-  const { client, siteId, period: ctxPeriod, staleTime } = useLitemetricsUI();
+  const { client, siteId, period: ctxPeriod, staleTime, timezone } = useLitemetricsUI();
   const period = options?.period ?? ctxPeriod;
 
   return useQuery<TimeSeriesResult>({
     queryKey: queryKeys.timeSeries(siteId, metric, period),
     queryFn: async () => {
       client.setSiteId(siteId);
-      return client.getTimeSeries(metric, { period });
+      return client.getTimeSeries(metric, { period, timezone });
     },
     staleTime,
     enabled: options?.enabled !== false,

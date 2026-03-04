@@ -303,6 +303,7 @@ export interface QueryParams {
   limit?: number;
   compare?: boolean;
   conversionEvents?: string[];
+  timezone?: string;
 }
 
 export interface QueryResult {
@@ -333,6 +334,7 @@ export interface TimeSeriesParams {
   granularity?: Granularity;
   filters?: Record<string, string>;
   conversionEvents?: string[];
+  timezone?: string;
 }
 
 export interface TimeSeriesResult {

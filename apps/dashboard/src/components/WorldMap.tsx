@@ -2,7 +2,7 @@ import { useState, memo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ComposableMap, Geographies, Geography, ZoomableGroup } from 'react-simple-maps';
 import type { LitemetricsClient, Period } from '@litemetrics/client';
-import { queryKeys } from '../hooks/useAnalytics';
+import { queryKeys, BROWSER_TIMEZONE } from '../hooks/useAnalytics';
 import { MapPin } from 'lucide-react';
 
 const geoUrl = 'https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json';
@@ -66,7 +66,7 @@ export const WorldMap = memo(function WorldMap({ client, siteId, period, filters
     queryKey: queryKeys.worldMap(siteId, period, filters),
     queryFn: async () => {
       client.setSiteId(siteId);
-      const result = await client.getTopCountries({ period, limit: 200, filters });
+      const result = await client.getTopCountries({ period, limit: 200, filters, timezone: BROWSER_TIMEZONE });
       const map: CountryData = {};
       for (const d of result.data) {
         map[d.key] = d.value;
