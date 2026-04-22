@@ -63,6 +63,27 @@ const collector = await createCollector({
 });
 ```
 
+## Timestamp Sanitization
+
+The collector validates client-supplied event timestamps against server time. Events with timestamps outside the allowed window are replaced with server-now, preventing data corruption from clients with incorrect system clocks and timestamp-spoofing analytics poisoning.
+
+Defaults: 5 min future tolerance, 24 h past tolerance.
+
+```ts
+const collector = await createCollector({
+  db: { url: 'http://localhost:8123' },
+  timestampSanity: {
+    futureMs: 5 * 60 * 1000,
+    pastMs: 24 * 60 * 60 * 1000,
+    mode: 'clamp', // or 'off' to disable
+  },
+});
+```
+
+If your tracker uses an offline queue that may replay events after long delays, increase `pastMs` accordingly (e.g., `7 * 24 * 60 * 60 * 1000` for a 7-day queue).
+
+To preserve pre-0.4.0 behavior (no validation), set `timestampSanity: { mode: 'off' }`.
+
 ## Features
 
 - **Event Collection** - Receives batched events from the browser tracker

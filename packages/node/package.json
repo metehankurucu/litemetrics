@@ -1,6 +1,6 @@
 {
   "name": "@litemetrics/node",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "Node.js analytics collector with DB adapters and query API",
   "license": "MIT",
   "author": "Metehan Kurucu",
@@ -43,7 +43,7 @@
   },
   "dependencies": {
     "@clickhouse/client": "^1.17.0",
-    "@litemetrics/core": "^0.3.1",
+    "@litemetrics/core": "^0.4.0",
     "maxmind": "^4.3",
     "mongodb": "^6",
     "ua-parser-js": "^2"

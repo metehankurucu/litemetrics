@@ -1,5 +1,6 @@
 {
   "lockfileVersion": 1,
+  "configVersion": 0,
   "workspaces": {
     "": {
       "name": "litemetrics",
@@ -155,11 +156,11 @@
       "name": "@litemetrics/cli",
       "version": "0.3.1",
       "bin": {
-        "litemetrics": "./dist/index.js"
+        "litemetrics": "./dist/index.js",
       },
       "dependencies": {
-        "@litemetrics/client": "workspace:*",
-        "@litemetrics/core": "workspace:*",
+        "@litemetrics/client": "^0.3.1",
+        "@litemetrics/core": "^0.3.1",
         "commander": "^12",
       },
       "devDependencies": {
@@ -181,7 +182,7 @@
     },
     "packages/core": {
       "name": "@litemetrics/core",
-      "version": "0.3.1",
+      "version": "0.4.0",
       "devDependencies": {
         "tsup": "^8",
         "typescript": "^5.7",
@@ -189,7 +190,7 @@
     },
     "packages/node": {
       "name": "@litemetrics/node",
-      "version": "0.3.1",
+      "version": "0.4.0",
       "dependencies": {
         "@clickhouse/client": "^1.17.0",
         "@litemetrics/core": "workspace:*",
@@ -223,7 +224,7 @@
       "name": "@litemetrics/react-native",
       "version": "0.3.1",
       "dependencies": {
-        "@litemetrics/core": "workspace:*",
+        "@litemetrics/core": "^0.3.1",
       },
       "devDependencies": {
         "@react-native-async-storage/async-storage": "^2",
@@ -242,7 +243,7 @@
       "name": "@litemetrics/tracker",
       "version": "0.3.1",
       "dependencies": {
-        "@litemetrics/core": "workspace:*",
+        "@litemetrics/core": "^0.3.1",
       },
       "devDependencies": {
         "tsup": "^8",
@@ -253,8 +254,8 @@
       "name": "@litemetrics/ui",
       "version": "0.3.1",
       "dependencies": {
-        "@litemetrics/client": "workspace:*",
-        "@litemetrics/core": "workspace:*",
+        "@litemetrics/client": "^0.3.1",
+        "@litemetrics/core": "^0.3.1",
       },
       "devDependencies": {
         "@tanstack/react-query": "^5",
@@ -1481,6 +1482,16 @@
     "@babel/helper-compilation-targets/semver": ["semver@6.3.1", "", { "bin": { "semver": "bin/semver.js" } }, "sha512-BR7VvDCVHO+q2xBEWskxS6DJE1qRnb7DxzUrogb71CWoSficBxYsiAGd+Kl0mmq/MprG9yArRkyrQxTO6XjMzA=="],
 
     "@istanbuljs/load-nyc-config/camelcase": ["camelcase@5.3.1", "", {}, "sha512-L28STB170nwWS63UjtlEOE3dldQApaJXZkOI1uMFfzf3rRuPegHaHesyee+YxQ+W6SvRDQV6UrdOdRiR153wJg=="],
+
+    "@litemetrics/cli/@litemetrics/core": ["@litemetrics/core@0.3.1", "", {}, "sha512-1GPjFgokrTQaKN86A1BX74lpDsSXefJf5oeS0vsDbkwqhd1rCpnw/8SLwlbc6guOEiDoDV15R0LdNtDniGM6gw=="],
+
+    "@litemetrics/client/@litemetrics/core": ["@litemetrics/core@0.3.1", "", {}, "sha512-1GPjFgokrTQaKN86A1BX74lpDsSXefJf5oeS0vsDbkwqhd1rCpnw/8SLwlbc6guOEiDoDV15R0LdNtDniGM6gw=="],
+
+    "@litemetrics/react-native/@litemetrics/core": ["@litemetrics/core@0.3.1", "", {}, "sha512-1GPjFgokrTQaKN86A1BX74lpDsSXefJf5oeS0vsDbkwqhd1rCpnw/8SLwlbc6guOEiDoDV15R0LdNtDniGM6gw=="],
+
+    "@litemetrics/tracker/@litemetrics/core": ["@litemetrics/core@0.3.1", "", {}, "sha512-1GPjFgokrTQaKN86A1BX74lpDsSXefJf5oeS0vsDbkwqhd1rCpnw/8SLwlbc6guOEiDoDV15R0LdNtDniGM6gw=="],
+
+    "@litemetrics/ui/@litemetrics/core": ["@litemetrics/core@0.3.1", "", {}, "sha512-1GPjFgokrTQaKN86A1BX74lpDsSXefJf5oeS0vsDbkwqhd1rCpnw/8SLwlbc6guOEiDoDV15R0LdNtDniGM6gw=="],
 
     "@react-native/dev-middleware/serve-static": ["serve-static@1.16.3", "", { "dependencies": { "encodeurl": "~2.0.0", "escape-html": "~1.0.3", "parseurl": "~1.3.3", "send": "~0.19.1" } }, "sha512-x0RTqQel6g5SY7Lg6ZreMmsOzncHFU7nhnRWkKgWuMTu5NN0DR5oruckMqRvacAN9d5w6ARnRBXl9xhDCgfMeA=="],
 

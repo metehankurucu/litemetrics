@@ -181,6 +181,13 @@ export interface CollectorConfig {
   geoip?: boolean | GeoIPConfig;
   cors?: CORSConfig;
   trustProxy?: boolean;
+  timestampSanity?: TimestampSanityConfig;
+}
+
+export interface TimestampSanityConfig {
+  futureMs?: number;
+  pastMs?: number;
+  mode?: 'clamp' | 'off';
 }
 
 export interface DBConfig {

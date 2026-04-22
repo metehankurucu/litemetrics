@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.4.0 — Timestamp Sanitization
+
+### `@litemetrics/node`
+
+**Security fix:** The collector now validates client-supplied event timestamps against server time. Events with timestamps outside a configurable window (default: 5 min future, 24 h past) are replaced with server-now, preventing:
+
+- Data corruption from clients with incorrect system clocks
+- Timestamp-spoofing analytics poisoning
+
+**New config:** `CollectorConfig.timestampSanity` (see `packages/node/README.md`). Default: `{ futureMs: 5 * 60 * 1000, pastMs: 24 * 60 * 60 * 1000, mode: 'clamp' }`.
+
+**Opt-out:** Set `timestampSanity: { mode: 'off' }` to restore pre-0.4.0 behavior.
+
+### `@litemetrics/core`
+
+- New exported type: `TimestampSanityConfig`.
+- `CollectorConfig.timestampSanity?: TimestampSanityConfig` field added (optional, non-breaking).
+
 ## 0.3.0 — CLI
 
 ### `@litemetrics/cli` (new)

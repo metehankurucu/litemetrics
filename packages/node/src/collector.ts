@@ -22,6 +22,7 @@ import { MongoDBAdapter } from './adapters/mongodb';
 import { initGeoIP, resolveGeo } from './geoip';
 import { parseUserAgent } from './useragent';
 import { isBot } from './botfilter';
+import { resolveTimestampSanity, sanitizeEventTimestamp } from './timestamp-sanity';
 
 export interface Collector {
   handler(): (req: any, res: any) => void | Promise<void>;
@@ -53,6 +54,8 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
     const geoipConfig = typeof config.geoip === 'object' ? config.geoip : {};
     await initGeoIP(geoipConfig.dbPath);
   }
+
+  const timestampSanity = resolveTimestampSanity(config.timestampSanity);
 
   // ─── Auth helpers ──────────────────────────────────────
 
@@ -96,6 +99,7 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
 
   function enrichEvents(events: ClientEvent[], ip: string, userAgent: string): EnrichedEvent[] {
     const uaDevice = parseUserAgent(userAgent);
+    const now = Date.now();
     return events.map((event) => {
       const geo = resolveGeo(ip, event.timezone);
 
@@ -118,7 +122,9 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
         device = uaDevice;
       }
 
-      return { ...event, ip, geo, device };
+      const timestamp = sanitizeEventTimestamp(event.timestamp, now, timestampSanity);
+
+      return { ...event, timestamp, ip, geo, device };
     });
   }
 
