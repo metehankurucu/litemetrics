@@ -100,7 +100,11 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
   function enrichEvents(events: ClientEvent[], ip: string, userAgent: string): EnrichedEvent[] {
     const uaDevice = parseUserAgent(userAgent);
     const now = Date.now();
-    return events.map((event) => {
+    const enriched: EnrichedEvent[] = [];
+    for (const event of events) {
+      const timestamp = sanitizeEventTimestamp(event, now, timestampSanity);
+      if (timestamp === null) continue;
+
       const geo = resolveGeo(ip, event.timezone);
 
       // If client sent mobile context (React Native SDK), prefer it over UA parsing
@@ -122,10 +126,9 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
         device = uaDevice;
       }
 
-      const timestamp = sanitizeEventTimestamp(event.timestamp, now, timestampSanity);
-
-      return { ...event, timestamp, ip, geo, device };
-    });
+      enriched.push({ ...event, timestamp, ip, geo, device });
+    }
+    return enriched;
   }
 
   // ─── Identity resolution ────────────────────────────────

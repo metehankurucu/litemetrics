@@ -4,18 +4,23 @@
 
 ### `@litemetrics/node`
 
-**Security fix:** The collector now validates client-supplied event timestamps against server time. Events with timestamps outside a configurable window (default: 5 min future, 24 h past) are replaced with server-now, preventing:
+**Data integrity:** The collector now validates client-supplied event timestamps against server time. Events with timestamps outside a configurable window (default: 5 min future, 24 h past) are **dropped** by default, preventing:
 
 - Data corruption from clients with incorrect system clocks
 - Timestamp-spoofing analytics poisoning
 
-**New config:** `CollectorConfig.timestampSanity` (see `packages/node/README.md`). Default: `{ futureMs: 5 * 60 * 1000, pastMs: 24 * 60 * 60 * 1000, mode: 'clamp' }`.
+**New config:** `CollectorConfig.timestampSanity` (see `packages/node/README.md`). Default: `{ futureMs: 5 * 60 * 1000, pastMs: 24 * 60 * 60 * 1000, mode: 'drop' }`.
 
-**Opt-out:** Set `timestampSanity: { mode: 'off' }` to restore pre-0.4.0 behavior.
+**Modes:**
+- `'drop'` (default) — discard out-of-window / invalid events
+- `'clamp'` — replace timestamp with server-now, keep the event
+- `'off'` — pass valid client timestamps through; invalid values are still replaced with server-now
+
+**Observability:** New `onOutOfWindow(info)` callback fires whenever the sanitizer rejects a value, exposing `{ reason: 'future' | 'past' | 'invalid', offsetMs, event }` so operators can wire poisoning signals into their metrics.
 
 ### `@litemetrics/core`
 
-- New exported type: `TimestampSanityConfig`.
+- New exported types: `TimestampSanityConfig`, `TimestampOutOfWindowInfo`, `TimestampOutOfWindowReason`.
 - `CollectorConfig.timestampSanity?: TimestampSanityConfig` field added (optional, non-breaking).
 
 ## 0.3.0 — CLI

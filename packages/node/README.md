@@ -65,24 +65,31 @@ const collector = await createCollector({
 
 ## Timestamp Sanitization
 
-The collector validates client-supplied event timestamps against server time. Events with timestamps outside the allowed window are replaced with server-now, preventing data corruption from clients with incorrect system clocks and timestamp-spoofing analytics poisoning.
+The collector validates client-supplied event timestamps against server time. Events with timestamps outside the allowed window are dropped by default, preventing data corruption from clients with incorrect system clocks and timestamp-spoofing analytics poisoning.
 
-Defaults: 5 min future tolerance, 24 h past tolerance.
+Defaults: 5 min future tolerance, 24 h past tolerance, `mode: 'drop'`.
 
 ```ts
 const collector = await createCollector({
   db: { url: 'http://localhost:8123' },
   timestampSanity: {
-    futureMs: 5 * 60 * 1000,
-    pastMs: 24 * 60 * 60 * 1000,
-    mode: 'clamp', // or 'off' to disable
+    // pastMs: 7 * 24 * 60 * 60 * 1000, // widen for long offline queues
+    // mode: 'clamp',                    // replace with server-now instead of dropping
+    onOutOfWindow: ({ reason, offsetMs, event }) => {
+      metrics.increment('litemetrics.ts_out_of_window', { reason });
+    },
   },
 });
 ```
 
-If your tracker uses an offline queue that may replay events after long delays, increase `pastMs` accordingly (e.g., `7 * 24 * 60 * 60 * 1000` for a 7-day queue).
+**Modes:**
+- `'drop'` (default) — out-of-window and invalid (`NaN`, missing, non-number) events are silently discarded.
+- `'clamp'` — replace the timestamp with server-now instead of dropping. Preserves the event body.
+- `'off'` — pass valid client timestamps through unchanged. Invalid values (`NaN`, missing, non-number) are still replaced with server-now to avoid breaking downstream storage.
 
-To preserve pre-0.4.0 behavior (no validation), set `timestampSanity: { mode: 'off' }`.
+If your tracker uses an offline queue that may replay events after long delays, widen `pastMs` accordingly (e.g., `7 * 24 * 60 * 60 * 1000` for a 7-day queue).
+
+The optional `onOutOfWindow(info)` callback fires whenever the sanitizer rejects a value (drop or clamp). Use it to wire poisoning signals into your metrics/alerting. `info.reason` is `'future' | 'past' | 'invalid'`; `info.offsetMs` is how far past the boundary the value was (`0` for invalid types). Callback errors are swallowed.
 
 ## Features
 

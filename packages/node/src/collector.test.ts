@@ -87,30 +87,54 @@ describe('collector timestamp sanitization', () => {
     url: 'https://example.com/',
   });
 
-  it('replaces far-future timestamps with server-now by default', async () => {
+  it('drops far-future timestamps by default', async () => {
     const collector = await createCollector({ db: { url: 'http://localhost:8123' } });
+    const future = Date.now() + 60 * 60 * 1000;
+    await collector.handler()(makeReq([baseEvent(future)]), makeRes());
+
+    expect(insertEvents).toHaveBeenCalledTimes(1);
+    const [events] = insertEvents.mock.calls[0] as [EnrichedEvent[]];
+    expect(events).toHaveLength(0);
+  });
+
+  it('drops far-past timestamps by default', async () => {
+    const collector = await createCollector({ db: { url: 'http://localhost:8123' } });
+    const past = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    await collector.handler()(makeReq([baseEvent(past)]), makeRes());
+
+    expect(insertEvents).toHaveBeenCalledTimes(1);
+    const [events] = insertEvents.mock.calls[0] as [EnrichedEvent[]];
+    expect(events).toHaveLength(0);
+  });
+
+  it('drops only the bad event in a mixed batch', async () => {
+    const collector = await createCollector({ db: { url: 'http://localhost:8123' } });
+    const goodTs = Date.now() - 30 * 1000;
+    const badTs = Date.now() + 60 * 60 * 1000;
+    await collector.handler()(
+      makeReq([baseEvent(goodTs), baseEvent(badTs)]),
+      makeRes(),
+    );
+
+    const [events] = insertEvents.mock.calls[0] as [EnrichedEvent[]];
+    expect(events).toHaveLength(1);
+    expect(events[0]!.timestamp).toBe(goodTs);
+  });
+
+  it("replaces with server-now when mode is 'clamp'", async () => {
+    const collector = await createCollector({
+      db: { url: 'http://localhost:8123' },
+      timestampSanity: { mode: 'clamp' },
+    });
     const future = Date.now() + 60 * 60 * 1000;
     const before = Date.now();
     await collector.handler()(makeReq([baseEvent(future)]), makeRes());
     const after = Date.now();
 
-    expect(insertEvents).toHaveBeenCalledTimes(1);
-    const [[event]] = insertEvents.mock.calls[0] as [EnrichedEvent[]];
-    expect(event.timestamp).toBeGreaterThanOrEqual(before);
-    expect(event.timestamp).toBeLessThanOrEqual(after);
-  });
-
-  it('replaces far-past timestamps with server-now by default', async () => {
-    const collector = await createCollector({ db: { url: 'http://localhost:8123' } });
-    const past = Date.now() - 7 * 24 * 60 * 60 * 1000;
-    const before = Date.now();
-    await collector.handler()(makeReq([baseEvent(past)]), makeRes());
-    const after = Date.now();
-
-    expect(insertEvents).toHaveBeenCalledTimes(1);
-    const [[event]] = insertEvents.mock.calls[0] as [EnrichedEvent[]];
-    expect(event.timestamp).toBeGreaterThanOrEqual(before);
-    expect(event.timestamp).toBeLessThanOrEqual(after);
+    const [events] = insertEvents.mock.calls[0] as [EnrichedEvent[]];
+    expect(events).toHaveLength(1);
+    expect(events[0]!.timestamp).toBeGreaterThanOrEqual(before);
+    expect(events[0]!.timestamp).toBeLessThanOrEqual(after);
   });
 
   it('preserves in-window client timestamps', async () => {
@@ -118,9 +142,9 @@ describe('collector timestamp sanitization', () => {
     const ts = Date.now() - 30 * 1000;
     await collector.handler()(makeReq([baseEvent(ts)]), makeRes());
 
-    expect(insertEvents).toHaveBeenCalledTimes(1);
-    const [[event]] = insertEvents.mock.calls[0] as [EnrichedEvent[]];
-    expect(event.timestamp).toBe(ts);
+    const [events] = insertEvents.mock.calls[0] as [EnrichedEvent[]];
+    expect(events).toHaveLength(1);
+    expect(events[0]!.timestamp).toBe(ts);
   });
 
   it("preserves out-of-window timestamps when mode is 'off'", async () => {
@@ -131,24 +155,38 @@ describe('collector timestamp sanitization', () => {
     const future = Date.now() + 365 * 24 * 60 * 60 * 1000;
     await collector.handler()(makeReq([baseEvent(future)]), makeRes());
 
-    expect(insertEvents).toHaveBeenCalledTimes(1);
-    const [[event]] = insertEvents.mock.calls[0] as [EnrichedEvent[]];
-    expect(event.timestamp).toBe(future);
+    const [events] = insertEvents.mock.calls[0] as [EnrichedEvent[]];
+    expect(events).toHaveLength(1);
+    expect(events[0]!.timestamp).toBe(future);
   });
 
   it('respects custom futureMs window', async () => {
     const collector = await createCollector({
       db: { url: 'http://localhost:8123' },
-      timestampSanity: { futureMs: 60_000 },
+      timestampSanity: { futureMs: 60_000, mode: 'clamp' },
     });
     const future = Date.now() + 2 * 60_000;
     const before = Date.now();
     await collector.handler()(makeReq([baseEvent(future)]), makeRes());
     const after = Date.now();
 
-    expect(insertEvents).toHaveBeenCalledTimes(1);
-    const [[event]] = insertEvents.mock.calls[0] as [EnrichedEvent[]];
-    expect(event.timestamp).toBeGreaterThanOrEqual(before);
-    expect(event.timestamp).toBeLessThanOrEqual(after);
+    const [events] = insertEvents.mock.calls[0] as [EnrichedEvent[]];
+    expect(events).toHaveLength(1);
+    expect(events[0]!.timestamp).toBeGreaterThanOrEqual(before);
+    expect(events[0]!.timestamp).toBeLessThanOrEqual(after);
+  });
+
+  it('invokes onOutOfWindow callback when dropping events', async () => {
+    const onOutOfWindow = vi.fn();
+    const collector = await createCollector({
+      db: { url: 'http://localhost:8123' },
+      timestampSanity: { onOutOfWindow },
+    });
+    const future = Date.now() + 60 * 60 * 1000;
+    await collector.handler()(makeReq([baseEvent(future)]), makeRes());
+
+    expect(onOutOfWindow).toHaveBeenCalledTimes(1);
+    expect(onOutOfWindow.mock.calls[0]![0].reason).toBe('future');
+    expect(onOutOfWindow.mock.calls[0]![0].event.siteId).toBe('site-1');
   });
 });
