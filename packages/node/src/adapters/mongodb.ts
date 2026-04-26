@@ -1,6 +1,40 @@
 import type { DBAdapter, EnrichedEvent, QueryParams, QueryResult, QueryDataPoint, TimeSeriesParams, TimeSeriesResult, RetentionParams, RetentionResult, RetentionCohort, Site, CreateSiteRequest, UpdateSiteRequest, EventListParams, EventListResult, EventListItem, UserListParams, UserListResult, UserDetail } from '@litemetrics/core';
 import { MongoClient, type Collection, type Db } from 'mongodb';
 import { resolvePeriod, previousPeriodRange, autoGranularity, granularityToDateFormat, fillBuckets, getISOWeek, generateSiteId, generateSecretKey } from './utils';
+import { normalizeReferrer } from '../normalize-referrer.js';
+
+/**
+ * MongoDB aggregation expression that normalizes the `referrer` field on a
+ * document to a bare hostname. Mirrors the TS `normalizeReferrer()` and the
+ * ClickHouse `normalizedReferrerExpr()` for http(s) inputs (lowercase,
+ * drop scheme/www./m./path/port). Non-http schemes pass through lowercased.
+ * Idempotent: applying twice yields the same result.
+ */
+export function normalizedReferrerMongoExpr(): Record<string, unknown> {
+  return {
+    $let: {
+      vars: { lower: { $toLower: '$referrer' } },
+      in: {
+        $let: {
+          vars: {
+            match: {
+              $regexFind: {
+                input: '$$lower',
+                regex: /^https?:\/\/(?:www\.|m\.)?([^:/]+)/,
+              },
+            },
+          },
+          in: {
+            $ifNull: [
+              { $arrayElemAt: ['$$match.captures', 0] },
+              '$$lower',
+            ],
+          },
+        },
+      },
+    },
+  };
+}
 
 interface EventDocument {
   site_id: string;
@@ -232,12 +266,23 @@ function buildFilterMatch(filters?: Record<string, string>): Record<string, unkn
     'type': 'type',
   };
   const match: Record<string, unknown> = {};
+  const exprClauses: Record<string, unknown>[] = [];
   for (const [key, value] of Object.entries(filters)) {
     if (!value) continue;
     // 'channel' filter is handled at the pipeline level, not here
     if (key === 'channel') continue;
     if (!map[key]) continue;
+    if (key === 'referrer') {
+      // Normalize both sides so post-deploy filters match raw legacy rows
+      // and write-time-normalized new rows alike.
+      const normalized = normalizeReferrer(value) ?? value.toLowerCase();
+      exprClauses.push({ $eq: [normalizedReferrerMongoExpr(), normalized] });
+      continue;
+    }
     match[map[key]] = value;
+  }
+  if (exprClauses.length > 0) {
+    match.$expr = exprClauses.length === 1 ? exprClauses[0] : { $and: exprClauses };
   }
   return match;
 }
@@ -423,7 +468,9 @@ export class MongoDBAdapter implements DBAdapter {
       case 'top_referrers': {
         const rows = await this.collection.aggregate<{ _id: string; value: number }>([
           ...matchStages({ type: 'pageview', referrer: { $nin: [null, ''] } }),
-          { $group: { _id: '$referrer', value: { $sum: 1 } } },
+          { $addFields: { _key: normalizedReferrerMongoExpr() } },
+          { $match: { _key: { $nin: [null, ''] } } },
+          { $group: { _id: '$_key', value: { $sum: 1 } } },
           { $sort: { value: -1 } },
           { $limit: limit },
         ]).toArray();

@@ -23,6 +23,7 @@ import { initGeoIP, resolveGeo } from './geoip';
 import { parseUserAgent } from './useragent';
 import { isBot } from './botfilter';
 import { resolveTimestampSanity, sanitizeEventTimestamp } from './timestamp-sanity';
+import { normalizeReferrer } from './normalize-referrer';
 
 export interface Collector {
   handler(): (req: any, res: any) => void | Promise<void>;
@@ -126,7 +127,11 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
         device = uaDevice;
       }
 
-      enriched.push({ ...event, timestamp, ip, geo, device });
+      const enrichedEvent: EnrichedEvent = { ...event, timestamp, ip, geo, device };
+      if (event.type === 'pageview') {
+        enrichedEvent.referrer = normalizeReferrer(event.referrer);
+      }
+      enriched.push(enrichedEvent);
     }
     return enriched;
   }

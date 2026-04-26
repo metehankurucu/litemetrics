@@ -2,6 +2,7 @@ import type { DBAdapter, EnrichedEvent, QueryParams, QueryResult, QueryDataPoint
 import { createClient, type ClickHouseClient } from '@clickhouse/client';
 import { resolvePeriod, previousPeriodRange, autoGranularity, fillBuckets, granularityToDateFormat, getISOWeek, generateSiteId, generateSecretKey, toUTCDate } from './utils';
 import { isValidTimezone } from '../query-helpers.js';
+import { normalizeReferrer } from '../normalize-referrer.js';
 
 const EVENTS_TABLE = 'litemetrics_events';
 const SITES_TABLE = 'litemetrics_sites';
@@ -121,6 +122,30 @@ function normalizedUtmSourceExpr(): string {
   )`;
 }
 
+/**
+ * ClickHouse expression that normalizes a referrer to bare hostname.
+ * Idempotent: applying twice yields the same result. Mirrors the TS
+ * `normalizeReferrer()` (which uses URL.hostname) for http(s) inputs:
+ * lowercase, drop scheme, drop www./m., drop path, drop :port. Non-http
+ * schemes pass through lowercased so they group with their write-time form.
+ */
+export function normalizedReferrerExpr(): string {
+  return `if(
+    match(lower(referrer), '^https?://'),
+    replaceRegexpOne(
+      replaceRegexpOne(
+        replaceRegexpOne(
+          replaceRegexpOne(lower(referrer), '^https?://', ''),
+          '^(www\\\\.|m\\\\.)', ''
+        ),
+        '/.*$', ''
+      ),
+      ':[0-9]+$', ''
+    ),
+    lower(referrer)
+  )`;
+}
+
 /** ClickHouse multiIf expression that normalizes utm_medium values */
 function normalizedUtmMediumExpr(): string {
   return `multiIf(
@@ -207,6 +232,13 @@ function buildFilterConditions(filters?: Record<string, string>): { conditions: 
     }
     if (!map[key]) continue;
     const paramKey = `f_${key.replace(/[^a-zA-Z0-9]/g, '_')}`;
+    if (key === 'referrer') {
+      // Compare against the normalized form so post-deploy filters match both
+      // raw legacy rows and write-time-normalized new rows.
+      conditions.push(`${normalizedReferrerExpr()} = {${paramKey}:String}`);
+      params[paramKey] = normalizeReferrer(value) ?? value.toLowerCase();
+      continue;
+    }
     conditions.push(`${map[key]} = {${paramKey}:String}`);
     params[paramKey] = value;
   }
@@ -425,14 +457,15 @@ export class ClickHouseAdapter implements DBAdapter {
 
       case 'top_referrers': {
         const rows = await this.queryRows<{ key: string; value: string }>(
-          `SELECT referrer AS key, count() AS value FROM ${EVENTS_TABLE}
+          `SELECT ${normalizedReferrerExpr()} AS key, count() AS value FROM ${EVENTS_TABLE}
            WHERE site_id = {siteId:String}
              AND timestamp >= {from:String}
              AND timestamp <= {to:String}
              AND type = 'pageview'
              AND referrer IS NOT NULL
-             AND referrer != ''${filterSql}
-           GROUP BY referrer
+             AND referrer != ''
+             AND ${normalizedReferrerExpr()} != ''${filterSql}
+           GROUP BY key
            ORDER BY value DESC
            LIMIT {limit:UInt32}`,
           { ...params, ...filter.params },
