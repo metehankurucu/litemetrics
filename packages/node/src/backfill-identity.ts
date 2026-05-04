@@ -4,10 +4,12 @@
  * Usage:
  *   bun packages/node/src/backfill-identity.ts --adapter clickhouse --url http://localhost:8123
  *   bun packages/node/src/backfill-identity.ts --adapter mongodb --url mongodb://localhost:27017/litemetrics
+ *   bun packages/node/src/backfill-identity.ts --adapter postgres --url postgres://user:pass@host:5432/litemetrics
  */
 
 import { ClickHouseAdapter } from './adapters/clickhouse';
 import { MongoDBAdapter } from './adapters/mongodb';
+import { PostgresAdapter } from './adapters/postgres';
 import type { DBAdapter } from '@litemetrics/core';
 
 async function main() {
@@ -16,7 +18,7 @@ async function main() {
   const url = getArg(args, '--url');
 
   if (!url) {
-    console.error('Usage: bun backfill-identity.ts --adapter <clickhouse|mongodb> --url <connection-url>');
+    console.error('Usage: bun backfill-identity.ts --adapter <clickhouse|mongodb|postgres> --url <connection-url>');
     process.exit(1);
   }
 
@@ -25,6 +27,8 @@ async function main() {
     db = new ClickHouseAdapter(url);
   } else if (adapterType === 'mongodb') {
     db = new MongoDBAdapter(url);
+  } else if (adapterType === 'postgres') {
+    db = new PostgresAdapter(url);
   } else {
     console.error(`Unknown adapter: ${adapterType}`);
     process.exit(1);

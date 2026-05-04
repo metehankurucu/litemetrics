@@ -200,7 +200,7 @@ export interface TimestampSanityConfig {
 }
 
 export interface DBConfig {
-  adapter?: 'clickhouse' | 'mongodb';
+  adapter?: 'clickhouse' | 'mongodb' | 'postgres';
   url: string;
 }
 

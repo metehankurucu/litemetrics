@@ -29,3 +29,6 @@ yarn.lock
 
 # Local Netlify folder
 .netlify
+
+# Local DB backups
+backup/

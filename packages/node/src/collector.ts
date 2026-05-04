@@ -19,6 +19,7 @@ import type {
 } from '@litemetrics/core';
 import { ClickHouseAdapter } from './adapters/clickhouse';
 import { MongoDBAdapter } from './adapters/mongodb';
+import { PostgresAdapter } from './adapters/postgres';
 import { initGeoIP, resolveGeo } from './geoip';
 import { parseUserAgent } from './useragent';
 import { isBot } from './botfilter';
@@ -652,8 +653,10 @@ function createAdapter(config: CollectorConfig['db']): DBAdapter {
       return new ClickHouseAdapter(config.url);
     case 'mongodb':
       return new MongoDBAdapter(config.url);
+    case 'postgres':
+      return new PostgresAdapter(config.url);
     default:
-      throw new Error(`Unknown DB adapter: ${adapter}. Supported: clickhouse, mongodb`);
+      throw new Error(`Unknown DB adapter: ${adapter}. Supported: clickhouse, mongodb, postgres`);
   }
 }
 

@@ -10,12 +10,23 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
 
 // ─── Config from env ─────────────────────────────────────
+type DbAdapter = 'clickhouse' | 'mongodb' | 'postgres';
+
+const ADAPTER_CONFIG: Record<DbAdapter, { envVar: string; defaultUrl: string }> = {
+  clickhouse: { envVar: 'CLICKHOUSE_URL', defaultUrl: 'http://localhost:8123' },
+  mongodb:    { envVar: 'MONGODB_URL',    defaultUrl: 'mongodb://localhost:27017/litemetrics' },
+  postgres:   { envVar: 'POSTGRES_URL',   defaultUrl: 'postgres://postgres:postgres@localhost:5432/litemetrics' },
+};
+
+function resolveDbConfig(): { adapter: DbAdapter; url: string } {
+  const adapter = (process.env.DB_ADAPTER || 'clickhouse') as DbAdapter;
+  const { envVar, defaultUrl } = ADAPTER_CONFIG[adapter];
+  const url = process.env.DATABASE_URL || process.env[envVar] || defaultUrl;
+  return { adapter, url };
+}
+
 const PORT = parseInt(process.env.PORT || '3002', 10);
-const DB_ADAPTER = (process.env.DB_ADAPTER || 'clickhouse') as 'clickhouse' | 'mongodb';
-const DATABASE_URL = process.env.DATABASE_URL
-  || process.env.CLICKHOUSE_URL
-  || process.env.MONGODB_URL
-  || (DB_ADAPTER === 'clickhouse' ? 'http://localhost:8123' : 'mongodb://localhost:27017/litemetrics');
+const { adapter: DB_ADAPTER, url: DATABASE_URL } = resolveDbConfig();
 const ADMIN_SECRET = process.env.ADMIN_SECRET || process.env.LITEMETRICS_ADMIN_SECRET;
 const GEOIP = process.env.GEOIP !== 'false';
 const TRUST_PROXY = process.env.TRUST_PROXY !== 'false';
