@@ -302,6 +302,26 @@ describeIfDb('PostgresAdapter integration', () => {
         expect(typeof withProps.properties).toBe('object');
       }
     });
+
+    // Regression: migrated rows from ClickHouse may arrive as text-encoded JSON
+    // rather than native jsonb objects. The normalizeJsonField fallback path must
+    // round-trip them. Inserts a row directly with a stringified properties value
+    // and asserts the listEvents output is a parsed object.
+    it('parses string-encoded JSON properties (legacy/migrated data)', async () => {
+      const pool = (adapter as unknown as { pool: { query: (sql: string, vals?: unknown[]) => Promise<{ rows: unknown[] }> } }).pool;
+      const eventId = '00000000-0000-0000-0000-000000000001';
+      await pool.query(
+        `INSERT INTO litemetrics_events (event_id, site_id, type, timestamp, session_id, visitor_id, event_name, properties)
+         VALUES ($1, $2, 'event', now(), 'sess-legacy', 'visitor-legacy', 'legacy_event', $3::text::jsonb)
+         ON CONFLICT (event_id) DO NOTHING`,
+        [eventId, siteId, JSON.stringify({ foo: 'bar', n: 42 })],
+      );
+      const r = await adapter.listEvents({ siteId, eventName: 'legacy_event' });
+      const ev = r.events.find((e) => e.name === 'legacy_event');
+      expect(ev).toBeDefined();
+      expect(typeof ev?.properties).toBe('object');
+      expect(ev?.properties).toMatchObject({ foo: 'bar', n: 42 });
+    });
   });
 
   describe('listUsers', () => {

@@ -8,6 +8,26 @@ const EVENTS_TABLE = 'litemetrics_events';
 const SITES_TABLE = 'litemetrics_sites';
 const IDENTITY_MAP_TABLE = 'litemetrics_identity_map';
 
+/**
+ * Single source of truth for the columns the runtime adapter writes per event.
+ * Excludes `event_id` (default-assigned) and `created_at` (default now()).
+ * The migration script extends this with `event_id` and `created_at` to preserve them.
+ */
+export const EVENT_BASE_COLUMNS = [
+  'site_id', 'type', 'timestamp', 'session_id', 'visitor_id',
+  'url', 'referrer', 'title', 'event_name', 'properties',
+  'event_source', 'event_subtype', 'page_path', 'target_url_path',
+  'element_selector', 'element_text', 'scroll_depth_pct',
+  'user_id', 'traits',
+  'country', 'city', 'region',
+  'device_type', 'browser', 'os', 'language', 'timezone',
+  'screen_width', 'screen_height',
+  'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content',
+  'ip',
+  'os_version', 'device_model', 'device_brand',
+  'app_version', 'app_build', 'sdk_name', 'sdk_version',
+] as const;
+
 // ─── DDL ──────────────────────────────────────────────────────
 
 const CREATE_EVENTS_TABLE = `
@@ -79,12 +99,16 @@ CREATE TABLE IF NOT EXISTS ${SITES_TABLE} (
     allowed_origins    text[],
     conversion_events  text[],
     created_at         timestamptz NOT NULL,
-    updated_at         timestamptz NOT NULL
+    updated_at         timestamptz NOT NULL,
+    deleted_at         timestamptz
 )
 `;
 
+// Idempotent column add for upgrades from a previous schema without deleted_at.
+const ALTER_SITES_ADD_DELETED_AT = `ALTER TABLE ${SITES_TABLE} ADD COLUMN IF NOT EXISTS deleted_at timestamptz`;
+
 const CREATE_SITES_INDEXES: string[] = [
-  `CREATE INDEX IF NOT EXISTS idx_${SITES_TABLE}_secret ON ${SITES_TABLE} (secret_key)`,
+  `CREATE INDEX IF NOT EXISTS idx_${SITES_TABLE}_secret ON ${SITES_TABLE} (secret_key) WHERE deleted_at IS NULL`,
 ];
 
 const CREATE_IDENTITY_MAP_TABLE = `
@@ -263,6 +287,20 @@ function buildPgFilterConditions(p: PgParams, filters?: Record<string, string>):
 
 // ─── Types ─────────────────────────────────────────────────────
 
+/**
+ * Column allowlist for `simpleTopBy`. New entries must be vetted as safe to
+ * interpolate into SQL — they are never bound parameters. Keep in sync with the
+ * actual columns used at the simpleTopBy callsites in `query()`.
+ */
+type SimpleTopColumn =
+  | 'device_type'
+  | 'browser'
+  | 'os'
+  | 'app_version'
+  | 'utm_campaign'
+  | 'utm_term'
+  | 'utm_content';
+
 interface SiteRow {
   site_id: string;
   secret_key: string;
@@ -299,6 +337,7 @@ export class PostgresAdapter implements DBAdapter {
       for (const sql of CREATE_EVENTS_INDEXES) await client.query(sql);
 
       await client.query(CREATE_SITES_TABLE);
+      await client.query(ALTER_SITES_ADD_DELETED_AT);
       for (const sql of CREATE_SITES_INDEXES) await client.query(sql);
 
       await client.query(CREATE_IDENTITY_MAP_TABLE);
@@ -317,21 +356,19 @@ export class PostgresAdapter implements DBAdapter {
   async insertEvents(events: EnrichedEvent[]): Promise<void> {
     if (events.length === 0) return;
 
-    const cols = [
-      'site_id', 'type', 'timestamp', 'session_id', 'visitor_id',
-      'url', 'referrer', 'title', 'event_name', 'properties',
-      'event_source', 'event_subtype', 'page_path', 'target_url_path',
-      'element_selector', 'element_text', 'scroll_depth_pct',
-      'user_id', 'traits',
-      'country', 'city', 'region',
-      'device_type', 'browser', 'os', 'language', 'timezone',
-      'screen_width', 'screen_height',
-      'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content',
-      'ip',
-      'os_version', 'device_model', 'device_brand',
-      'app_version', 'app_build', 'sdk_name', 'sdk_version',
-    ];
+    // Postgres wire protocol caps bind parameters per statement at 65,535 (uint16).
+    // With 42 columns/row, max safe rows-per-INSERT = floor(65535/42) = 1560. Use 1400
+    // for a margin to allow callers to send arbitrarily-large batches without
+    // having to know about this limit.
+    const CHUNK_SIZE = 1400;
+    if (events.length > CHUNK_SIZE) {
+      for (let i = 0; i < events.length; i += CHUNK_SIZE) {
+        await this.insertEvents(events.slice(i, i + CHUNK_SIZE));
+      }
+      return;
+    }
 
+    const cols = EVENT_BASE_COLUMNS;
     const values: unknown[] = [];
     const rowPlaceholders: string[] = [];
     let p = 0;
@@ -738,12 +775,16 @@ export class PostgresAdapter implements DBAdapter {
   /**
    * Generic helper for simple `SELECT col AS key, COUNT(DISTINCT visitor_id) AS value`
    * top-N queries. Used by metrics that don't need expression-based keys.
+   *
+   * SECURITY: `column` and `extraCondition` are interpolated into raw SQL — they MUST
+   * be hardcoded literals at every callsite, never user input. The `SimpleTopColumn`
+   * union enforces this at the type level.
    */
   private async simpleTopBy(
     q: QueryParams,
     dateRange: { from: string; to: string },
     limit: number,
-    column: string,
+    column: SimpleTopColumn,
     extraCondition?: string,
   ): Promise<QueryDataPoint[]> {
     const p = new PgParams();
@@ -765,10 +806,10 @@ export class PostgresAdapter implements DBAdapter {
     });
 
     const granularity = params.granularity ?? autoGranularity(period);
-    const bucketExpr = this.pgBucketExpr(granularity, params.timezone);
     const dateFormat = granularityToDateFormat(granularity);
 
     const p = new PgParams();
+    const bucketExpr = this.pgBucketExpr(granularity, params.timezone, p);
     const conditions: string[] = [
       `site_id = ${p.add(params.siteId)}`,
       `timestamp >= ${p.add(dateRange.from)}`,
@@ -828,13 +869,16 @@ export class PostgresAdapter implements DBAdapter {
    * on the result yields wall-clock components — matching `fillBuckets`/`getISOWeek` which
    * expect that representation. Mirrors ClickHouse's `toStartOfHour(ts, tz)` semantics
    * (wall-clock as naive DateTime).
+   *
+   * Timezone is bound as a query parameter (not interpolated) so this expression is
+   * injection-safe even if `isValidTimezone` becomes more permissive in the future.
+   * `part` is from a closed enum so safe to interpolate.
    */
-  private pgBucketExpr(g: Granularity, timezone?: string): string {
+  private pgBucketExpr(g: Granularity, timezone: string | undefined, p: PgParams): string {
     const safeTz = timezone && isValidTimezone(timezone) ? timezone : null;
     const part = g === 'hour' ? 'hour' : g === 'day' ? 'day' : g === 'week' ? 'week' : 'month';
     if (safeTz) {
-      const tz = safeTz.replace(/'/g, "''");
-      return `date_trunc('${part}', timestamp AT TIME ZONE '${tz}')`;
+      return `date_trunc('${part}', timestamp AT TIME ZONE ${p.add(safeTz)})`;
     }
     return `date_trunc('${part}', timestamp)`;
   }
@@ -862,25 +906,35 @@ export class PostgresAdapter implements DBAdapter {
     const now = new Date();
     const startDate = new Date(now.getTime() - weeks * 7 * 24 * 60 * 60 * 1000);
 
+    // Pre-aggregate (visitor_id, week) DISTINCT first to avoid materializing huge
+    // per-visitor week arrays via array_agg(DISTINCT ...). For each visitor we
+    // also need the cohort week (first-event week), computed in a separate CTE.
     const r = await this.pool.query<{
       visitor_id: string;
-      first_event: Date;
-      active_weeks: Date[];
+      cohort_week: Date;
+      active_week: Date;
     }>(
-      `SELECT
-         visitor_id,
-         MIN(timestamp) AS first_event,
-         array_agg(DISTINCT date_trunc('week', timestamp)) AS active_weeks
-       FROM ${EVENTS_TABLE}
-       WHERE site_id = $1 AND timestamp >= $2
-       GROUP BY visitor_id`,
+      `WITH visitor_weeks AS (
+         SELECT visitor_id, date_trunc('week', timestamp) AS active_week
+         FROM ${EVENTS_TABLE}
+         WHERE site_id = $1 AND timestamp >= $2
+         GROUP BY visitor_id, date_trunc('week', timestamp)
+       ),
+       visitor_cohorts AS (
+         SELECT visitor_id, MIN(active_week) AS cohort_week
+         FROM visitor_weeks
+         GROUP BY visitor_id
+       )
+       SELECT vw.visitor_id, vc.cohort_week, vw.active_week
+       FROM visitor_weeks vw
+       JOIN visitor_cohorts vc ON vc.visitor_id = vw.visitor_id`,
       [params.siteId, startDate],
     );
 
     const cohortMap = new Map<string, { visitors: Set<string>; weekSets: Map<string, Set<string>> }>();
 
     for (const v of r.rows) {
-      const firstDate = v.first_event instanceof Date ? v.first_event : new Date(v.first_event);
+      const firstDate = v.cohort_week instanceof Date ? v.cohort_week : new Date(v.cohort_week);
       const cohortWeek = getISOWeek(firstDate);
       if (!cohortMap.has(cohortWeek)) {
         cohortMap.set(cohortWeek, { visitors: new Set(), weekSets: new Map() });
@@ -888,15 +942,10 @@ export class PostgresAdapter implements DBAdapter {
       const cohort = cohortMap.get(cohortWeek)!;
       cohort.visitors.add(v.visitor_id);
 
-      const eventWeeks = (Array.isArray(v.active_weeks) ? v.active_weeks : []).map((w) => {
-        const d = w instanceof Date ? w : new Date(w);
-        return getISOWeek(d);
-      });
-
-      for (const w of eventWeeks) {
-        if (!cohort.weekSets.has(w)) cohort.weekSets.set(w, new Set());
-        cohort.weekSets.get(w)!.add(v.visitor_id);
-      }
+      const activeDate = v.active_week instanceof Date ? v.active_week : new Date(v.active_week);
+      const w = getISOWeek(activeDate);
+      if (!cohort.weekSets.has(w)) cohort.weekSets.set(w, new Set());
+      cohort.weekSets.get(w)!.add(v.visitor_id);
     }
 
     const sortedWeeks = Array.from(cohortMap.keys()).sort();
@@ -987,12 +1036,23 @@ export class PostgresAdapter implements DBAdapter {
 
     const p = new PgParams();
     const siteIdParam = p.add(params.siteId);
+
+    // PERF: when no search filter is supplied, cap the scan to the last 90 days.
+    // The 24× array_agg(... ORDER BY ts DESC) FILTER aggregations would otherwise
+    // require a full table scan + sort over every event for the site. With a search
+    // filter we trust the user wanted historical results.
+    let timeCondition = '';
+    if (!params.search) {
+      const cutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+      timeCondition = ` AND e.timestamp >= ${p.add(cutoff)}`;
+    }
+
     let searchCondition = '';
     if (params.search) {
       const searchParam = p.add(`%${params.search}%`);
       searchCondition = ` AND (e.visitor_id ILIKE ${searchParam} OR i.user_id ILIKE ${searchParam})`;
     }
-    // Count uses only siteId+search params; users adds LIMIT/OFFSET. Snapshot first.
+    // Count uses only siteId+time/search params; users adds LIMIT/OFFSET. Snapshot first.
     const countValues = [...p.values];
     const limitParam = p.add(limit);
     const offsetParam = p.add(offset);
@@ -1038,7 +1098,7 @@ export class PostgresAdapter implements DBAdapter {
         (array_agg(e.utm_content ORDER BY e.timestamp DESC) FILTER (WHERE e.utm_content IS NOT NULL))[1] AS utm_content
       FROM ${EVENTS_TABLE} e
       LEFT JOIN identity i ON e.visitor_id = i.visitor_id
-      WHERE e.site_id = ${siteIdParam}${searchCondition}
+      WHERE e.site_id = ${siteIdParam}${timeCondition}${searchCondition}
       GROUP BY group_key
       ORDER BY last_seen DESC
       LIMIT ${limitParam} OFFSET ${offsetParam}
@@ -1050,7 +1110,7 @@ export class PostgresAdapter implements DBAdapter {
         SELECT ${groupKey} AS group_key
         FROM ${EVENTS_TABLE} e
         LEFT JOIN identity i ON e.visitor_id = i.visitor_id
-        WHERE e.site_id = ${siteIdParam}${searchCondition}
+        WHERE e.site_id = ${siteIdParam}${timeCondition}${searchCondition}
         GROUP BY group_key
       ) t
     `;
@@ -1253,7 +1313,7 @@ export class PostgresAdapter implements DBAdapter {
 
   async getSite(siteId: string): Promise<Site | null> {
     const result = await this.pool.query<SiteRow>(
-      `SELECT * FROM ${SITES_TABLE} WHERE site_id = $1`,
+      `SELECT * FROM ${SITES_TABLE} WHERE site_id = $1 AND deleted_at IS NULL`,
       [siteId],
     );
     const row = result.rows[0];
@@ -1262,7 +1322,7 @@ export class PostgresAdapter implements DBAdapter {
 
   async getSiteBySecret(secretKey: string): Promise<Site | null> {
     const result = await this.pool.query<SiteRow>(
-      `SELECT * FROM ${SITES_TABLE} WHERE secret_key = $1`,
+      `SELECT * FROM ${SITES_TABLE} WHERE secret_key = $1 AND deleted_at IS NULL`,
       [secretKey],
     );
     const row = result.rows[0];
@@ -1271,7 +1331,7 @@ export class PostgresAdapter implements DBAdapter {
 
   async listSites(): Promise<Site[]> {
     const result = await this.pool.query<SiteRow>(
-      `SELECT * FROM ${SITES_TABLE} ORDER BY created_at DESC`,
+      `SELECT * FROM ${SITES_TABLE} WHERE deleted_at IS NULL ORDER BY created_at DESC`,
     );
     return result.rows.map((r) => this.toSite(r));
   }
@@ -1295,7 +1355,7 @@ export class PostgresAdapter implements DBAdapter {
 
     values.push(siteId);
     const result = await this.pool.query<SiteRow>(
-      `UPDATE ${SITES_TABLE} SET ${sets.join(', ')} WHERE site_id = $${++p} RETURNING *`,
+      `UPDATE ${SITES_TABLE} SET ${sets.join(', ')} WHERE site_id = $${++p} AND deleted_at IS NULL RETURNING *`,
       values,
     );
     const row = result.rows[0];
@@ -1304,7 +1364,7 @@ export class PostgresAdapter implements DBAdapter {
 
   async deleteSite(siteId: string): Promise<boolean> {
     const result = await this.pool.query(
-      `DELETE FROM ${SITES_TABLE} WHERE site_id = $1`,
+      `UPDATE ${SITES_TABLE} SET deleted_at = now(), updated_at = now() WHERE site_id = $1 AND deleted_at IS NULL`,
       [siteId],
     );
     return (result.rowCount ?? 0) > 0;
@@ -1312,7 +1372,7 @@ export class PostgresAdapter implements DBAdapter {
 
   async regenerateSecret(siteId: string): Promise<Site | null> {
     const result = await this.pool.query<SiteRow>(
-      `UPDATE ${SITES_TABLE} SET secret_key = $1, updated_at = now() WHERE site_id = $2 RETURNING *`,
+      `UPDATE ${SITES_TABLE} SET secret_key = $1, updated_at = now() WHERE site_id = $2 AND deleted_at IS NULL RETURNING *`,
       [generateSecretKey(), siteId],
     );
     const row = result.rows[0];

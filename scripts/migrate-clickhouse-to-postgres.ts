@@ -10,12 +10,17 @@
  *   bun scripts/migrate-clickhouse-to-postgres.ts
  *
  * Optional flags:
- *   --batch-size <N>     events per insert batch (default: 2000)
- *   --since <ISO>        only events with timestamp >= ISO date
- *   --dry-run            count rows but don't insert
+ *   --batch-size <N>      events per insert batch (default: 1000, max safe: 1400)
+ *   --since <ISO>         only events with timestamp >= ISO date
+ *   --since-auto          resume from MAX(timestamp) in Postgres
+ *   --overlap-minutes <N> safety buffer for --since-auto (default: 360 = 6h)
+ *   --dry-run             count rows but don't insert
  *   --skip-events        migrate sites + identity only
  *   --skip-sites         skip sites
  *   --skip-identity      skip identity map
+ *
+ * Daily incremental sync:
+ *   bun scripts/migrate-clickhouse-to-postgres.ts --since-auto
  *
  * Re-runnable: tables are NOT truncated. Sites/identity use ON CONFLICT DO UPDATE
  * (idempotent). Events insert with explicit event_id (idempotent on PRIMARY KEY).
@@ -23,10 +28,14 @@
 
 import { createClient } from '@clickhouse/client';
 import { Pool } from 'pg';
+import { toUTCDate } from '../packages/node/src/adapters/utils';
+import { EVENT_BASE_COLUMNS } from '../packages/node/src/adapters/postgres';
 
 interface Args {
   batchSize: number;
   since?: string;
+  sinceAuto: boolean;
+  overlapMinutes: number;
   dryRun: boolean;
   skipEvents: boolean;
   skipSites: boolean;
@@ -47,9 +56,13 @@ function parseArgs(): Args {
   if (requested > MAX_SAFE) {
     console.warn(`Warning: --batch-size ${requested} exceeds Postgres bind-parameter safety limit; clamped to ${MAX_SAFE}`);
   }
+  const overlapRaw = Number(get('--overlap-minutes') ?? 360);
+  const overlapMinutes = Number.isFinite(overlapRaw) && overlapRaw >= 0 ? overlapRaw : 360;
   return {
     batchSize,
     since: get('--since'),
+    sinceAuto: argv.includes('--since-auto'),
+    overlapMinutes,
     dryRun: argv.includes('--dry-run'),
     skipEvents: argv.includes('--skip-events'),
     skipSites: argv.includes('--skip-sites'),
@@ -57,21 +70,9 @@ function parseArgs(): Args {
   };
 }
 
-const EVENT_COLUMNS = [
-  'event_id', 'site_id', 'type', 'timestamp', 'session_id', 'visitor_id',
-  'url', 'referrer', 'title', 'event_name', 'properties',
-  'event_source', 'event_subtype', 'page_path', 'target_url_path',
-  'element_selector', 'element_text', 'scroll_depth_pct',
-  'user_id', 'traits',
-  'country', 'city', 'region',
-  'device_type', 'browser', 'os', 'language', 'timezone',
-  'screen_width', 'screen_height',
-  'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content',
-  'ip',
-  'os_version', 'device_model', 'device_brand',
-  'app_version', 'app_build', 'sdk_name', 'sdk_version',
-  'created_at',
-];
+// Migration writes both `event_id` (preserved from ClickHouse) and `created_at`
+// (preserved as well) in addition to the columns the runtime adapter writes.
+const EVENT_COLUMNS = ['event_id', ...EVENT_BASE_COLUMNS, 'created_at'];
 
 async function main() {
   const args = parseArgs();
@@ -95,6 +96,11 @@ async function main() {
   const pg = new Pool({ connectionString: pgUrl, max: 5 });
 
   try {
+    if (args.sinceAuto && !args.since) {
+      args.since = await resolveSinceFromPg(pg, args.overlapMinutes);
+      console.log(`  Auto-since: ${args.since} (max(timestamp) from Postgres, ${args.overlapMinutes}min overlap)\n`);
+    }
+
     if (!args.skipSites) await migrateSites(ch, pg, args);
     if (!args.skipIdentity) await migrateIdentity(ch, pg, args);
     if (!args.skipEvents) await migrateEvents(ch, pg, args);
@@ -138,8 +144,8 @@ async function migrateSites(ch: ReturnType<typeof createClient>, pg: Pool, args:
         r.domain ?? null,
         allowedOrigins,
         conversionEvents,
-        new Date(String(r.created_at)),
-        new Date(String(r.updated_at)),
+        toUTCDate(String(r.created_at)),
+        toUTCDate(String(r.updated_at)),
       ],
     );
   }
@@ -167,8 +173,8 @@ async function migrateIdentity(ch: ReturnType<typeof createClient>, pg: Pool, ar
         r.site_id,
         r.visitor_id,
         r.user_id,
-        new Date(String(r.identified_at)),
-        new Date(String(r.created_at ?? r.identified_at)),
+        toUTCDate(String(r.identified_at)),
+        toUTCDate(String(r.created_at ?? r.identified_at)),
       ],
     );
   }
@@ -178,7 +184,9 @@ async function migrateIdentity(ch: ReturnType<typeof createClient>, pg: Pool, ar
 async function migrateEvents(ch: ReturnType<typeof createClient>, pg: Pool, args: Args): Promise<void> {
   console.log('→ Migrating events...');
 
-  const sinceClause = args.since ? `WHERE timestamp >= '${args.since.replace(/'/g, "''")}'` : '';
+  // Escape single quotes for inline use; safe because args.since is operator-supplied.
+  const sinceLiteral = args.since ? `'${args.since.replace(/'/g, "''")}'` : null;
+  const sinceClause = sinceLiteral ? `WHERE timestamp >= ${sinceLiteral}` : '';
   const countResult = await ch.query({
     query: `SELECT count() AS total FROM litemetrics_events ${sinceClause}`,
     format: 'JSONEachRow',
@@ -189,11 +197,19 @@ async function migrateEvents(ch: ReturnType<typeof createClient>, pg: Pool, args
 
   if (args.dryRun || total === 0) return;
 
-  let offset = 0;
+  // Keyset pagination over (timestamp, event_id), stable across runs and avoids
+  // OFFSET-skipping when many rows share the same millisecond timestamp.
+  let lastTs: string | null = sinceLiteral; // ClickHouse string-literal datetime, or null for first page
+  let lastId: string | null = null;
   let migrated = 0;
   const startTime = Date.now();
 
-  while (offset < total) {
+  while (true) {
+    // toString(UUID) never contains quotes, so toUUID injection below is safe.
+    const cursorClause = lastId !== null && lastTs !== null
+      ? `WHERE (timestamp, event_id) > (${lastTs}, toUUID('${lastId}'))`
+      : sinceClause;
+
     const batchResult = await ch.query({
       query: `
         SELECT
@@ -212,10 +228,9 @@ async function migrateEvents(ch: ReturnType<typeof createClient>, pg: Pool, args
           app_version, app_build, sdk_name, sdk_version,
           created_at
         FROM litemetrics_events
-        ${sinceClause}
-        ORDER BY timestamp ASC
+        ${cursorClause}
+        ORDER BY timestamp ASC, event_id ASC
         LIMIT ${args.batchSize}
-        OFFSET ${offset}
       `,
       format: 'JSONEachRow',
     });
@@ -224,11 +239,19 @@ async function migrateEvents(ch: ReturnType<typeof createClient>, pg: Pool, args
 
     await insertEventBatch(pg, rows);
     migrated += rows.length;
-    offset += rows.length;
+
+    // Advance cursor to last row's (timestamp, event_id). ClickHouse returns
+    // timestamp as a bare datetime string; wrap it in a literal for next query.
+    const last = rows[rows.length - 1];
+    const lastTsRaw = String(last.timestamp);
+    lastTs = `'${lastTsRaw.replace(/'/g, "''")}'`;
+    lastId = String(last.event_id);
+
+    if (rows.length < args.batchSize) break;
 
     const elapsed = (Date.now() - startTime) / 1000;
     const rate = Math.round(migrated / Math.max(elapsed, 0.001));
-    const pct = Math.round((migrated / total) * 100);
+    const pct = total > 0 ? Math.min(100, Math.round((migrated / total) * 100)) : 0;
     process.stdout.write(`\r  ${migrated.toLocaleString()}/${total.toLocaleString()} (${pct}%) — ${rate} rows/s    `);
   }
   console.log(`\n  ✓ ${migrated.toLocaleString()} events migrated in ${((Date.now() - startTime) / 1000).toFixed(1)}s`);
@@ -244,7 +267,7 @@ async function insertEventBatch(pg: Pool, rows: Record<string, unknown>[]): Prom
       r.event_id,
       r.site_id,
       r.type,
-      new Date(String(r.timestamp)),
+      toUTCDate(String(r.timestamp)),
       r.session_id,
       r.visitor_id,
       r.url ?? null,
@@ -284,7 +307,7 @@ async function insertEventBatch(pg: Pool, rows: Record<string, unknown>[]): Prom
       r.app_build ?? null,
       r.sdk_name ?? null,
       r.sdk_version ?? null,
-      new Date(String(r.created_at ?? r.timestamp)),
+      toUTCDate(String(r.created_at ?? r.timestamp)),
     ];
     placeholders.push('(' + row.map(() => `$${++p}`).join(', ') + ')');
     values.push(...row);
@@ -314,6 +337,31 @@ function coerceInt(value: unknown): number | null {
   if (value == null || value === '') return null;
   const n = typeof value === 'number' ? value : Number(value);
   return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * Resolves `--since` from the latest timestamp already in Postgres, with an
+ * `overlapMinutes` safety buffer to cover late-arriving / out-of-order events.
+ * Default overlap is 6h — production analytics commonly buffer client events for
+ * hours (offline mobile, retried beacons), so a small overlap may miss them.
+ * ON CONFLICT DO NOTHING dedupes anything we re-fetch from the overlap window.
+ */
+async function resolveSinceFromPg(pg: Pool, overlapMinutes: number): Promise<string> {
+  const r = await pg.query<{ max: Date | null }>(`SELECT MAX(timestamp) AS max FROM litemetrics_events`);
+  const max = r.rows[0]?.max;
+  if (!max) {
+    // PG is empty — fall back to a very old date so the full table is migrated.
+    return '1970-01-01T00:00:00Z';
+  }
+  const cursor = new Date(max.getTime() - overlapMinutes * 60 * 1000);
+  // Warn if the resolved cursor is more than 7 days in the past — indicates the
+  // PG table hasn't been updated recently and the operator should check whether
+  // the migration script is being run on schedule.
+  const ageDays = (Date.now() - cursor.getTime()) / (1000 * 60 * 60 * 24);
+  if (ageDays > 7) {
+    console.warn(`  ⚠ Resolved cursor is ${ageDays.toFixed(1)} days in the past. The Postgres table may be out of sync.`);
+  }
+  return cursor.toISOString();
 }
 
 function parseJsonArray(value: unknown): string[] | null {
