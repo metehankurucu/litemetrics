@@ -1,6 +1,6 @@
 {
   "name": "@litemetrics/client",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "Client-side SDK for querying Litemetrics analytics data",
   "license": "MIT",
   "author": "Metehan Kurucu",
@@ -41,7 +41,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@litemetrics/core": "^0.5.0",
+    "@litemetrics/core": "^0.6.0",
     "axios": "^1.13.4"
   },
   "devDependencies": {
