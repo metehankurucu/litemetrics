@@ -4,6 +4,7 @@ export { ClickHouseAdapter } from './adapters/clickhouse';
 export { MongoDBAdapter } from './adapters/mongodb';
 export { isBot, isSignatureBot } from './botfilter';
 export { isHeuristicBot, type HeuristicBotInput } from './heuristic-bot';
+export { createRateLimiter, type RateLimiter, type RateLimiterConfig, type RateLimitResult } from './rate-limit';
 
 // Re-export types from core
 export type {
