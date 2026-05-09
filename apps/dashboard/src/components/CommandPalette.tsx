@@ -124,7 +124,7 @@ export function CommandPalette({ siteId, onSiteChange }: CommandPaletteProps) {
                   value={search}
                   onValueChange={setSearch}
                   placeholder="Search sites..."
-                  className="w-full bg-transparent py-3.5 text-sm text-zinc-800 dark:text-zinc-100 placeholder:text-zinc-400 dark:placeholder:text-zinc-500 outline-none"
+                  className="w-full bg-transparent py-3.5 text-sm text-zinc-800 dark:text-zinc-100 placeholder:text-zinc-400 dark:placeholder:text-zinc-500 outline-none focus:outline-none focus-visible:outline-none focus:ring-0 focus-visible:ring-0 border-0 focus:border-0 shadow-none"
                 />
               </div>
               <Command.List className="max-h-[60vh] overflow-y-auto p-2">

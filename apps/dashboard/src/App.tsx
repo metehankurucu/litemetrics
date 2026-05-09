@@ -44,7 +44,7 @@ const navItems: NavItem[] = [
   { to: '/events', label: 'Events', icon: <List className="w-5 h-5" /> },
   { to: '/users', label: 'Users', icon: <Users className="w-5 h-5" /> },
   { to: '/retention', label: 'Retention', icon: <RefreshCcw className="w-5 h-5" /> },
-  { to: '/sites', label: 'Sites', icon: <Settings className="w-5 h-5" /> },
+  { to: '/sites', label: 'Settings', icon: <Settings className="w-5 h-5" /> },
 ];
 
 export function App() {
