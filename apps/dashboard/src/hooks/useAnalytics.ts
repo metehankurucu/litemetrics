@@ -18,6 +18,8 @@ export const queryKeys = {
     ['timeSeries', siteId, period, metric, filters, includeBots] as const,
   worldMap: (siteId: string, period: string, filters?: Record<string, string>, includeBots?: boolean) =>
     ['worldMap', siteId, period, filters, includeBots] as const,
+  botStats: (siteId: string, period: string, dateFrom?: string, dateTo?: string) =>
+    ['botStats', siteId, period, dateFrom, dateTo] as const,
   insights: (siteId: string, period: string, dateFrom?: string, dateTo?: string, filters?: Record<string, string>) =>
     ['insights', siteId, period, dateFrom, dateTo, filters] as const,
   insightsHourly: (siteId: string, period: string, dateFrom?: string, dateTo?: string, filters?: Record<string, string>) =>

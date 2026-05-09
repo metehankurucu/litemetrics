@@ -2,7 +2,7 @@ import type { DBAdapter, EnrichedEvent, QueryParams, QueryResult, QueryDataPoint
 import { Pool } from 'pg';
 import { resolvePeriod, previousPeriodRange, autoGranularity, granularityToDateFormat, fillBuckets, getISOWeek, generateSiteId, generateSecretKey } from './utils';
 import { normalizeReferrer } from '../normalize-referrer.js';
-import { isValidTimezone } from '../query-helpers.js';
+import { isValidTimezone, aggregateBotStats } from '../query-helpers.js';
 
 const EVENTS_TABLE = 'litemetrics_events';
 const SITES_TABLE = 'litemetrics_sites';
@@ -1201,6 +1201,23 @@ export class PostgresAdapter implements DBAdapter {
       [siteId, identifier],
     );
     return { deleted: result.rowCount ?? 0 };
+  }
+
+  async queryBotStats(
+    siteId: string,
+    range: { from: number; to: number },
+  ): Promise<{ total: number; bySignature: number; byHeuristic: number; byRateLimit: number }> {
+    const result = await this.pool.query<{ bot_flag: string | null; n: string }>(
+      `SELECT bot_flag, COUNT(*)::bigint AS n
+       FROM ${EVENTS_TABLE}
+       WHERE site_id = $1
+         AND timestamp >= to_timestamp($2 / 1000.0)
+         AND timestamp <  to_timestamp($3 / 1000.0)
+         AND bot_flag IS NOT NULL
+       GROUP BY bot_flag`,
+      [siteId, range.from, range.to],
+    );
+    return aggregateBotStats(result.rows);
   }
 
   private async getMergedUserDetail(siteId: string, userId: string, visitorIds: string[]): Promise<UserDetail | null> {

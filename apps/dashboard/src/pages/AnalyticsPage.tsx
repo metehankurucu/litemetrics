@@ -125,6 +125,17 @@ export function AnalyticsPage({ siteId, client, period, onPeriodChange }: Analyt
 
   const activeVisitors = liveData?.activeVisitors ?? 0;
 
+  const botStatsDateFrom = period === 'custom' && dateFrom ? new Date(dateFrom).toISOString() : undefined;
+  const botStatsDateTo = period === 'custom' && dateTo ? new Date(dateTo + 'T23:59:59').toISOString() : undefined;
+  const { data: botStats } = useQuery({
+    queryKey: queryKeys.botStats(siteId, period, botStatsDateFrom, botStatsDateTo),
+    queryFn: async () => {
+      client.setSiteId(siteId);
+      return client.getBotStats({ period, dateFrom: botStatsDateFrom, dateTo: botStatsDateTo });
+    },
+    enabled: !!siteId && !includeBots && (period !== 'custom' || (!!dateFrom && !!dateTo)),
+  });
+
   // Build pie chart data
   const browserPieData = (tops.top_browsers?.data ?? []).map((d) => ({ name: d.key, value: d.value }));
   const devicePieData = (tops.top_devices?.data ?? []).map((d) => ({ name: d.key, value: d.value }));
@@ -185,6 +196,19 @@ export function AnalyticsPage({ siteId, client, period, onPeriodChange }: Analyt
       {error && (
         <div className="mb-6 p-4 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 rounded-xl text-red-600 dark:text-red-400 text-sm">
           {error instanceof Error ? error.message : 'Failed to fetch analytics'}
+        </div>
+      )}
+
+      {/* Bot filter stats */}
+      {botStats && botStats.total > 0 && !includeBots && (
+        <div className="mb-4 rounded-lg border border-amber-300 dark:border-amber-500/40 bg-amber-50 dark:bg-amber-900/10 p-3 text-sm text-amber-900 dark:text-amber-200">
+          <strong>{botStats.total.toLocaleString()}</strong> bot events filtered in this period
+          {' - '}
+          {[
+            botStats.bySignature ? `${botStats.bySignature.toLocaleString()} signature` : null,
+            botStats.byHeuristic ? `${botStats.byHeuristic.toLocaleString()} heuristic` : null,
+            botStats.byRateLimit ? `${botStats.byRateLimit.toLocaleString()} rate-limit` : null,
+          ].filter(Boolean).join(', ')}
         </div>
       )}
 

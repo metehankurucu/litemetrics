@@ -68,6 +68,19 @@ export interface UsersListOptions {
   includeBots?: boolean;
 }
 
+export interface BotStatsOptions {
+  period?: Period;
+  dateFrom?: string;
+  dateTo?: string;
+}
+
+export interface BotStatsResult {
+  total: number;
+  bySignature: number;
+  byHeuristic: number;
+  byRateLimit: number;
+}
+
 export class LitemetricsClient {
   private siteId: string;
   private endpoint: string;
@@ -220,6 +233,26 @@ export class LitemetricsClient {
     if (options?.includeBots) params.includeBots = 'true';
 
     const { data } = await this.http.get<EventListResult>(`/api/users/${encodeURIComponent(identifier)}/events`, { params });
+    return data;
+  }
+
+  // ─── Bot Stats ──────────────────────────────────────
+
+  /**
+   * Count of events flagged by the bot filter for the active site within a
+   * time range. Useful for surfacing how much traffic was filtered out.
+   */
+  async getBotStats(options?: BotStatsOptions): Promise<BotStatsResult> {
+    const params: Record<string, string> = {
+      siteId: this.siteId,
+      metric: 'botStats',
+    };
+
+    if (options?.period) params.period = options.period;
+    if (options?.dateFrom) params.dateFrom = options.dateFrom;
+    if (options?.dateTo) params.dateTo = options.dateTo;
+
+    const { data } = await this.http.get<BotStatsResult>(this.endpoint, { params });
     return data;
   }
 

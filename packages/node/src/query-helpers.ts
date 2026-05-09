@@ -1,5 +1,37 @@
 import type { QueryParams } from '@litemetrics/core';
 
+export interface BotStatsResult {
+  total: number;
+  bySignature: number;
+  byHeuristic: number;
+  byRateLimit: number;
+}
+
+/**
+ * Aggregate raw `(bot_flag, n)` rows into the dashboard-shaped bot stats result.
+ * Adapters call this after running a `GROUP BY bot_flag` query.
+ */
+export function aggregateBotStats(
+  rows: Array<{ bot_flag: string | null | undefined; n: string | number }>,
+): BotStatsResult {
+  let bySignature = 0;
+  let byHeuristic = 0;
+  let byRateLimit = 0;
+  for (const r of rows) {
+    const n = Number(r.n);
+    if (!Number.isFinite(n)) continue;
+    if (r.bot_flag === 'signature') bySignature += n;
+    else if (r.bot_flag === 'heuristic') byHeuristic += n;
+    else if (r.bot_flag === 'rate-limit') byRateLimit += n;
+  }
+  return {
+    total: bySignature + byHeuristic + byRateLimit,
+    bySignature,
+    byHeuristic,
+    byRateLimit,
+  };
+}
+
 export function isValidTimezone(tz: string): boolean {
   try {
     Intl.DateTimeFormat(undefined, { timeZone: tz });

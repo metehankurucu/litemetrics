@@ -20,6 +20,7 @@ import type {
 import { ClickHouseAdapter } from './adapters/clickhouse';
 import { MongoDBAdapter } from './adapters/mongodb';
 import { PostgresAdapter } from './adapters/postgres';
+import { resolvePeriod } from './adapters/utils';
 import { initGeoIP, resolveGeo } from './geoip';
 import { parseUserAgent } from './useragent';
 import { isBot } from './botfilter';
@@ -413,6 +414,21 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
             includeBots: params.includeBots,
           };
           const result = await db.queryRetention(retentionParams);
+          sendJson(res, 200, result);
+          return;
+        }
+
+        // Bot stats query - count of events flagged by the bot filter
+        if (params.metric === 'botStats' as any) {
+          const { dateRange } = resolvePeriod({
+            period: params.period,
+            dateFrom: params.dateFrom,
+            dateTo: params.dateTo,
+          });
+          const result = await db.queryBotStats(params.siteId, {
+            from: new Date(dateRange.from).getTime(),
+            to: new Date(dateRange.to).getTime(),
+          });
           sendJson(res, 200, result);
           return;
         }

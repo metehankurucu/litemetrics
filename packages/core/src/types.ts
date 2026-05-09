@@ -293,6 +293,20 @@ export interface DBAdapter {
    */
   deleteUserEvents(siteId: string, identifier: string): Promise<{ deleted: number }>;
 
+  /**
+   * Count events flagged by the bot filter for a site within a time range.
+   * Used by the dashboard to show how many bot events were filtered.
+   */
+  queryBotStats(
+    siteId: string,
+    range: { from: number; to: number },
+  ): Promise<{
+    total: number;
+    bySignature: number;
+    byHeuristic: number;
+    byRateLimit: number;
+  }>;
+
   // Identity mapping
   upsertIdentity(siteId: string, visitorId: string, userId: string): Promise<void>;
   getVisitorIdsForUser(siteId: string, userId: string): Promise<string[]>;

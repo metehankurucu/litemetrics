@@ -2,6 +2,7 @@ import type { DBAdapter, EnrichedEvent, QueryParams, QueryResult, QueryDataPoint
 import { MongoClient, type Collection, type Db } from 'mongodb';
 import { resolvePeriod, previousPeriodRange, autoGranularity, granularityToDateFormat, fillBuckets, getISOWeek, generateSiteId, generateSecretKey } from './utils';
 import { normalizeReferrer } from '../normalize-referrer.js';
+import { aggregateBotStats } from '../query-helpers.js';
 
 /**
  * MongoDB aggregation expression that normalizes the `referrer` field on a
@@ -1227,6 +1228,23 @@ export class MongoDBAdapter implements DBAdapter {
       $or: [{ user_id: identifier }, { visitor_id: identifier }],
     });
     return { deleted: result.deletedCount ?? 0 };
+  }
+
+  async queryBotStats(
+    siteId: string,
+    range: { from: number; to: number },
+  ): Promise<{ total: number; bySignature: number; byHeuristic: number; byRateLimit: number }> {
+    const docs = await this.collection.aggregate<{ _id: string | null; n: number }>([
+      {
+        $match: {
+          site_id: siteId,
+          timestamp: { $gte: new Date(range.from), $lt: new Date(range.to) },
+          bot_flag: { $ne: null },
+        },
+      },
+      { $group: { _id: '$bot_flag', n: { $sum: 1 } } },
+    ]).toArray();
+    return aggregateBotStats(docs.map((d) => ({ bot_flag: d._id, n: d.n })));
   }
 
   private async getMergedUserDetail(siteId: string, userId: string | undefined, visitorIds: string[]): Promise<UserDetail | null> {

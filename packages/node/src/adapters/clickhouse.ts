@@ -1,7 +1,7 @@
 import type { DBAdapter, EnrichedEvent, QueryParams, QueryResult, QueryDataPoint, Granularity, TimeSeriesParams, TimeSeriesResult, RetentionParams, RetentionResult, RetentionCohort, Site, CreateSiteRequest, UpdateSiteRequest, EventListParams, EventListResult, EventListItem, UserListParams, UserListResult, UserDetail, BotFilterMode } from '@litemetrics/core';
 import { createClient, type ClickHouseClient } from '@clickhouse/client';
 import { resolvePeriod, previousPeriodRange, autoGranularity, fillBuckets, granularityToDateFormat, getISOWeek, generateSiteId, generateSecretKey, toUTCDate } from './utils';
-import { isValidTimezone } from '../query-helpers.js';
+import { isValidTimezone, aggregateBotStats } from '../query-helpers.js';
 import { normalizeReferrer } from '../normalize-referrer.js';
 
 const EVENTS_TABLE = 'litemetrics_events';
@@ -1340,6 +1340,27 @@ export class ClickHouseAdapter implements DBAdapter {
       });
     }
     return { deleted };
+  }
+
+  async queryBotStats(
+    siteId: string,
+    range: { from: number; to: number },
+  ): Promise<{ total: number; bySignature: number; byHeuristic: number; byRateLimit: number }> {
+    const rows = await this.queryRows<{ bot_flag: string | null; n: string | number }>(
+      `SELECT bot_flag, count() AS n
+       FROM ${EVENTS_TABLE}
+       WHERE site_id = {siteId:String}
+         AND timestamp >= {from:String}
+         AND timestamp <  {to:String}
+         AND bot_flag IS NOT NULL
+       GROUP BY bot_flag`,
+      {
+        siteId,
+        from: toCHDateTime(new Date(range.from)),
+        to: toCHDateTime(new Date(range.to)),
+      },
+    );
+    return aggregateBotStats(rows);
   }
 
   // ─── Identity Mapping ──────────────────────────────────────
