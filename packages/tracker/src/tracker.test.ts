@@ -13,6 +13,9 @@ if (typeof navigator !== 'undefined' && !('sendBeacon' in navigator)) {
 afterEach(() => {
   // Reset webdriver flag between tests
   Object.defineProperty(navigator, 'webdriver', { value: false, configurable: true });
+  // Clear opt-out / DNT state so previous tests don't leak into the next.
+  try { localStorage.clear(); } catch { /* ignore */ }
+  Object.defineProperty(navigator, 'doNotTrack', { value: null, configurable: true });
   vi.restoreAllMocks();
 });
 
@@ -58,5 +61,55 @@ describe('createTracker - webdriver short-circuit', () => {
     expect(typeof tracker.identify).toBe('function');
     tracker.opt_out();
     expect(() => tracker.track('x')).not.toThrow();
+  });
+
+  it('creates a real tracker when navigator.webdriver is undefined (real browser)', async () => {
+    // Most real browsers do not set this property at all - simulate that.
+    Object.defineProperty(navigator, 'webdriver', { value: undefined, configurable: true });
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response(null, { status: 204 }));
+
+    const tracker = createTracker({
+      siteId: 'site_test',
+      endpoint: 'https://x.test/collect',
+      autoTrack: false,
+      autoSpa: false,
+      batchSize: 1,
+    });
+
+    tracker.track('real_event');
+    await new Promise((r) => setTimeout(r, 0));
+    // Real tracker fires at least one network call (no-op tracker fires zero).
+    // sendBeacon is the jsdom-stubbed Mock from beforeEach; fetch is spied above.
+    const beaconCalls = (navigator.sendBeacon as unknown as { mock?: { calls: unknown[] } }).mock?.calls?.length ?? 0;
+    expect(fetchSpy.mock.calls.length + beaconCalls).toBeGreaterThan(0);
+    expect(() => tracker.destroy()).not.toThrow();
+  });
+
+  it('returns a no-op tracker when DNT=1 even if navigator.webdriver is also true', async () => {
+    Object.defineProperty(navigator, 'webdriver', { value: true, configurable: true });
+    Object.defineProperty(navigator, 'doNotTrack', { value: '1', configurable: true });
+
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response(null, { status: 204 }));
+    const sendBeacon = vi.spyOn(navigator, 'sendBeacon').mockReturnValue(true);
+
+    const tracker = createTracker({
+      siteId: 'site_test',
+      endpoint: 'https://x.test/collect',
+      batchSize: 1,
+    });
+    tracker.track('blocked');
+    tracker.page('/blocked');
+    await new Promise((r) => setTimeout(r, 0));
+
+    // Either short-circuit (DNT or webdriver) prevents network IO.
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(sendBeacon).not.toHaveBeenCalled();
+
+    // Reset DNT for subsequent tests.
+    Object.defineProperty(navigator, 'doNotTrack', { value: null, configurable: true });
   });
 });

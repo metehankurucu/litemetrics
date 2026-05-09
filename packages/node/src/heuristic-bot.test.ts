@@ -73,4 +73,46 @@ describe('isHeuristicBot', () => {
       }),
     ).toBe(true);
   });
+
+  it('treats whitespace-only Accept-Language as missing (still flags scrubbed UA)', () => {
+    expect(
+      isHeuristicBot({
+        userAgent: 'Mozilla/5.0',
+        acceptLanguage: '   ',
+        referer: undefined,
+      }),
+    ).toBe(true);
+  });
+
+  it('treats whitespace-only Referer as missing', () => {
+    // UA + Referer are both whitespace-effectively-empty + lang missing → still scrubbed.
+    expect(
+      isHeuristicBot({
+        userAgent: 'Mozilla/5.0',
+        acceptLanguage: undefined,
+        referer: '\t  \n',
+      }),
+    ).toBe(true);
+  });
+
+  it('does NOT flag when Accept-Language has at least one non-whitespace char', () => {
+    expect(
+      isHeuristicBot({
+        userAgent: 'Mozilla/5.0',
+        acceptLanguage: ' x ',
+        referer: undefined,
+      }),
+    ).toBe(false);
+  });
+
+  it('flags the live observed bare "Mozilla/5.0" UA when other signals also missing', () => {
+    // Regression guard for the production bot signature noted in the source comment.
+    expect(
+      isHeuristicBot({
+        userAgent: 'Mozilla/5.0',
+        acceptLanguage: undefined,
+        referer: undefined,
+      }),
+    ).toBe(true);
+  });
 });
