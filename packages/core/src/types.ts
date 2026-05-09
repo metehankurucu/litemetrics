@@ -141,6 +141,7 @@ export interface EnrichedEvent extends ClientContext {
   ip?: string;
   geo?: GeoInfo;
   device?: DeviceInfo;
+  botFlag?: 'signature' | 'heuristic' | 'rate-limit';
 }
 
 // ─── Collect Payload ────────────────────────────────────────
@@ -175,6 +176,28 @@ export interface TrackerConfig {
 
 // ─── Collector Config (server-side) ─────────────────────────
 
+export type BotFilterMode = 'off' | 'standard' | 'strict' | 'shadow';
+
+export interface BotFilterConfig {
+  /** Default mode for sites that don't override. Default: 'standard'. */
+  defaultMode?: BotFilterMode;
+  /** Sliding-window size in ms for rate-limit layer. Default: 60_000. */
+  rateLimitWindowMs?: number;
+  /** Max events per window per IP before rate-limit fires. Default: 60. */
+  rateLimitMaxEvents?: number;
+  /** Optional callback fired whenever an event is flagged or dropped (analytics/audit). */
+  onBotDetected?: (info: BotDetectedInfo) => void;
+}
+
+export interface BotDetectedInfo {
+  siteId: string;
+  ip: string;
+  userAgent: string;
+  layer: 'signature' | 'heuristic' | 'rate-limit';
+  action: 'dropped' | 'flagged';
+  mode: BotFilterMode;
+}
+
 export interface CollectorConfig {
   db: DBConfig;
   adminSecret?: string;
@@ -182,6 +205,7 @@ export interface CollectorConfig {
   cors?: CORSConfig;
   trustProxy?: boolean;
   timestampSanity?: TimestampSanityConfig;
+  botFilter?: BotFilterConfig;
 }
 
 export type TimestampOutOfWindowReason = 'future' | 'past' | 'invalid';
@@ -224,6 +248,7 @@ export interface Site {
   domain?: string;
   allowedOrigins?: string[];
   conversionEvents?: string[];
+  botFilterMode?: BotFilterMode;
   createdAt: string;
   updatedAt: string;
 }
@@ -242,6 +267,7 @@ export interface UpdateSiteRequest {
   domain?: string;
   allowedOrigins?: string[];
   conversionEvents?: string[];
+  botFilterMode?: BotFilterMode | null;
 }
 
 // ─── DB Adapter Interface ───────────────────────────────────
