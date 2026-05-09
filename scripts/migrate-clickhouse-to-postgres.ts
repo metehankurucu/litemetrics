@@ -226,6 +226,7 @@ async function migrateEvents(ch: ReturnType<typeof createClient>, pg: Pool, args
           ip,
           os_version, device_model, device_brand,
           app_version, app_build, sdk_name, sdk_version,
+          bot_flag,
           created_at
         FROM litemetrics_events
         ${cursorClause}
@@ -307,6 +308,7 @@ async function insertEventBatch(pg: Pool, rows: Record<string, unknown>[]): Prom
       r.app_build ?? null,
       r.sdk_name ?? null,
       r.sdk_version ?? null,
+      r.bot_flag ?? null,
       toUTCDate(String(r.created_at ?? r.timestamp)),
     ];
     placeholders.push('(' + row.map(() => `$${++p}`).join(', ') + ')');

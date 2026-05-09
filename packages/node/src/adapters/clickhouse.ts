@@ -65,6 +65,7 @@ CREATE TABLE IF NOT EXISTS ${EVENTS_TABLE} (
     app_build      Nullable(String),
     sdk_name       LowCardinality(Nullable(String)),
     sdk_version    LowCardinality(Nullable(String)),
+    bot_flag       LowCardinality(Nullable(String)),
     created_at     DateTime64(3) DEFAULT now64(3)
 ) ENGINE = MergeTree()
   PARTITION BY toYYYYMM(timestamp)
@@ -279,6 +280,7 @@ export class ClickHouseAdapter implements DBAdapter {
     await this.client.command({ query: `ALTER TABLE ${EVENTS_TABLE} ADD COLUMN IF NOT EXISTS app_build Nullable(String)` });
     await this.client.command({ query: `ALTER TABLE ${EVENTS_TABLE} ADD COLUMN IF NOT EXISTS sdk_name LowCardinality(Nullable(String))` });
     await this.client.command({ query: `ALTER TABLE ${EVENTS_TABLE} ADD COLUMN IF NOT EXISTS sdk_version LowCardinality(Nullable(String))` });
+    await this.client.command({ query: `ALTER TABLE ${EVENTS_TABLE} ADD COLUMN IF NOT EXISTS bot_flag LowCardinality(Nullable(String))` });
     await this.client.command({ query: `ALTER TABLE ${SITES_TABLE} ADD COLUMN IF NOT EXISTS type LowCardinality(Nullable(String)) DEFAULT 'web'` });
   }
 
@@ -334,6 +336,7 @@ export class ClickHouseAdapter implements DBAdapter {
       app_build: e.device?.appBuild ?? null,
       sdk_name: e.device?.sdkName ?? null,
       sdk_version: e.device?.sdkVersion ?? null,
+      bot_flag: e.botFlag ?? null,
     }));
 
     await this.client.insert({

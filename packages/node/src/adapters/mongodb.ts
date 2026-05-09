@@ -79,6 +79,7 @@ interface EventDocument {
   app_build: string | null;
   sdk_name: string | null;
   sdk_version: string | null;
+  bot_flag: string | null;
   created_at: Date;
 }
 
@@ -310,6 +311,7 @@ export class MongoDBAdapter implements DBAdapter {
       this.collection.createIndex({ site_id: 1, type: 1 }),
       this.collection.createIndex({ site_id: 1, visitor_id: 1 }),
       this.collection.createIndex({ site_id: 1, session_id: 1 }),
+      this.collection.createIndex({ site_id: 1, bot_flag: 1, timestamp: -1 }),
       this.sites.createIndex({ site_id: 1 }, { unique: true }),
       this.sites.createIndex({ secret_key: 1 }),
       this.identityMap.createIndex({ site_id: 1, visitor_id: 1 }, { unique: true }),
@@ -363,6 +365,7 @@ export class MongoDBAdapter implements DBAdapter {
       app_build: e.device?.appBuild ?? null,
       sdk_name: e.device?.sdkName ?? null,
       sdk_version: e.device?.sdkVersion ?? null,
+      bot_flag: e.botFlag ?? null,
       created_at: new Date(),
     }));
 
