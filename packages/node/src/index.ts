@@ -3,6 +3,7 @@ export type { Collector } from './collector';
 export { ClickHouseAdapter } from './adapters/clickhouse';
 export { MongoDBAdapter } from './adapters/mongodb';
 export { isBot, isSignatureBot } from './botfilter';
+export { isHeuristicBot, type HeuristicBotInput } from './heuristic-bot';
 
 // Re-export types from core
 export type {
