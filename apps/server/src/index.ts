@@ -30,6 +30,9 @@ const { adapter: DB_ADAPTER, url: DATABASE_URL } = resolveDbConfig();
 const ADMIN_SECRET = process.env.ADMIN_SECRET || process.env.LITEMETRICS_ADMIN_SECRET;
 const GEOIP = process.env.GEOIP !== 'false';
 const TRUST_PROXY = process.env.TRUST_PROXY !== 'false';
+const BOT_FILTER_MODE = (process.env.BOT_FILTER_MODE || 'standard') as 'off' | 'standard' | 'strict' | 'shadow';
+const BOT_RATE_WINDOW_MS = parseInt(process.env.BOT_RATE_WINDOW_MS || '60000', 10);
+const BOT_RATE_MAX = parseInt(process.env.BOT_RATE_MAX || '60', 10);
 
 // ─── CORS ────────────────────────────────────────────────
 const corsOptions = cors({
@@ -60,6 +63,15 @@ const collector = await createCollector({
   adminSecret: ADMIN_SECRET,
   geoip: GEOIP,
   trustProxy: TRUST_PROXY,
+  botFilter: {
+    defaultMode: BOT_FILTER_MODE,
+    rateLimitWindowMs: BOT_RATE_WINDOW_MS,
+    rateLimitMaxEvents: BOT_RATE_MAX,
+    onBotDetected: (info) => {
+      // Lightweight audit log - kept structured so it's grep-friendly in Railway logs.
+      console.log(`[bot-filter] ${info.action} layer=${info.layer} mode=${info.mode} site=${info.siteId} ip=${info.ip}`);
+    },
+  },
 });
 
 // ─── API Routes ──────────────────────────────────────────
