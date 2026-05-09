@@ -5,6 +5,7 @@ import { useAuth } from './auth';
 import { useTheme } from './hooks/useTheme';
 import { LoginPage } from './components/LoginPage';
 import { SiteSelector } from './components/SiteSelector';
+import { CommandPalette } from './components/CommandPalette';
 import { AnalyticsPage } from './pages/AnalyticsPage';
 import { InsightsPage } from './pages/InsightsPage';
 import { EventsPage } from './pages/EventsPage';
@@ -71,7 +72,9 @@ export function App() {
   const closeSidebar = () => setSidebarOpen(false);
 
   return (
-    <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 flex">
+    <>
+      <CommandPalette siteId={siteId} onSiteChange={handleSiteChange} />
+      <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 flex">
       {/* Mobile hamburger button */}
       <button
         onClick={() => setSidebarOpen(true)}
@@ -223,6 +226,7 @@ export function App() {
           </Routes>
         </div>
       </main>
-    </div>
+      </div>
+    </>
   );
 }
