@@ -9,10 +9,10 @@ export function DashboardPreview() {
         <div className="text-center mb-12">
           <p className="text-sm font-medium text-brand-400 uppercase tracking-wider mb-3">Dashboard</p>
           <h2 className="font-display text-4xl sm:text-5xl text-white tracking-tight mb-4">
-            This is what your<br />users get
+            This is what your<br />customers get
           </h2>
           <p className="text-lg text-zinc-400 max-w-xl mx-auto">
-            Ship this dashboard as part of your product. Fully themeable, dark mode included. No iframe — native React components.
+            Ship this dashboard as part of your product. Fully themeable, dark mode included. No iframe. Native React components.
           </p>
         </div>
 
@@ -55,7 +55,7 @@ export function DashboardPreview() {
             {/* Chart area */}
             <div className="bg-zinc-800/30 border border-zinc-700/30 rounded-xl p-5 mb-6">
               <div className="flex items-center justify-between mb-4">
-                <p className="text-xs text-zinc-500 uppercase tracking-wide">Visitors — Last 30 Days</p>
+                <p className="text-xs text-zinc-500 uppercase tracking-wide">Visitors · Last 30 Days</p>
                 <div className="flex gap-1">
                   <span className="px-2 py-0.5 text-xs rounded bg-brand-600 text-white">30D</span>
                   <span className="px-2 py-0.5 text-xs rounded text-zinc-500">7D</span>

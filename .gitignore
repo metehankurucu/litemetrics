@@ -32,3 +32,4 @@ yarn.lock
 
 # Local DB backups
 backup/
+/docs/plans

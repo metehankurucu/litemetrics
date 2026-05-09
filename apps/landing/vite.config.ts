@@ -9,4 +9,10 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  ssgOptions: {
+    entry: 'src/main.tsx',
+    dirStyle: 'nested',
+    formatting: 'none',
+    crittersOptions: false,
+  },
 });
