@@ -303,6 +303,21 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
         const site = await db.getSite(siteId);
         const mode = resolveBotMode(site);
 
+        // Hostname filtering: short-circuit BEFORE the bot pipeline so disallowed
+        // origins don't drain rate-limit slots for legit users on shared NATs.
+        if (site?.allowedOrigins && site.allowedOrigins.length > 0) {
+          const requestHostname = extractRequestHostname(req);
+          if (!requestHostname) {
+            sendJson(res, 200, { ok: true });
+            return;
+          }
+          const allowed = new Set(site.allowedOrigins.map((h) => h.toLowerCase()));
+          if (!allowed.has(requestHostname)) {
+            sendJson(res, 200, { ok: true });
+            return;
+          }
+        }
+
         let botFlag: 'signature' | 'heuristic' | 'rate-limit' | undefined;
 
         if (mode !== 'off') {
@@ -334,20 +349,6 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
         }
 
         const enriched = enrichEvents(payload.events, ip, userAgent, botFlag);
-
-        // Hostname filtering: check request's Origin/Referer against site's allowedOrigins
-        if (site?.allowedOrigins && site.allowedOrigins.length > 0) {
-          const requestHostname = extractRequestHostname(req);
-          if (!requestHostname) {
-            sendJson(res, 200, { ok: true });
-            return;
-          }
-          const allowed = new Set(site.allowedOrigins.map((h) => h.toLowerCase()));
-          if (!allowed.has(requestHostname)) {
-            sendJson(res, 200, { ok: true });
-            return;
-          }
-        }
 
         await processIdentity(enriched);
         await db.insertEvents(enriched);
