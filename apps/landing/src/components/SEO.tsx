@@ -9,6 +9,13 @@ interface SEOProps {
 
 const SITE = 'https://litemetrics.dev';
 
+// Match Netlify's default trailing-slash redirect so canonical URLs
+// align with the URL the user actually lands on.
+function withTrailingSlash(path: string): string {
+  if (path === '/' || path.endsWith('/')) return path;
+  return `${path}/`;
+}
+
 export function SEO({
   title,
   description,
@@ -17,7 +24,7 @@ export function SEO({
   ogImage,
   ogType = 'website',
 }: SEOProps) {
-  const url = `${SITE}${path}`;
+  const url = `${SITE}${withTrailingSlash(path)}`;
   const image = ogImage ?? `${SITE}/og-image.png`;
   const ldArray = jsonLd ? (Array.isArray(jsonLd) ? jsonLd : [jsonLd]) : [];
 
@@ -85,7 +92,7 @@ export function breadcrumbSchema(items: { name: string; url: string }[]) {
       '@type': 'ListItem',
       position: i + 1,
       name: item.name,
-      item: `${SITE}${item.url}`,
+      item: `${SITE}${withTrailingSlash(item.url)}`,
     })),
   };
 }
@@ -103,7 +110,10 @@ export function articleSchema(opts: {
     description: opts.description,
     author: { '@type': 'Organization', name: 'Litemetrics' },
     publisher: organizationSchema(),
-    mainEntityOfPage: { '@type': 'WebPage', '@id': `${SITE}${opts.path}` },
+    mainEntityOfPage: {
+      '@type': 'WebPage',
+      '@id': `${SITE}${withTrailingSlash(opts.path)}`,
+    },
     datePublished: opts.datePublished ?? '2026-05-09',
     dateModified: '2026-05-09',
   };

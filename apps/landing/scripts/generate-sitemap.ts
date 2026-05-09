@@ -26,12 +26,17 @@ if (missing.length > 0) {
   process.exit(1);
 }
 
+// Match Netlify's default trailing-slash redirect so sitemap URLs
+// align with the canonical URLs Google will see after the redirect.
+const withSlash = (path: string) =>
+  path === '/' || path.endsWith('/') ? path : `${path}/`;
+
 const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 ${allRoutePaths
   .map(
     (path) => `  <url>
-    <loc>${SITE}${path === '/' ? '/' : path}</loc>
+    <loc>${SITE}${withSlash(path)}</loc>
     <lastmod>${today}</lastmod>
     <changefreq>weekly</changefreq>
     <priority>${path === '/' ? '1.0' : '0.8'}</priority>
