@@ -198,6 +198,9 @@ docker run -p 3002:3002 \
 | `PORT` | Server port | `3002` |
 | `GEOIP` | Enable GeoIP lookup | `true` |
 | `TRUST_PROXY` | Trust X-Forwarded-For headers | `true` |
+| `BOT_FILTER_MODE` | Server-wide bot filter default: `off` / `standard` / `strict` / `shadow` | `standard` |
+| `BOT_RATE_WINDOW_MS` | Sliding-window size for the per-IP rate limiter (ms) | `60000` |
+| `BOT_RATE_MAX` | Max events per window per IP before rate-limit fires | `60` |
 
 > `DATABASE_URL` and `LITEMETRICS_ADMIN_SECRET` also work as aliases.
 
@@ -264,6 +267,34 @@ The tracker handles session management, visitor IDs, batching, and SPA detection
 - Manual `track()` events default to `event_source=manual` and `event_subtype=custom`.
 - All metrics and time series support segmentation filters (geo, device, UTM, referrer, event metadata).
 - The dashboard **Insights** view surfaces exit pages, transitions, scroll-heavy pages, and click hotspots.
+
+<br/>
+
+## Bot Filtering
+
+Litemetrics ships with multi-layer bot filtering enabled by default. Bot traffic is excluded from every query unless you explicitly opt in.
+
+- **Tracker short-circuit** — when `navigator.webdriver === true`, the browser tracker becomes a no-op. Catches Selenium / Puppeteer / Playwright at the source before the event ever leaves the page.
+- **Layer 1 (signature)** — server-side match against the maintained [`isbot`](https://github.com/omrilotan/isbot) list of known crawlers / preview bots.
+- **Layer 2 (heuristic)** — catches scrubbed or empty user agents (no UA, bare `Mozilla/5.0`, missing platform tokens, etc).
+- **Layer 3 (rate limit)** — sliding-window per-IP cap (`BOT_RATE_WINDOW_MS` / `BOT_RATE_MAX`) for traffic that escapes the first two layers.
+
+Modes are configured server-wide via `BOT_FILTER_MODE` and overridable per-site:
+
+| Mode | Behavior |
+|------|----------|
+| `off` | All filtering disabled |
+| `standard` (default) | Layer 1 drops the event; Layers 2 + 3 flag it (kept in DB, hidden from queries) |
+| `strict` | Every layer drops the event |
+| `shadow` | Every layer flags only — useful for tuning before going live |
+
+Each detection emits a structured audit log line:
+
+```
+[bot-filter] dropped layer=signature mode=standard site=site_abc ip=203.0.113.4
+```
+
+Pass `?includeBots=true` to `/api/stats`, `/api/events`, or `/api/users` to see flagged traffic. The dashboard exposes the same toggle on the Analytics page, and per-site bot mode lives on the Settings page.
 
 <br/>
 

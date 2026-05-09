@@ -69,6 +69,7 @@ Query analytics metrics for a site.
 | `limit` | number | No | Max results for top_* metrics (default: 10) |
 | `compare` | boolean | No | Include previous period comparison |
 | `filters` | JSON string | No | Filter by field, e.g. `{"device.browser":"Chrome"}` |
+| `includeBots` | boolean | No | Include events flagged by the bot filter. Defaults to `false` (excluded). |
 
 **Metrics:**
 
@@ -205,6 +206,7 @@ List tracked events with pagination.
 | `eventNames` | string | -- | Comma-separated list of event names |
 | `limit` | number | 50 | Events per page |
 | `offset` | number | 0 | Pagination offset |
+| `includeBots` | boolean | `false` | Include events flagged by the bot filter |
 
 **Response:**
 
@@ -243,6 +245,7 @@ List tracked visitors.
 | `search` | string | -- | Search by visitor ID or user ID |
 | `page` | number | 1 | Page number |
 | `limit` | number | 50 | Users per page |
+| `includeBots` | boolean | `false` | Include users whose events are bot-flagged |
 
 ## GET /api/users/:identifier
 
@@ -254,6 +257,21 @@ linked visitor IDs, the response is merged.
 
 Get a user's event history. `identifier` can be either a `visitorId` or `userId`.
 If the user has multiple linked visitor IDs, events are merged across them.
+
+## DELETE /api/users/:identifier/events
+
+Delete every event for a user on a site (GDPR / right-to-erasure helper). The
+`identifier` can be either a `visitorId` or `userId` — both are resolved through
+the identity map.
+
+```
+DELETE /api/users/:identifier/events?siteId=<siteId>
+Headers: X-Litemetrics-Admin-Secret OR X-Litemetrics-Secret (matching site)
+Returns: { ok: true, deleted: <number> }
+```
+
+Idempotent: returns `{ ok: true, deleted: 0 }` if no events match. The dashboard
+exposes this as a destructive "Delete all events" action on the user detail page.
 
 ---
 
@@ -304,3 +322,25 @@ const result = await collector.query({
   period: '30d',
 });
 ```
+
+---
+
+## Bot Filtering
+
+All read endpoints (`/api/stats`, `/api/events`, `/api/users`) exclude bot-flagged
+events by default. Pass `?includeBots=true` to include them.
+
+Per-site mode is set via `PUT /api/sites/:siteId` with a `botFilterMode` field
+(`off` / `standard` / `strict` / `shadow` or `null` to fall back to the server
+default). The server-wide default is controlled by `BOT_FILTER_MODE`.
+
+**`queryBotStats` (in flight on `feat/bot-filter-and-dashboard-revamp`)** —
+adapters expose a `queryBotStats(siteId, range)` helper used by the dashboard's
+"bot traffic filtered" pill. Once committed it returns:
+
+```ts
+{ total: number, bySignature: number, byHeuristic: number, byRateLimit: number }
+```
+
+This is not yet wired to a public HTTP endpoint; the dashboard reads it through
+the collector's typed query API.

@@ -92,6 +92,14 @@ Track events declaratively with HTML attributes:
 </button>
 ```
 
+## Bot Short-Circuit
+
+When `navigator.webdriver === true`, `createTracker` returns a no-op tracker —
+`track`, `page`, `identify`, `opt_in`, and `opt_out` all become safe no-ops and
+no network requests are made. This catches Selenium, Puppeteer, and Playwright
+at the source so synthetic events never reach your collector. Server-side bot
+filtering (`@litemetrics/node`) still handles bots that mask `webdriver`.
+
 ## Privacy
 
 - Respects `Do Not Track` browser setting

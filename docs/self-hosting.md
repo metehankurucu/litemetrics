@@ -60,8 +60,32 @@ Open `http://localhost:3002` for the dashboard.
 | `PORT` | Server port | `3002` |
 | `GEOIP` | Enable GeoIP lookup | `true` |
 | `TRUST_PROXY` | Trust X-Forwarded-For headers | `true` |
+| `BOT_FILTER_MODE` | Server-wide bot filter default: `off`, `standard`, `strict`, or `shadow` | `standard` |
+| `BOT_RATE_WINDOW_MS` | Sliding-window size for the per-IP rate limiter (ms) | `60000` |
+| `BOT_RATE_MAX` | Max events per window per IP before the rate-limit layer fires | `60` |
 
 `DATABASE_URL` and `LITEMETRICS_ADMIN_SECRET` also work as aliases.
+
+## Bot Filtering
+
+Bot filtering runs in three server-side layers (signature via `isbot`, heuristic for scrubbed UAs, per-IP rate limit) plus a tracker-side `navigator.webdriver` short-circuit. It is enabled by default in `standard` mode.
+
+- `BOT_FILTER_MODE=standard` (default): Layer 1 drops, Layers 2 + 3 flag (events stored with `bot_flag`, hidden from queries).
+- `BOT_FILTER_MODE=strict`: every layer drops.
+- `BOT_FILTER_MODE=shadow`: every layer flags only — useful for tuning thresholds without affecting data.
+- `BOT_FILTER_MODE=off`: disabled.
+
+Per-site overrides live on the site record (`botFilterMode` field) and are configurable from the dashboard Settings page. Each detection emits a grep-friendly audit line:
+
+```
+[bot-filter] <action> layer=<layer> mode=<mode> site=<siteId> ip=<ip>
+```
+
+To include flagged traffic in queries, pass `?includeBots=true` on `/api/stats`, `/api/events`, or `/api/users`.
+
+## Schema migrations
+
+Schema changes from 0.6.x are applied lazily on adapter init and are idempotent — restarting the server is enough to upgrade. The Postgres adapter runs `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` for new bot-filter columns; ClickHouse and MongoDB equivalents are also no-ops on re-run. No manual SQL is required.
 
 ## Using Postgres Instead
 

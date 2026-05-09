@@ -370,4 +370,13 @@ const conversions = await client.getStats('conversions', { period: '30d' });
 const topConversions = await client.getStats('top_conversions', { period: '30d', limit: 10 });
 const timeseries = await client.getTimeSeries('pageviews', { period: '30d' });
 const retention = await client.getRetention({ period: '90d', weeks: 8 });
+
+// Bot-flagged traffic is hidden by default. Pass `includeBots: true` to see it.
+const withBots = await client.getStats('pageviews', { period: '7d', includeBots: true });
 ```
+
+## Bot Filtering
+
+The server filters bots in three layers (signature match via `isbot`, heuristic for scrubbed user agents, per-IP rate limit) and the browser tracker short-circuits to a no-op when `navigator.webdriver === true` — catching Selenium / Puppeteer / Playwright at the source.
+
+Filtering is enabled by default (`BOT_FILTER_MODE=standard`), per-site overridable from the dashboard Settings page. All read endpoints accept `?includeBots=true` to surface flagged events. See [Self-Hosting](./self-hosting.md#bot-filtering) for mode details.

@@ -67,6 +67,19 @@ const filtered = await client.getStats('top_events', {
 });
 ```
 
+## Including Bot Traffic
+
+Bot-flagged events are excluded from every read by default. Pass `includeBots: true`
+to surface them on `getStats`, `getTimeSeries`, `getEventsList`, `getUsers`, and
+`getUserDetail`:
+
+```ts
+const allTraffic = await client.getStats('pageviews', {
+  period: '7d',
+  includeBots: true,
+});
+```
+
 ## Events & Users
 
 ```ts

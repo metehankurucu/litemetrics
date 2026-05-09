@@ -101,10 +101,60 @@ If your tracker uses an offline queue that may replay events after long delays, 
 
 The optional `onOutOfWindow(info)` callback fires whenever the sanitizer rejects a value (drop or clamp). Use it to wire poisoning signals into your metrics/alerting. `info.reason` is `'future' | 'past' | 'invalid'`; `info.offsetMs` is how far past the boundary the value was (`0` for invalid types). Callback errors are swallowed.
 
+## Bot Filtering
+
+Multi-layer filtering runs on every collected event. Defaults are conservative
+(legitimate traffic is never dropped on a false-positive heuristic) and tunable
+per-site via the `botFilterMode` site field.
+
+- **Layer 1 (signature)** — UA matched against the [`isbot`](https://github.com/omrilotan/isbot) list.
+- **Layer 2 (heuristic)** — scrubbed / empty UAs (no UA, bare `Mozilla/5.0`, missing platform tokens).
+- **Layer 3 (rate limit)** — sliding-window per-IP cap.
+
+Modes: `off`, `standard` (default — Layer 1 drops, Layers 2 & 3 flag), `strict`
+(every layer drops), `shadow` (every layer flags only). Pass per-collector via
+`botFilter`:
+
+```ts
+const collector = await createCollector({
+  db: { url: 'http://localhost:8123' },
+  botFilter: {
+    defaultMode: 'standard',     // server-wide default (off | standard | strict | shadow)
+    rateLimitWindowMs: 60_000,   // sliding window for Layer 3
+    rateLimitMaxEvents: 60,      // max events / window / IP
+    onBotDetected: (info) => {
+      // info: { siteId, ip, userAgent, layer, action, mode }
+      console.log(`[bot-filter] ${info.action} layer=${info.layer} mode=${info.mode} site=${info.siteId} ip=${info.ip}`);
+    },
+  },
+});
+```
+
+Server wrapper env vars (`apps/server`):
+
+- `BOT_FILTER_MODE` (default `standard`): one of `off` / `standard` / `strict` / `shadow`. Controls server-wide bot filtering for sites that don't override per-site.
+- `BOT_RATE_WINDOW_MS` (default `60000`): sliding-window size for the per-IP rate limiter (ms).
+- `BOT_RATE_MAX` (default `60`): max events per window per IP before the rate-limit layer fires.
+
+Read endpoints (`/api/stats`, `/api/events`, `/api/users`) exclude flagged
+events by default. Pass `?includeBots=true` to include them.
+
+## GDPR / Right to erasure
+
+```ts
+const { deleted } = await db.deleteUserEvents('site_abc', 'user_123');
+// or via HTTP:
+//   DELETE /api/users/:identifier/events?siteId=site_abc
+//   Headers: X-Litemetrics-Admin-Secret OR X-Litemetrics-Secret (matching site)
+//   Returns: { ok: true, deleted: <number> }
+```
+
+Resolves both `userId` and `visitorId` through the identity map; idempotent.
+
 ## Features
 
 - **Event Collection** - Receives batched events from the browser tracker
-- **Bot Filtering** - Automatically drops events from known bots and crawlers
+- **Bot Filtering** - Multi-layer (signature + heuristic + rate limit), per-site mode
 - **GeoIP Enrichment** - Resolves country/city from IP using MaxMind GeoLite2
 - **User-Agent Parsing** - Extracts browser, OS, and device type
 - **Hostname Filtering** - Only count events from allowed hostnames per site (matched against request Origin/Referer)

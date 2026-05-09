@@ -44,6 +44,8 @@ Main overview page:
 - Pie charts for browser and device breakdown
 - Top lists: pages, referrers, countries, events, conversions, browsers, devices
 - Period selector: 7d, 14d, 30d, 90d, or custom date range
+- **Include bot traffic** toggle — flips the `includeBots` flag on every query (defaults to off, so flagged bots are excluded)
+- A bot-traffic pill appears when the filter has dropped events in the current window
 - Export data as CSV
 
 ### Insights (`/insights`)
@@ -79,6 +81,7 @@ Visitor explorer:
 - List of tracked visitors with activity stats
 - Search by visitor ID or user ID
 - Click through to individual user profiles and event history
+- Per-user **Delete all events** destructive action on the detail page (GDPR / right-to-erasure). Calls `DELETE /api/users/:identifier/events` and shows the deleted count.
 - Export as CSV
 
 ### Retention (`/retention`)
@@ -90,17 +93,17 @@ Cohort retention analysis:
 - Configurable period and week count (4-12 weeks)
 - Export as CSV
 
-### Sites (`/sites`)
+### Settings (`/sites`)
 
-Site management:
-- Create, edit, delete tracked sites
-- View site IDs and secret keys
-- Regenerate secret keys
-- Configure conversion event names per site
+Settings for the currently selected site (formerly the "Sites" page, which listed every site at once):
+- View site ID and secret key, regenerate secret
+- Edit name, allowed origins, conversion event names
+- **Bot filter mode** — per-site override (`off` / `standard` / `strict` / `shadow`, or "use server default")
+- Delete the site
 
 ## Navigation
 
-Sidebar with links to all pages. Site selector at the top for switching between sites. Login/logout at the bottom.
+The sidebar links to every page. The currently selected site is shown at the top — clicking it (or pressing **⌘K** / **Ctrl K**) opens a `cmdk` command palette for fast site switching, creating a new site, and jumping between pages. The selected site is what every page (including Settings) operates on; site management is no longer a multi-row table. Login / logout lives at the bottom.
 
 ## Tech Stack
 
@@ -111,6 +114,7 @@ Sidebar with links to all pages. Site selector at the top for switching between 
 - Recharts 2 (charts)
 - react-simple-maps (world map)
 - lucide-react (icons)
+- cmdk (⌘K command palette)
 - @litemetrics/client (API queries)
 
 ## See Also

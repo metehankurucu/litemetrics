@@ -33,6 +33,8 @@ app.listen(3002);
 
 This creates 3 tables (`litemetrics_events`, `litemetrics_sites`, `litemetrics_identity_map`) on first start. Existing data is not touched.
 
+> Bot filtering is enabled by default (`BOT_FILTER_MODE=standard`). Crawlers, headless browsers, and scrubbed user agents are excluded from queries automatically. Set `BOT_FILTER_MODE=off` if you want every event counted, or see [Self-Hosting](./self-hosting.md#bot-filtering) for the full mode list.
+
 Using Postgres? Pass `{ adapter: 'postgres', url: 'postgres://user:pass@localhost:5432/myapp' }` to `db`.
 
 Using MongoDB? Pass `{ adapter: 'mongodb', url: 'mongodb://localhost:27017/myapp' }` to `db`.
