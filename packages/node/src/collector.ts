@@ -566,9 +566,9 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
 
   function usersHandler(): (req: any, res: any) => void | Promise<void> {
     return async (req: any, res: any) => {
-      if (setCors(req, res, 'GET, OPTIONS', 'X-Litemetrics-Secret, X-Litemetrics-Admin-Secret')) return;
+      if (setCors(req, res, 'GET, DELETE, OPTIONS', 'X-Litemetrics-Secret, X-Litemetrics-Admin-Secret, X-Litemetrics-Site-Id')) return;
 
-      if (req.method !== 'GET') {
+      if (req.method !== 'GET' && req.method !== 'DELETE') {
         sendJson(res, 405, { ok: false, error: 'Method not allowed' });
         return;
       }
@@ -576,12 +576,18 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
       try {
         const q = req.query ?? Object.fromEntries(new URL(req.url, 'http://localhost').searchParams);
 
-        if (!q.siteId) {
+        // For DELETE, siteId may come from query or x-litemetrics-site-id header.
+        const headerSiteId = typeof req.headers?.['x-litemetrics-site-id'] === 'string'
+          ? (req.headers['x-litemetrics-site-id'] as string)
+          : undefined;
+        const siteId = (q.siteId as string | undefined) || headerSiteId;
+
+        if (!siteId) {
           sendJson(res, 400, { ok: false, error: 'siteId is required' });
           return;
         }
 
-        const authorized = await isAuthorizedForSite(req, q.siteId as string);
+        const authorized = await isAuthorizedForSite(req, siteId);
         if (!authorized) {
           sendJson(res, 401, { ok: false, error: 'Invalid or missing secret key' });
           return;
@@ -594,6 +600,17 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
         const visitorId = usersIdx >= 0 ? pathSegments[usersIdx + 1] : undefined;
         const action = usersIdx >= 0 ? pathSegments[usersIdx + 2] : undefined;
 
+        // DELETE /api/users/:visitorId/events
+        if (req.method === 'DELETE') {
+          if (!visitorId || action !== 'events') {
+            sendJson(res, 400, { ok: false, error: 'Bad path' });
+            return;
+          }
+          const result = await db.deleteUserEvents(siteId, decodeURIComponent(visitorId));
+          sendJson(res, 200, { ok: true, deleted: result.deleted });
+          return;
+        }
+
         // GET /api/users/:visitorId/events
         if (visitorId && action === 'events') {
           const eventNames = typeof q.eventNames === 'string'
@@ -601,7 +618,7 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
             : undefined;
 
           const params: EventListParams = {
-            siteId: q.siteId as string,
+            siteId,
             type: q.type as EventListParams['type'],
             eventName: q.eventName as string | undefined,
             eventNames,
@@ -612,14 +629,14 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
             limit: q.limit ? parseInt(q.limit as string, 10) : undefined,
             offset: q.offset ? parseInt(q.offset as string, 10) : undefined,
           };
-          const result = await db.getUserEvents(q.siteId as string, decodeURIComponent(visitorId), params);
+          const result = await db.getUserEvents(siteId, decodeURIComponent(visitorId), params);
           sendJson(res, 200, result);
           return;
         }
 
         // GET /api/users/:visitorId
         if (visitorId) {
-          const user = await db.getUserDetail(q.siteId as string, decodeURIComponent(visitorId));
+          const user = await db.getUserDetail(siteId, decodeURIComponent(visitorId));
           if (!user) {
             sendJson(res, 404, { ok: false, error: 'User not found' });
             return;
@@ -630,7 +647,7 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
 
         // GET /api/users - list
         const params: UserListParams = {
-          siteId: q.siteId as string,
+          siteId,
           search: q.search as string | undefined,
           limit: q.limit ? parseInt(q.limit as string, 10) : undefined,
           offset: q.offset ? parseInt(q.offset as string, 10) : undefined,

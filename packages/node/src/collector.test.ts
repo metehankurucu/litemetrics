@@ -29,6 +29,7 @@ vi.mock('./adapters/clickhouse', () => {
     updateSite = async () => null;
     deleteSite = async () => false;
     regenerateSecret = async () => null;
+    deleteUserEvents = async () => ({ deleted: 3 });
   }
   return { ClickHouseAdapter };
 });
@@ -267,5 +268,57 @@ describe('collector bot filtering', () => {
     expect(onBotDetected).toHaveBeenCalledWith(
       expect.objectContaining({ layer: 'signature', action: 'dropped', mode: 'standard' }),
     );
+  });
+});
+
+describe('collector deleteUserEvents endpoint', () => {
+  it('rejects unauthenticated DELETE requests', async () => {
+    const collector = await createCollector({ db: { adapter: 'clickhouse', url: 'http://x' } });
+    const handler = collector.usersHandler();
+    const res = makeRes();
+    await handler(
+      { method: 'DELETE', url: '/api/users/v1/events', headers: {}, query: { siteId: 'site_test' } },
+      res,
+    );
+    expect(res.statusCode).toBe(401);
+  });
+
+  it('admin can delete user events and gets count back', async () => {
+    const collector = await createCollector({
+      db: { adapter: 'clickhouse', url: 'http://x' },
+      adminSecret: 'admin-secret',
+    });
+    const handler = collector.usersHandler();
+    const res = makeRes();
+    await handler(
+      {
+        method: 'DELETE',
+        url: '/api/users/visitor-abc/events',
+        headers: { 'x-litemetrics-admin-secret': 'admin-secret' },
+        query: { siteId: 'site_test' },
+      },
+      res,
+    );
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toMatchObject({ ok: true, deleted: expect.any(Number) });
+  });
+
+  it('returns 400 when siteId is missing', async () => {
+    const collector = await createCollector({
+      db: { adapter: 'clickhouse', url: 'http://x' },
+      adminSecret: 'admin-secret',
+    });
+    const handler = collector.usersHandler();
+    const res = makeRes();
+    await handler(
+      {
+        method: 'DELETE',
+        url: '/api/users/visitor-abc/events',
+        headers: { 'x-litemetrics-admin-secret': 'admin-secret' },
+        query: {},
+      },
+      res,
+    );
+    expect(res.statusCode).toBe(400);
   });
 });
