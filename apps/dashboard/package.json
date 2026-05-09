@@ -11,6 +11,7 @@
   "dependencies": {
     "@litemetrics/client": "workspace:*",
     "@tanstack/react-query": "^5.90.20",
+    "cmdk": "^1.1.1",
     "lucide-react": "^0.563.0",
     "react": "^19",
     "react-dom": "^19",
