@@ -23,6 +23,9 @@ import { PostgresAdapter } from './adapters/postgres';
 import { initGeoIP, resolveGeo } from './geoip';
 import { parseUserAgent } from './useragent';
 import { isBot } from './botfilter';
+import { isHeuristicBot } from './heuristic-bot';
+import { createRateLimiter } from './rate-limit';
+import type { BotFilterMode, BotDetectedInfo } from '@litemetrics/core';
 import { resolveTimestampSanity, sanitizeEventTimestamp } from './timestamp-sanity';
 import { normalizeReferrer } from './normalize-referrer';
 
@@ -58,6 +61,21 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
   }
 
   const timestampSanity = resolveTimestampSanity(config.timestampSanity);
+
+  const botCfg = config.botFilter ?? {};
+  const defaultBotMode: BotFilterMode = botCfg.defaultMode ?? 'standard';
+  const rateLimiter = createRateLimiter({
+    windowMs: botCfg.rateLimitWindowMs ?? 60_000,
+    maxEvents: botCfg.rateLimitMaxEvents ?? 60,
+  });
+
+  function reportBot(info: BotDetectedInfo): void {
+    botCfg.onBotDetected?.(info);
+  }
+
+  function resolveBotMode(site: { botFilterMode?: BotFilterMode | null } | null | undefined): BotFilterMode {
+    return site?.botFilterMode ?? defaultBotMode;
+  }
 
   // ─── Auth helpers ──────────────────────────────────────
 
@@ -99,7 +117,12 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
 
   // ─── Event helpers ────────────────────────────────────
 
-  function enrichEvents(events: ClientEvent[], ip: string, userAgent: string): EnrichedEvent[] {
+  function enrichEvents(
+    events: ClientEvent[],
+    ip: string,
+    userAgent: string,
+    botFlag?: 'signature' | 'heuristic' | 'rate-limit',
+  ): EnrichedEvent[] {
     const uaDevice = parseUserAgent(userAgent);
     const now = Date.now();
     const enriched: EnrichedEvent[] = [];
@@ -129,6 +152,7 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
       }
 
       const enrichedEvent: EnrichedEvent = { ...event, timestamp, ip, geo, device };
+      if (botFlag) enrichedEvent.botFlag = botFlag;
       if (event.type === 'pageview') {
         enrichedEvent.referrer = normalizeReferrer(event.referrer);
       }
@@ -265,18 +289,52 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
         const siteId = Array.from(siteIds)[0] as string;
 
         const userAgent = req.headers?.['user-agent'] || '';
+        const acceptLanguage =
+          (typeof req.headers?.['accept-language'] === 'string'
+            ? req.headers['accept-language']
+            : undefined) || undefined;
+        const referer =
+          (typeof req.headers?.referer === 'string' ? req.headers.referer : undefined) ||
+          (typeof req.headers?.referrer === 'string' ? req.headers.referrer : undefined);
+        const ip = extractIp(req);
 
-        // Bot check - silent drop
-        if (isBot(userAgent)) {
-          sendJson(res, 200, { ok: true });
-          return;
+        // Resolve site early - needed for per-site bot mode override
+        const site = await db.getSite(siteId);
+        const mode = resolveBotMode(site);
+
+        let botFlag: 'signature' | 'heuristic' | 'rate-limit' | undefined;
+
+        if (mode !== 'off') {
+          if (isBot(userAgent)) botFlag = 'signature';
+          else if ((mode === 'strict' || mode === 'shadow') &&
+                   isHeuristicBot({ userAgent, acceptLanguage, referer })) {
+            botFlag = 'heuristic';
+          } else if ((mode === 'strict' || mode === 'shadow') &&
+                     rateLimiter.check(ip).limited) {
+            botFlag = 'rate-limit';
+          }
         }
 
-        const ip = extractIp(req);
-        const enriched = enrichEvents(payload.events, ip, userAgent);
+        if (botFlag) {
+          const shouldDrop =
+            mode === 'standard' ? botFlag === 'signature' :
+            mode === 'strict'   ? true :
+            /* shadow / off */    false;
+
+          reportBot({
+            siteId, ip, userAgent, layer: botFlag,
+            action: shouldDrop ? 'dropped' : 'flagged', mode,
+          });
+
+          if (shouldDrop) {
+            sendJson(res, 200, { ok: true });
+            return;
+          }
+        }
+
+        const enriched = enrichEvents(payload.events, ip, userAgent, botFlag);
 
         // Hostname filtering: check request's Origin/Referer against site's allowedOrigins
-        const site = await db.getSite(siteId);
         if (site?.allowedOrigins && site.allowedOrigins.length > 0) {
           const requestHostname = extractRequestHostname(req);
           if (!requestHostname) {

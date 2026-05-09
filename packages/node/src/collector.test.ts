@@ -190,3 +190,82 @@ describe('collector timestamp sanitization', () => {
     expect(onOutOfWindow.mock.calls[0]![0].event.siteId).toBe('site-1');
   });
 });
+
+describe('collector bot filtering', () => {
+  beforeEach(() => {
+    insertEvents.mockClear();
+  });
+
+  function makeBotReq(ua: string, headers: Record<string, string> = {}) {
+    return {
+      method: 'POST',
+      headers: { 'user-agent': ua, ...headers },
+      body: { events: [{ siteId: 'site_test', visitorId: 'v1', sessionId: 's1', type: 'pageview', name: '$pageview', timestamp: Date.now(), url: 'https://x.test/' }] },
+      socket: { remoteAddress: '9.9.9.9' },
+    };
+  }
+
+  it('drops layer-1 (signature) hits in standard mode', async () => {
+    const collector = await createCollector({ db: { adapter: 'clickhouse', url: 'http://x' } });
+    const handler = collector.handler();
+    const res = makeRes();
+    await handler(makeBotReq('curl/8.0.0'), res);
+    expect(insertEvents).not.toHaveBeenCalled();
+    expect(res.statusCode).toBe(200); // silent drop
+  });
+
+  // Note: an integration test for "standard mode does NOT drop heuristic hits" is
+  // omitted because isbot v5 already classifies bare `Mozilla/5.0` as a signature
+  // bot, leaving no realistic UA that (a) escapes isbot AND (b) trips the heuristic
+  // without mocking. The strict-mode case below proves the heuristic layer fires
+  // when enabled; the off-mode and shadow-mode cases below prove the mode gate.
+
+  it('drops heuristic hits in strict mode', async () => {
+    const collector = await createCollector({
+      db: { adapter: 'clickhouse', url: 'http://x' },
+      botFilter: { defaultMode: 'strict' },
+    });
+    const handler = collector.handler();
+    const res = makeRes();
+    await handler(makeBotReq('Mozilla/5.0'), res);
+    expect(insertEvents).not.toHaveBeenCalled();
+  });
+
+  it('flags but does not drop in shadow mode, persists botFlag', async () => {
+    const collector = await createCollector({
+      db: { adapter: 'clickhouse', url: 'http://x' },
+      botFilter: { defaultMode: 'shadow' },
+    });
+    const handler = collector.handler();
+    const res = makeRes();
+    await handler(makeBotReq('curl/8.0.0'), res);
+    expect(insertEvents).toHaveBeenCalledOnce();
+    const events = insertEvents.mock.calls[0][0];
+    expect(events[0].botFlag).toBe('signature');
+  });
+
+  it('skips all checks in off mode', async () => {
+    const collector = await createCollector({
+      db: { adapter: 'clickhouse', url: 'http://x' },
+      botFilter: { defaultMode: 'off' },
+    });
+    const handler = collector.handler();
+    const res = makeRes();
+    await handler(makeBotReq('curl/8.0.0'), res);
+    expect(insertEvents).toHaveBeenCalledOnce();
+    expect(insertEvents.mock.calls[0][0][0].botFlag).toBeUndefined();
+  });
+
+  it('invokes onBotDetected callback with layer + action + mode', async () => {
+    const onBotDetected = vi.fn();
+    const collector = await createCollector({
+      db: { adapter: 'clickhouse', url: 'http://x' },
+      botFilter: { defaultMode: 'standard', onBotDetected },
+    });
+    const handler = collector.handler();
+    await handler(makeBotReq('curl/8.0.0'), makeRes());
+    expect(onBotDetected).toHaveBeenCalledWith(
+      expect.objectContaining({ layer: 'signature', action: 'dropped', mode: 'standard' }),
+    );
+  });
+});
