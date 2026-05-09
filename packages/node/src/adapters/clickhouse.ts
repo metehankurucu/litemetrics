@@ -1295,6 +1295,29 @@ export class ClickHouseAdapter implements DBAdapter {
     return this.listEvents({ ...params, siteId, visitorId: identifier });
   }
 
+  async deleteUserEvents(siteId: string, identifier: string): Promise<{ deleted: number }> {
+    // Count first; lightweight DELETE does not return affected rows synchronously.
+    const rows = await this.queryRows<{ n: string | number }>(
+      `SELECT count() AS n FROM ${EVENTS_TABLE}
+       WHERE site_id = {siteId:String}
+         AND (user_id = {id:String} OR visitor_id = {id:String})`,
+      { siteId, id: identifier },
+    );
+    const deleted = Number(rows[0]?.n ?? 0);
+
+    if (deleted > 0) {
+      await this.client.command({
+        query: `
+          DELETE FROM ${EVENTS_TABLE}
+          WHERE site_id = {siteId:String}
+            AND (user_id = {id:String} OR visitor_id = {id:String})
+        `,
+        query_params: { siteId, id: identifier },
+      });
+    }
+    return { deleted };
+  }
+
   // ─── Identity Mapping ──────────────────────────────────────
 
   async upsertIdentity(siteId: string, visitorId: string, userId: string): Promise<void> {

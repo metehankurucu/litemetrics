@@ -1174,6 +1174,15 @@ export class PostgresAdapter implements DBAdapter {
     return this.listEvents({ ...params, siteId, visitorId: identifier });
   }
 
+  async deleteUserEvents(siteId: string, identifier: string): Promise<{ deleted: number }> {
+    const result = await this.pool.query(
+      `DELETE FROM ${EVENTS_TABLE}
+       WHERE site_id = $1 AND (user_id = $2 OR visitor_id = $2)`,
+      [siteId, identifier],
+    );
+    return { deleted: result.rowCount ?? 0 };
+  }
+
   private async getMergedUserDetail(siteId: string, userId: string, visitorIds: string[]): Promise<UserDetail | null> {
     const r = await this.pool.query<Record<string, unknown>>(
       `SELECT

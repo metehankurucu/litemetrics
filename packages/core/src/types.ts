@@ -286,6 +286,13 @@ export interface DBAdapter {
   getUserDetail(siteId: string, identifier: string): Promise<UserDetail | null>;
   getUserEvents(siteId: string, identifier: string, params: EventListParams): Promise<EventListResult>;
 
+  /**
+   * Delete every event for a user on a site. Resolves both `userId` (logged-in
+   * identifier) and `visitorId` (anonymous cookie ID) - passes either.
+   * Returns the number of events deleted. Idempotent: returns 0 if nothing matched.
+   */
+  deleteUserEvents(siteId: string, identifier: string): Promise<{ deleted: number }>;
+
   // Identity mapping
   upsertIdentity(siteId: string, visitorId: string, userId: string): Promise<void>;
   getVisitorIdsForUser(siteId: string, userId: string): Promise<string[]>;

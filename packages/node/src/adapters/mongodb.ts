@@ -1209,6 +1209,14 @@ export class MongoDBAdapter implements DBAdapter {
     return this.listEventsForVisitorIds(siteId, visitorIds, params);
   }
 
+  async deleteUserEvents(siteId: string, identifier: string): Promise<{ deleted: number }> {
+    const result = await this.collection.deleteMany({
+      site_id: siteId,
+      $or: [{ user_id: identifier }, { visitor_id: identifier }],
+    });
+    return { deleted: result.deletedCount ?? 0 };
+  }
+
   private async getMergedUserDetail(siteId: string, userId: string | undefined, visitorIds: string[]): Promise<UserDetail | null> {
     const pipeline: object[] = [
       { $match: { site_id: siteId, visitor_id: { $in: visitorIds } } },
