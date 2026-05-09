@@ -2,7 +2,7 @@ export { createCollector } from './collector';
 export type { Collector } from './collector';
 export { ClickHouseAdapter } from './adapters/clickhouse';
 export { MongoDBAdapter } from './adapters/mongodb';
-export { isBot } from './botfilter';
+export { isBot, isSignatureBot } from './botfilter';
 
 // Re-export types from core
 export type {

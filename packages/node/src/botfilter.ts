@@ -8,3 +8,6 @@ export function isBot(ua: string): boolean {
   if (!ua || ua.length === 0) return true;
   return isbot(ua);
 }
+
+/** Alias for isBot - clarifies layer when composed with heuristic / rate-limit checks. */
+export const isSignatureBot = isBot;
