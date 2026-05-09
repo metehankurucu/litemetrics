@@ -194,7 +194,12 @@ export function SiteManager() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: async ({ siteId, data }: { siteId: string; data: { name?: string; allowedOrigins?: string[]; conversionEvents?: string[] } }) => {
+    mutationFn: async ({ siteId, data }: { siteId: string; data: {
+      name?: string;
+      allowedOrigins?: string[];
+      conversionEvents?: string[];
+      botFilterMode?: 'off' | 'standard' | 'strict' | 'shadow' | null;
+    } }) => {
       const { site } = await sitesClient.updateSite(siteId, data);
       return site;
     },
@@ -420,6 +425,13 @@ export function SiteManager() {
               saving={updateMutation.isPending}
             />
 
+            {/* Bot Filtering */}
+            <BotFilterModeSetting
+              mode={selected.botFilterMode}
+              onUpdate={(mode) => updateMutation.mutate({ siteId: selected.siteId, data: { botFilterMode: mode } })}
+              saving={updateMutation.isPending}
+            />
+
             {/* Setup Guide */}
             <SetupGuide site={selected} />
           </div>
@@ -551,6 +563,48 @@ function ConversionEvents({ events, onUpdate, saving }: {
         </button>
       </div>
       <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-1.5">Events with these exact names count as conversions.</p>
+    </div>
+  );
+}
+
+function BotFilterModeSetting({ mode, onUpdate, saving }: {
+  mode: 'off' | 'standard' | 'strict' | 'shadow' | null | undefined;
+  onUpdate: (mode: 'off' | 'standard' | 'strict' | 'shadow' | null) => void;
+  saving: boolean;
+}) {
+  const current = mode ?? 'standard';
+  const options: Array<{ value: 'off' | 'standard' | 'strict' | 'shadow'; label: string; hint: string }> = [
+    { value: 'off',      label: 'Off',      hint: 'No bot filtering. Useful for testing.' },
+    { value: 'standard', label: 'Standard', hint: 'Drop known bots (isbot signatures). Default.' },
+    { value: 'strict',   label: 'Strict',   hint: 'Drop known bots + scrubbed-UA + rate-limit hits.' },
+    { value: 'shadow',   label: 'Shadow',   hint: 'Flag everything but drop nothing - for analysis.' },
+  ];
+
+  return (
+    <div className="space-y-3">
+      <div>
+        <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">Bot Filtering</h3>
+        <p className="text-xs text-zinc-500 mt-1">
+          Controls how this site filters bot traffic before storage.
+        </p>
+      </div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+        {options.map((opt) => (
+          <button
+            key={opt.value}
+            disabled={saving}
+            onClick={() => onUpdate(opt.value === 'standard' ? null : opt.value)}
+            className={`text-left p-3 rounded-lg border transition-colors disabled:opacity-50 ${
+              current === opt.value
+                ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20'
+                : 'border-zinc-200 dark:border-zinc-700 hover:border-zinc-300 dark:hover:border-zinc-600'
+            }`}
+          >
+            <div className="text-sm font-medium text-zinc-900 dark:text-zinc-100">{opt.label}</div>
+            <div className="text-xs text-zinc-500 mt-0.5">{opt.hint}</div>
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
