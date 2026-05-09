@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { LitemetricsClient, UserDetail, EventListItem } from '@litemetrics/client';
 import { queryKeys } from '../hooks/useAnalytics';
+import { useAuth } from '../auth';
 import { getBrowserIcon, getOSIcon, getDeviceIcon } from './icons';
 import { ExportButton } from './ExportButton';
 import { Activity, Eye, Layers, Calendar, User, Monitor, Tag, Clock, Smartphone } from 'lucide-react';
@@ -277,11 +278,18 @@ function UserDetailView({ siteId, client, visitorId: identifier, onBack }: { sit
         <button onClick={onBack} className="text-sm text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300">
           &larr; Back
         </button>
-        <div className="mt-2">
-          <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">
-            {user.userId || 'Anonymous User'}
-          </h2>
-          <p className="text-xs text-zinc-400 dark:text-zinc-500 font-mono">{user.visitorId}</p>
+        <div className="mt-2 flex items-start justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">
+              {user.userId || 'Anonymous User'}
+            </h2>
+            <p className="text-xs text-zinc-400 dark:text-zinc-500 font-mono">{user.visitorId}</p>
+          </div>
+          <DeleteUserEventsButton
+            siteId={siteId}
+            identifier={identifier}
+            onDeleted={onBack}
+          />
         </div>
       </div>
 
@@ -433,6 +441,133 @@ function UserDetailView({ siteId, client, visitorId: identifier, onBack }: { sit
         )}
       </div>
     </div>
+  );
+}
+
+// ─── Delete user events ─────────────────────────────────
+
+function useDeleteUserEvents() {
+  const qc = useQueryClient();
+  const { adminSecret } = useAuth();
+  const baseUrl = import.meta.env.VITE_LITEMETRICS_URL || '';
+  return useMutation({
+    mutationFn: async ({ siteId, identifier }: { siteId: string; identifier: string }) => {
+      const res = await fetch(
+        `${baseUrl}/api/users/${encodeURIComponent(identifier)}/events?siteId=${encodeURIComponent(siteId)}`,
+        {
+          method: 'DELETE',
+          headers: adminSecret ? { 'X-Litemetrics-Admin-Secret': adminSecret } : {},
+        },
+      );
+      if (!res.ok) {
+        let message = `Delete failed: ${res.status}`;
+        try {
+          const body = await res.json();
+          if (body && typeof body.error === 'string') message = body.error;
+        } catch {
+          // ignore
+        }
+        throw new Error(message);
+      }
+      return (await res.json()) as { ok: true; deleted: number };
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['users'] });
+      qc.invalidateQueries({ queryKey: ['userDetail'] });
+      qc.invalidateQueries({ queryKey: ['userEvents'] });
+      qc.invalidateQueries({ queryKey: ['events'] });
+      qc.invalidateQueries({ queryKey: ['analytics'] });
+      qc.invalidateQueries({ queryKey: ['timeSeries'] });
+      qc.invalidateQueries({ queryKey: ['insights'] });
+      qc.invalidateQueries({ queryKey: ['insightsHourly'] });
+      qc.invalidateQueries({ queryKey: ['worldMap'] });
+      qc.invalidateQueries({ queryKey: ['retention'] });
+      qc.invalidateQueries({ queryKey: ['realtime'] });
+      qc.invalidateQueries({ queryKey: ['live'] });
+      qc.invalidateQueries({ queryKey: ['campaigns'] });
+    },
+  });
+}
+
+function DeleteUserEventsButton({
+  siteId,
+  identifier,
+  onDeleted,
+}: {
+  siteId: string;
+  identifier: string;
+  onDeleted: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [confirmText, setConfirmText] = useState('');
+  const mutation = useDeleteUserEvents();
+  const expected = identifier.slice(0, 8);
+  const canConfirm = confirmText === expected && !mutation.isPending;
+
+  return (
+    <>
+      <button
+        onClick={() => setOpen(true)}
+        className="text-xs text-red-600 hover:text-red-700 border border-red-200 hover:border-red-300 dark:border-red-500/30 dark:hover:border-red-500/50 px-3 py-1.5 rounded-lg transition-colors flex-shrink-0"
+      >
+        Delete all events
+      </button>
+      {open && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-zinc-900 rounded-lg p-6 w-full max-w-md space-y-3 border border-zinc-200 dark:border-zinc-800">
+            <h3 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">
+              Delete all events for this user?
+            </h3>
+            <p className="text-sm text-zinc-600 dark:text-zinc-400">
+              This permanently removes all events tied to <code className="font-mono">{identifier}</code> from this site.
+              It cannot be undone. Type <code className="font-mono">{expected}</code> to confirm.
+            </p>
+            <input
+              autoFocus
+              value={confirmText}
+              onChange={(e) => setConfirmText(e.target.value)}
+              className="w-full px-3 py-2 rounded border border-zinc-300 dark:border-zinc-700 bg-transparent text-sm text-zinc-900 dark:text-zinc-100 font-mono"
+              placeholder={expected}
+            />
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                onClick={() => {
+                  setOpen(false);
+                  setConfirmText('');
+                  mutation.reset();
+                }}
+                className="px-3 py-1.5 text-sm rounded border border-zinc-300 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800"
+              >
+                Cancel
+              </button>
+              <button
+                disabled={!canConfirm}
+                onClick={() => {
+                  mutation.mutate(
+                    { siteId, identifier },
+                    {
+                      onSuccess: () => {
+                        setOpen(false);
+                        setConfirmText('');
+                        onDeleted();
+                      },
+                    },
+                  );
+                }}
+                className="px-3 py-1.5 text-sm rounded bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {mutation.isPending ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+            {mutation.error ? (
+              <div className="text-xs text-red-600 dark:text-red-400">
+                {(mutation.error as Error).message}
+              </div>
+            ) : null}
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
