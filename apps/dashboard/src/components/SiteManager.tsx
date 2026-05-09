@@ -3,8 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { createSitesClient, type Site } from '@litemetrics/client';
 import { queryKeys } from '../hooks/useAnalytics';
 import { useAuth } from '../auth';
-import { Globe, BookOpen, Shield, Target, Smartphone } from 'lucide-react';
-import type { SiteType } from '@litemetrics/core';
+import { BookOpen, Shield, Target } from 'lucide-react';
 
 type Platform = 'html' | 'react' | 'react-native' | 'nextjs' | 'node';
 
@@ -131,7 +130,7 @@ const timeseries = await client.getTimeSeries({
   }
 }
 
-export function SiteManager() {
+export function SiteManager({ site }: { site: Site | null }) {
   const { adminSecret } = useAuth();
   const queryClient = useQueryClient();
   const sitesClient = useMemo(() => createSitesClient({
@@ -139,53 +138,18 @@ export function SiteManager() {
     adminSecret: adminSecret || '',
   }), [adminSecret]);
 
-  const [selected, setSelected] = useState<Site | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [editName, setEditName] = useState(selected?.name ?? '');
+  const [editName, setEditName] = useState(site?.name ?? '');
 
-  useEffect(() => { setEditName(selected?.name ?? ''); }, [selected?.siteId]);
-
-  // Create form
-  const [showCreate, setShowCreate] = useState(false);
-  const [newName, setNewName] = useState('');
-  const [newType, setNewType] = useState<SiteType>('web');
-  const [newDomain, setNewDomain] = useState('');
-
-  const { data: sites = [], isLoading: loading } = useQuery({
-    queryKey: queryKeys.sites(),
-    queryFn: async () => {
-      const { sites } = await sitesClient.listSites();
-      return sites;
-    },
-  });
-
-  const createMutation = useMutation({
-    mutationFn: async ({ name, type, domain }: { name: string; type?: SiteType; domain?: string }) => {
-      const { site } = await sitesClient.createSite({ name, type, domain });
-      return site;
-    },
-    onSuccess: (site) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.sites() });
-      setShowCreate(false);
-      setNewName('');
-      setNewType('web');
-      setNewDomain('');
-      setSelected(site);
-      setError(null);
-    },
-    onError: (err) => {
-      setError(err instanceof Error ? err.message : 'Failed to create site');
-    },
-  });
+  useEffect(() => { setEditName(site?.name ?? ''); }, [site?.siteId, site?.name]);
 
   const deleteMutation = useMutation({
     mutationFn: async (siteId: string) => {
       await sitesClient.deleteSite(siteId);
       return siteId;
     },
-    onSuccess: (siteId) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.sites() });
-      if (selected?.siteId === siteId) setSelected(null);
       setError(null);
     },
     onError: (err) => {
@@ -203,9 +167,8 @@ export function SiteManager() {
       const { site } = await sitesClient.updateSite(siteId, data);
       return site;
     },
-    onSuccess: (site) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.sites() });
-      setSelected(site);
       setError(null);
     },
     onError: (err) => {
@@ -218,20 +181,14 @@ export function SiteManager() {
       const { site } = await sitesClient.regenerateSecret(siteId);
       return site;
     },
-    onSuccess: (site) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.sites() });
-      setSelected(site);
       setError(null);
     },
     onError: (err) => {
       setError(err instanceof Error ? err.message : 'Failed to regenerate secret');
     },
   });
-
-  const handleCreate = () => {
-    if (!newName.trim()) return;
-    createMutation.mutate({ name: newName.trim(), type: newType, domain: newDomain.trim() || undefined });
-  };
 
   const handleDelete = (siteId: string) => {
     if (!confirm('Are you sure you want to delete this site?')) return;
@@ -247,195 +204,103 @@ export function SiteManager() {
     navigator.clipboard.writeText(text);
   };
 
+  if (!site) {
+    return (
+      <div className="rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800 shadow-sm p-8 text-center text-zinc-500">
+        <p>No site selected.</p>
+        <p className="text-xs mt-2">
+          Press{' '}
+          <kbd className="px-1.5 py-0.5 rounded border border-zinc-300 dark:border-zinc-700 font-mono text-xs">
+            ⌘K
+          </kbd>{' '}
+          to switch sites or create a new one.
+        </p>
+      </div>
+    );
+  }
+
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <div className="space-y-6">
       {/* Error */}
       {error && (
-        <div className="lg:col-span-3 p-4 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 rounded-xl text-red-600 dark:text-red-400 text-sm">
+        <div className="p-4 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 rounded-xl text-red-600 dark:text-red-400 text-sm">
           {error}
         </div>
       )}
 
-      {/* Site List */}
-      <div className="rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800 shadow-sm p-4">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-1.5">
-            <span className="text-zinc-400 dark:text-zinc-500"><Globe className="w-3.5 h-3.5" /></span>
-            <h3 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">Sites</h3>
-          </div>
-          <button
-            onClick={() => setShowCreate(true)}
-            className="text-xs font-semibold bg-gradient-to-b from-indigo-500 to-indigo-600 hover:from-indigo-400 hover:to-indigo-500 text-white px-3 py-1.5 rounded-lg shadow-sm transition-all"
-          >
-            + New Site
-          </button>
-        </div>
-
-        {/* Create form */}
-        {showCreate && (
-          <div className="mb-4 p-3 bg-zinc-50 dark:bg-zinc-800 rounded-lg space-y-2 border border-zinc-200 dark:border-zinc-700">
-            <input
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              placeholder="Site name"
-              autoFocus
-              className="w-full bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg px-3 py-1.5 text-sm dark:text-zinc-200"
-            />
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => setNewType('web')}
-                className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors ${
-                  newType === 'web'
-                    ? 'bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/30 text-emerald-700 dark:text-emerald-400'
-                    : 'bg-white dark:bg-zinc-800 border-zinc-300 dark:border-zinc-700 text-zinc-500 dark:text-zinc-400'
-                }`}
-              >
-                <Globe className="w-3.5 h-3.5" /> Website
-              </button>
-              <button
-                type="button"
-                onClick={() => setNewType('app')}
-                className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors ${
-                  newType === 'app'
-                    ? 'bg-indigo-50 dark:bg-indigo-500/10 border-indigo-200 dark:border-indigo-500/30 text-indigo-700 dark:text-indigo-400'
-                    : 'bg-white dark:bg-zinc-800 border-zinc-300 dark:border-zinc-700 text-zinc-500 dark:text-zinc-400'
-                }`}
-              >
-                <Smartphone className="w-3.5 h-3.5" /> Mobile App
-              </button>
-            </div>
-            <input
-              value={newDomain}
-              onChange={(e) => setNewDomain(e.target.value)}
-              placeholder={newType === 'app' ? 'Bundle ID (optional)' : 'Domain (optional)'}
-              className="w-full bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg px-3 py-1.5 text-sm dark:text-zinc-200"
-            />
-            <div className="flex gap-2">
-              <button onClick={handleCreate} className="text-xs font-medium bg-gradient-to-b from-indigo-500 to-indigo-600 hover:from-indigo-400 hover:to-indigo-500 text-white px-3 py-1.5 rounded-lg shadow-sm transition-all">
-                Create
-              </button>
-              <button onClick={() => { setShowCreate(false); setNewName(''); setNewType('web'); setNewDomain(''); }} className="text-xs text-zinc-500 hover:text-zinc-700 px-3 py-1.5">
-                Cancel
-              </button>
-            </div>
-          </div>
-        )}
-
-        {loading ? (
-          <div className="space-y-2">
-            {[...Array(3)].map((_, i) => (
-              <div key={i} className="h-12 bg-zinc-100 dark:bg-zinc-800 rounded-lg animate-pulse" />
-            ))}
-          </div>
-        ) : sites.length === 0 ? (
-          <p className="text-zinc-400 text-sm py-4 text-center">No sites yet</p>
-        ) : (
-          <div className="space-y-1">
-            {sites.map((site) => (
-              <button
-                key={site.siteId}
-                onClick={() => setSelected(site)}
-                className={`w-full text-left p-3 rounded-lg transition-colors ${
-                  selected?.siteId === site.siteId
-                    ? 'bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-200 dark:border-indigo-500/20'
-                    : 'hover:bg-zinc-50 dark:hover:bg-zinc-800 border border-transparent'
-                }`}
-              >
-                <div className="flex items-center gap-2">
-                  {site.type === 'app'
-                    ? <Smartphone className="w-3.5 h-3.5 text-indigo-500 flex-shrink-0" />
-                    : <Globe className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0" />}
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-zinc-800 dark:text-zinc-200 truncate">{site.name}</p>
-                    <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-0.5 font-mono">{site.siteId}</p>
-                  </div>
-                </div>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-
       {/* Site Detail */}
-      <div className="lg:col-span-2 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800 shadow-sm p-6">
-        {!selected ? (
-          <div className="flex items-center justify-center h-full text-zinc-400 text-sm py-16">
-            Select a site to view details
-          </div>
-        ) : (
-          <div className="space-y-6">
-            <div className="flex items-center justify-between">
-              <input
-                value={editName}
-                onChange={(e) => setEditName(e.target.value)}
-                onBlur={() => {
-                  const trimmed = editName.trim();
-                  if (!trimmed || trimmed === selected.name) {
-                    setEditName(selected.name);
-                    return;
-                  }
-                  updateMutation.mutate({ siteId: selected.siteId, data: { name: trimmed } });
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.currentTarget.blur();
-                  } else if (e.key === 'Escape') {
-                    setEditName(selected.name);
-                    e.currentTarget.blur();
-                  }
-                }}
-                className="text-lg font-semibold text-zinc-900 dark:text-zinc-100 bg-transparent border-b border-transparent hover:border-zinc-300 dark:hover:border-zinc-600 focus:border-indigo-500 dark:focus:border-indigo-400 outline-none px-0 py-0.5 transition-colors w-auto min-w-0"
-              />
-              <div className="flex gap-2">
-                <button
-                  onClick={() => handleRegenerate(selected.siteId)}
-                  className="text-xs text-amber-600 hover:text-amber-700 border border-amber-200 hover:border-amber-300 px-3 py-1.5 rounded-lg transition-colors"
-                >
-                  Regenerate Secret
-                </button>
-                <button
-                  onClick={() => handleDelete(selected.siteId)}
-                  className="text-xs text-red-600 hover:text-red-700 border border-red-200 hover:border-red-300 px-3 py-1.5 rounded-lg transition-colors"
-                >
-                  Delete
-                </button>
-              </div>
+      <div className="rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800 shadow-sm p-6">
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <input
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+              onBlur={() => {
+                const trimmed = editName.trim();
+                if (!trimmed || trimmed === site.name) {
+                  setEditName(site.name);
+                  return;
+                }
+                updateMutation.mutate({ siteId: site.siteId, data: { name: trimmed } });
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.currentTarget.blur();
+                } else if (e.key === 'Escape') {
+                  setEditName(site.name);
+                  e.currentTarget.blur();
+                }
+              }}
+              className="text-lg font-semibold text-zinc-900 dark:text-zinc-100 bg-transparent border-b border-transparent hover:border-zinc-300 dark:hover:border-zinc-600 focus:border-indigo-500 dark:focus:border-indigo-400 outline-none px-0 py-0.5 transition-colors w-auto min-w-0"
+            />
+            <div className="flex gap-2">
+              <button
+                onClick={() => handleRegenerate(site.siteId)}
+                className="text-xs text-amber-600 hover:text-amber-700 border border-amber-200 hover:border-amber-300 px-3 py-1.5 rounded-lg transition-colors"
+              >
+                Regenerate Secret
+              </button>
+              <button
+                onClick={() => handleDelete(site.siteId)}
+                className="text-xs text-red-600 hover:text-red-700 border border-red-200 hover:border-red-300 px-3 py-1.5 rounded-lg transition-colors"
+              >
+                Delete
+              </button>
             </div>
-
-            <div className="space-y-4">
-              <Field label="Site ID" value={selected.siteId} onCopy={copyToClipboard} mono />
-              <Field label="Secret Key" value={selected.secretKey} onCopy={copyToClipboard} mono secret />
-              {selected.domain && <Field label="Domain" value={selected.domain} />}
-              <Field label="Created" value={new Date(selected.createdAt).toLocaleString()} />
-              <Field label="Updated" value={new Date(selected.updatedAt).toLocaleString()} />
-            </div>
-
-            {/* Allowed Hostnames */}
-            <AllowedHostnames
-              hostnames={selected.allowedOrigins ?? []}
-              onUpdate={(hostnames) => updateMutation.mutate({ siteId: selected.siteId, data: { allowedOrigins: hostnames } })}
-              saving={updateMutation.isPending}
-            />
-
-            {/* Conversion Events */}
-            <ConversionEvents
-              events={selected.conversionEvents ?? []}
-              onUpdate={(events) => updateMutation.mutate({ siteId: selected.siteId, data: { conversionEvents: events } })}
-              saving={updateMutation.isPending}
-            />
-
-            {/* Bot Filtering */}
-            <BotFilterModeSetting
-              mode={selected.botFilterMode}
-              onUpdate={(mode) => updateMutation.mutate({ siteId: selected.siteId, data: { botFilterMode: mode } })}
-              saving={updateMutation.isPending}
-            />
-
-            {/* Setup Guide */}
-            <SetupGuide site={selected} />
           </div>
-        )}
+
+          <div className="space-y-4">
+            <Field label="Site ID" value={site.siteId} onCopy={copyToClipboard} mono />
+            <Field label="Secret Key" value={site.secretKey} onCopy={copyToClipboard} mono secret />
+            {site.domain && <Field label="Domain" value={site.domain} />}
+            <Field label="Created" value={new Date(site.createdAt).toLocaleString()} />
+            <Field label="Updated" value={new Date(site.updatedAt).toLocaleString()} />
+          </div>
+
+          {/* Allowed Hostnames */}
+          <AllowedHostnames
+            hostnames={site.allowedOrigins ?? []}
+            onUpdate={(hostnames) => updateMutation.mutate({ siteId: site.siteId, data: { allowedOrigins: hostnames } })}
+            saving={updateMutation.isPending}
+          />
+
+          {/* Conversion Events */}
+          <ConversionEvents
+            events={site.conversionEvents ?? []}
+            onUpdate={(events) => updateMutation.mutate({ siteId: site.siteId, data: { conversionEvents: events } })}
+            saving={updateMutation.isPending}
+          />
+
+          {/* Bot Filtering */}
+          <BotFilterModeSetting
+            mode={site.botFilterMode}
+            onUpdate={(mode) => updateMutation.mutate({ siteId: site.siteId, data: { botFilterMode: mode } })}
+            saving={updateMutation.isPending}
+          />
+
+          {/* Setup Guide */}
+          <SetupGuide site={site} />
+        </div>
       </div>
     </div>
   );

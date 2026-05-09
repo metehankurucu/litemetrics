@@ -221,7 +221,7 @@ export function App() {
               path="/retention"
               element={<RetentionPage siteId={siteId} client={client} />}
             />
-            <Route path="/sites" element={<SitesPage />} />
+            <Route path="/sites" element={<SitesPage siteId={siteId} />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </div>
