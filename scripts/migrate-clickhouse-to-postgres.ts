@@ -114,7 +114,7 @@ async function main() {
 async function migrateSites(ch: ReturnType<typeof createClient>, pg: Pool, args: Args): Promise<void> {
   console.log('→ Migrating sites...');
   const result = await ch.query({
-    query: `SELECT site_id, secret_key, name, type, domain, allowed_origins, conversion_events, created_at, updated_at FROM litemetrics_sites FINAL WHERE is_deleted = 0`,
+    query: `SELECT site_id, secret_key, name, type, domain, allowed_origins, conversion_events, bot_filter_mode, created_at, updated_at FROM litemetrics_sites FINAL WHERE is_deleted = 0`,
     format: 'JSONEachRow',
   });
   const rows = await result.json<Record<string, unknown>>();
@@ -126,8 +126,8 @@ async function migrateSites(ch: ReturnType<typeof createClient>, pg: Pool, args:
     const conversionEvents = parseJsonArray(r.conversion_events);
     await pg.query(
       `INSERT INTO litemetrics_sites
-         (site_id, secret_key, name, type, domain, allowed_origins, conversion_events, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         (site_id, secret_key, name, type, domain, allowed_origins, conversion_events, bot_filter_mode, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
        ON CONFLICT (site_id) DO UPDATE SET
          secret_key = EXCLUDED.secret_key,
          name = EXCLUDED.name,
@@ -135,6 +135,7 @@ async function migrateSites(ch: ReturnType<typeof createClient>, pg: Pool, args:
          domain = EXCLUDED.domain,
          allowed_origins = EXCLUDED.allowed_origins,
          conversion_events = EXCLUDED.conversion_events,
+         bot_filter_mode = EXCLUDED.bot_filter_mode,
          updated_at = EXCLUDED.updated_at`,
       [
         r.site_id,
@@ -144,6 +145,7 @@ async function migrateSites(ch: ReturnType<typeof createClient>, pg: Pool, args:
         r.domain ?? null,
         allowedOrigins,
         conversionEvents,
+        r.bot_filter_mode ?? null,
         toUTCDate(String(r.created_at)),
         toUTCDate(String(r.updated_at)),
       ],

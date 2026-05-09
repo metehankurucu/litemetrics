@@ -1,4 +1,4 @@
-import type { DBAdapter, EnrichedEvent, QueryParams, QueryResult, QueryDataPoint, Granularity, TimeSeriesParams, TimeSeriesResult, RetentionParams, RetentionResult, RetentionCohort, Site, CreateSiteRequest, UpdateSiteRequest, EventListParams, EventListResult, EventListItem, UserListParams, UserListResult, UserDetail } from '@litemetrics/core';
+import type { DBAdapter, EnrichedEvent, QueryParams, QueryResult, QueryDataPoint, Granularity, TimeSeriesParams, TimeSeriesResult, RetentionParams, RetentionResult, RetentionCohort, Site, CreateSiteRequest, UpdateSiteRequest, EventListParams, EventListResult, EventListItem, UserListParams, UserListResult, UserDetail, BotFilterMode } from '@litemetrics/core';
 import { Pool } from 'pg';
 import { resolvePeriod, previousPeriodRange, autoGranularity, granularityToDateFormat, fillBuckets, getISOWeek, generateSiteId, generateSecretKey } from './utils';
 import { normalizeReferrer } from '../normalize-referrer.js';
@@ -104,6 +104,7 @@ CREATE TABLE IF NOT EXISTS ${SITES_TABLE} (
     domain             text,
     allowed_origins    text[],
     conversion_events  text[],
+    bot_filter_mode    text,
     created_at         timestamptz NOT NULL,
     updated_at         timestamptz NOT NULL,
     deleted_at         timestamptz
@@ -112,6 +113,9 @@ CREATE TABLE IF NOT EXISTS ${SITES_TABLE} (
 
 // Idempotent column add for upgrades from a previous schema without deleted_at.
 const ALTER_SITES_ADD_DELETED_AT = `ALTER TABLE ${SITES_TABLE} ADD COLUMN IF NOT EXISTS deleted_at timestamptz`;
+
+// Idempotent column add for upgrades from a previous schema without bot_filter_mode.
+const ALTER_SITES_ADD_BOT_FILTER_MODE = `ALTER TABLE ${SITES_TABLE} ADD COLUMN IF NOT EXISTS bot_filter_mode text`;
 
 const CREATE_SITES_INDEXES: string[] = [
   `CREATE INDEX IF NOT EXISTS idx_${SITES_TABLE}_secret ON ${SITES_TABLE} (secret_key) WHERE deleted_at IS NULL`,
@@ -315,6 +319,7 @@ interface SiteRow {
   domain: string | null;
   allowed_origins: string[] | null;
   conversion_events: string[] | null;
+  bot_filter_mode: string | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -345,6 +350,7 @@ export class PostgresAdapter implements DBAdapter {
 
       await client.query(CREATE_SITES_TABLE);
       await client.query(ALTER_SITES_ADD_DELETED_AT);
+      await client.query(ALTER_SITES_ADD_BOT_FILTER_MODE);
       for (const sql of CREATE_SITES_INDEXES) await client.query(sql);
 
       await client.query(CREATE_IDENTITY_MAP_TABLE);
@@ -1301,9 +1307,9 @@ export class PostgresAdapter implements DBAdapter {
     const conversionEvents = data.conversionEvents && data.conversionEvents.length > 0 ? data.conversionEvents : null;
 
     await this.pool.query(
-      `INSERT INTO ${SITES_TABLE} (site_id, secret_key, name, type, domain, allowed_origins, conversion_events, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-      [siteId, secretKey, data.name, data.type ?? 'web', data.domain ?? null, allowedOrigins, conversionEvents, now, now],
+      `INSERT INTO ${SITES_TABLE} (site_id, secret_key, name, type, domain, allowed_origins, conversion_events, bot_filter_mode, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+      [siteId, secretKey, data.name, data.type ?? 'web', data.domain ?? null, allowedOrigins, conversionEvents, null, now, now],
     );
 
     return {
@@ -1360,6 +1366,11 @@ export class PostgresAdapter implements DBAdapter {
       sets.push(`conversion_events = $${++p}`);
       values.push(data.conversionEvents.length > 0 ? data.conversionEvents : null);
     }
+    if (data.botFilterMode !== undefined) {
+      // null clears the override; a string sets it
+      sets.push(`bot_filter_mode = $${++p}`);
+      values.push(data.botFilterMode ?? null);
+    }
 
     values.push(siteId);
     const result = await this.pool.query<SiteRow>(
@@ -1398,6 +1409,7 @@ export class PostgresAdapter implements DBAdapter {
       domain: row.domain ?? undefined,
       allowedOrigins: row.allowed_origins ?? undefined,
       conversionEvents: row.conversion_events ?? undefined,
+      botFilterMode: row.bot_filter_mode ? (row.bot_filter_mode as BotFilterMode) : undefined,
       createdAt: row.created_at.toISOString(),
       updatedAt: row.updated_at.toISOString(),
     };

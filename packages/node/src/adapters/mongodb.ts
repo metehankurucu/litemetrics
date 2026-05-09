@@ -1,4 +1,4 @@
-import type { DBAdapter, EnrichedEvent, QueryParams, QueryResult, QueryDataPoint, TimeSeriesParams, TimeSeriesResult, RetentionParams, RetentionResult, RetentionCohort, Site, CreateSiteRequest, UpdateSiteRequest, EventListParams, EventListResult, EventListItem, UserListParams, UserListResult, UserDetail } from '@litemetrics/core';
+import type { DBAdapter, EnrichedEvent, QueryParams, QueryResult, QueryDataPoint, TimeSeriesParams, TimeSeriesResult, RetentionParams, RetentionResult, RetentionCohort, Site, CreateSiteRequest, UpdateSiteRequest, EventListParams, EventListResult, EventListItem, UserListParams, UserListResult, UserDetail, BotFilterMode } from '@litemetrics/core';
 import { MongoClient, type Collection, type Db } from 'mongodb';
 import { resolvePeriod, previousPeriodRange, autoGranularity, granularityToDateFormat, fillBuckets, getISOWeek, generateSiteId, generateSecretKey } from './utils';
 import { normalizeReferrer } from '../normalize-referrer.js';
@@ -91,6 +91,7 @@ interface SiteDocument {
   domain: string | null;
   allowed_origins: string[] | null;
   conversion_events: string[] | null;
+  bot_filter_mode?: string | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -1400,6 +1401,7 @@ export class MongoDBAdapter implements DBAdapter {
       domain: data.domain ?? null,
       allowed_origins: data.allowedOrigins ?? null,
       conversion_events: data.conversionEvents ?? null,
+      bot_filter_mode: null,
       created_at: now,
       updated_at: now,
     };
@@ -1429,6 +1431,7 @@ export class MongoDBAdapter implements DBAdapter {
     if (data.domain !== undefined) updates.domain = data.domain || null;
     if (data.allowedOrigins !== undefined) updates.allowed_origins = data.allowedOrigins.length > 0 ? data.allowedOrigins : null;
     if (data.conversionEvents !== undefined) updates.conversion_events = data.conversionEvents.length > 0 ? data.conversionEvents : null;
+    if (data.botFilterMode !== undefined) updates.bot_filter_mode = data.botFilterMode ?? null;
 
     const result = await this.sites.findOneAndUpdate(
       { site_id: siteId },
@@ -1467,6 +1470,7 @@ export class MongoDBAdapter implements DBAdapter {
       domain: doc.domain ?? undefined,
       allowedOrigins: doc.allowed_origins ?? undefined,
       conversionEvents: doc.conversion_events ?? undefined,
+      botFilterMode: doc.bot_filter_mode ? (doc.bot_filter_mode as BotFilterMode) : undefined,
       createdAt: doc.created_at.toISOString(),
       updatedAt: doc.updated_at.toISOString(),
     };
