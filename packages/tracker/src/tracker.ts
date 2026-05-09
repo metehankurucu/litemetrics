@@ -58,6 +58,11 @@ export function createTracker(config: TrackerConfig): LitemetricsInstance {
     return createNoopTracker();
   }
 
+  // Check WebDriver flag - set when browser is automated (Selenium/Puppeteer/Playwright)
+  if (typeof navigator !== 'undefined' && (navigator as Navigator & { webdriver?: boolean }).webdriver === true) {
+    return createNoopTracker();
+  }
+
   // Check opt-out
   try {
     if (localStorage.getItem(STORAGE_KEY_OPTOUT) === '1') {
