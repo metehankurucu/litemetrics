@@ -20,6 +20,18 @@ describe('isBot', () => {
       ['LinkedInBot/1.0', 'LinkedInBot'],
       ['Discordbot/2.0', 'Discordbot'],
       ['WhatsApp/2.23.20.78', 'WhatsApp'],
+      // 2026 AI training / scraper bots that must be caught
+      ['Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko); compatible; GPTBot/1.2; +https://openai.com/gptbot', 'GPTBot'],
+      ['Mozilla/5.0 (compatible; ClaudeBot/1.0; +claudebot@anthropic.com)', 'ClaudeBot'],
+      ['Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; PerplexityBot/1.0; +https://perplexity.ai/perplexitybot)', 'PerplexityBot'],
+      ['Mozilla/5.0 (compatible; ChatGPT-User/1.0; +https://openai.com/bot)', 'ChatGPT-User'],
+      ['Mozilla/5.0 (compatible; Bytespider; spider-feedback@bytedance.com)', 'Bytespider'],
+      ['Mozilla/5.0 (compatible; Amazonbot/0.1; +https://developer.amazon.com/support/amazonbot)', 'Amazonbot'],
+      ['Mozilla/5.0 (compatible; Meta-ExternalAgent/1.1; +https://developers.facebook.com/docs/sharing/webmasters/crawler)', 'Meta-ExternalAgent'],
+      ['Mozilla/5.0 (compatible; CCBot/2.0; +https://commoncrawl.org/faq/)', 'CCBot'],
+      ['Mozilla/5.0 (compatible; AhrefsBot/7.0; +http://ahrefs.com/robot/)', 'AhrefsBot'],
+      ['Mozilla/5.0 (compatible; SemrushBot/7~bl; +http://www.semrush.com/bot.html)', 'SemrushBot'],
+      ['Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.0.0 Mobile Safari/537.36 Chrome-Lighthouse', 'Chrome-Lighthouse'],
     ])('returns true for %s (%s)', (ua) => {
       expect(isBot(ua)).toBe(true);
     });
