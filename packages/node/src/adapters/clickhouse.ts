@@ -194,7 +194,24 @@ function channelClassificationExpr(): string {
   )`;
 }
 
-function buildFilterConditions(filters?: Record<string, string>): { conditions: string[]; params: Record<string, unknown> } {
+/**
+ * Returns the bot-filter SQL fragment to append to a WHERE clause.
+ * Default behaviour (`includeBots` falsy) excludes events flagged by the bot filter
+ * by requiring `bot_flag IS NULL`. Pass `includeBots = true` to disable the filter.
+ */
+function botFilterClickhouseSql(includeBots?: boolean): string {
+  return includeBots ? '' : ` AND bot_flag IS NULL`;
+}
+
+function buildFilterConditions(filters?: Record<string, string>, includeBots?: boolean): { conditions: string[]; params: Record<string, unknown> } {
+  const result = buildFilterConditionsInner(filters);
+  if (!includeBots) {
+    result.conditions.unshift('bot_flag IS NULL');
+  }
+  return result;
+}
+
+function buildFilterConditionsInner(filters?: Record<string, string>): { conditions: string[]; params: Record<string, unknown> } {
   if (!filters) return { conditions: [], params: {} };
   const map: Record<string, string> = {
     'geo.country': 'country',
@@ -361,7 +378,7 @@ export class ClickHouseAdapter implements DBAdapter {
       to: toCHDateTime(dateRange.to),
       limit,
     };
-    const filter = buildFilterConditions(q.filters);
+    const filter = buildFilterConditions(q.filters, q.includeBots);
     const filterSql = filter.conditions.length > 0 ? ` AND ${filter.conditions.join(' AND ')}` : '';
 
     let data: QueryDataPoint[] = [];
@@ -909,7 +926,7 @@ export class ClickHouseAdapter implements DBAdapter {
     const bucketFn = this.granularityToClickHouseFunc(granularity, params.timezone);
     const dateFormat = granularityToDateFormat(granularity);
 
-    const filter = buildFilterConditions(params.filters);
+    const filter = buildFilterConditions(params.filters, params.includeBots);
     const filterSql = filter.conditions.length > 0 ? ` AND ${filter.conditions.join(' AND ')}` : '';
     const typeFilter = params.metric === 'pageviews' ? `AND type = 'pageview'` : '';
     const eventsFilter = params.metric === 'events' ? `AND type = 'event'` : '';
@@ -1021,7 +1038,7 @@ export class ClickHouseAdapter implements DBAdapter {
         groupUniqArray(toStartOfWeek(timestamp, 1)) AS active_weeks
       FROM ${EVENTS_TABLE}
       WHERE site_id = {siteId:String}
-        AND timestamp >= {since:String}
+        AND timestamp >= {since:String}${botFilterClickhouseSql(params.includeBots)}
       GROUP BY visitor_id`,
       {
         siteId: params.siteId,
@@ -1082,6 +1099,10 @@ export class ClickHouseAdapter implements DBAdapter {
 
     const conditions: string[] = [`site_id = {siteId:String}`];
     const queryParams: Record<string, unknown> = { siteId: params.siteId, limit, offset };
+
+    if (!params.includeBots) {
+      conditions.push(`bot_flag IS NULL`);
+    }
 
     if (params.type) {
       conditions.push(`type = {type:String}`);
@@ -1164,6 +1185,7 @@ export class ClickHouseAdapter implements DBAdapter {
       queryParams.search = `%${params.search}%`;
     }
 
+    const botSql = botFilterClickhouseSql(params.includeBots);
     const where = conditions.join(' AND ');
 
     const [userRows, countRows] = await Promise.all([
@@ -1202,7 +1224,7 @@ export class ClickHouseAdapter implements DBAdapter {
           anyLast(e.utm_content) AS utm_content
         FROM ${EVENTS_TABLE} e
         LEFT JOIN identity i ON e.visitor_id = i.visitor_id
-        WHERE e.site_id = {siteId:String}${where.includes('ILIKE') ? ` AND (e.visitor_id ILIKE {search:String} OR i.user_id ILIKE {search:String})` : ''}
+        WHERE e.site_id = {siteId:String}${botSql ? ` AND e.bot_flag IS NULL` : ''}${where.includes('ILIKE') ? ` AND (e.visitor_id ILIKE {search:String} OR i.user_id ILIKE {search:String})` : ''}
         GROUP BY group_key
         ORDER BY lastSeen DESC
         LIMIT {limit:UInt32}
@@ -1219,7 +1241,7 @@ export class ClickHouseAdapter implements DBAdapter {
           SELECT if(i.user_id IS NOT NULL AND i.user_id != '', i.user_id, e.visitor_id) AS group_key
           FROM ${EVENTS_TABLE} e
           LEFT JOIN identity i ON e.visitor_id = i.visitor_id
-          WHERE e.site_id = {siteId:String}${where.includes('ILIKE') ? ` AND (e.visitor_id ILIKE {search:String} OR i.user_id ILIKE {search:String})` : ''}
+          WHERE e.site_id = {siteId:String}${botSql ? ` AND e.bot_flag IS NULL` : ''}${where.includes('ILIKE') ? ` AND (e.visitor_id ILIKE {search:String} OR i.user_id ILIKE {search:String})` : ''}
           GROUP BY group_key
         )`,
         queryParams,
@@ -1260,6 +1282,8 @@ export class ClickHouseAdapter implements DBAdapter {
   }
 
   async getUserDetail(siteId: string, identifier: string): Promise<UserDetail | null> {
+    // Note: getUserDetail does not take per-call bot filter options.
+    // The list-level bot filter is applied by listUsers and getUserEvents.
     // Try as userId first (check identity map)
     const visitorIds = await this.getVisitorIdsForUser(siteId, identifier);
     if (visitorIds.length > 0) {
@@ -1419,6 +1443,10 @@ export class ClickHouseAdapter implements DBAdapter {
 
     const conditions: string[] = [`site_id = {siteId:String}`, `visitor_id IN {visitorIds:Array(String)}`];
     const queryParams: Record<string, unknown> = { siteId, visitorIds, limit, offset };
+
+    if (!params.includeBots) {
+      conditions.push(`bot_flag IS NULL`);
+    }
 
     if (params.type) {
       conditions.push(`type = {type:String}`);

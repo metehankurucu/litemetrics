@@ -29,5 +29,6 @@ export function extractQueryParams(req: any): QueryParams {
     filters: q.filters ? JSON.parse(q.filters as string) : undefined,
     compare: q.compare === 'true' || q.compare === '1',
     timezone,
+    includeBots: q.includeBots === 'true' || q.includeBots === '1',
   };
 }

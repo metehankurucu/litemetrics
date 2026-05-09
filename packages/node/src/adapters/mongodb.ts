@@ -240,6 +240,18 @@ function channelClassificationSwitch() {
   };
 }
 
+/**
+ * Returns a Mongo match clause that excludes bot-flagged events when `includeBots`
+ * is not true. T8 writes `bot_flag: e.botFlag ?? null` so non-bot rows have an
+ * explicit `null`. For legacy docs predating T8 (no `bot_flag` field at all),
+ * `{ bot_flag: null }` also matches because Mongo equality with null matches
+ * missing fields.
+ */
+function applyBotFilter(match: Record<string, unknown>, includeBots?: boolean): Record<string, unknown> {
+  if (includeBots) return match;
+  return { ...match, bot_flag: null };
+}
+
 function buildFilterMatch(filters?: Record<string, string>): Record<string, unknown> {
   if (!filters) return {};
   const map: Record<string, string> = {
@@ -378,10 +390,10 @@ export class MongoDBAdapter implements DBAdapter {
     const siteId = q.siteId;
     const limit = q.limit ?? 10;
 
-    const baseMatch = {
+    const baseMatch: Record<string, unknown> = applyBotFilter({
       site_id: siteId,
       timestamp: { $gte: new Date(dateRange.from), $lte: new Date(dateRange.to) },
-    };
+    }, q.includeBots);
     const filterMatch = buildFilterMatch(q.filters);
 
     // Helper: builds initial pipeline stages including optional channel filter
@@ -809,10 +821,10 @@ export class MongoDBAdapter implements DBAdapter {
 
     const granularity = params.granularity ?? autoGranularity(period);
 
-    const baseMatch: Record<string, unknown> = {
+    const baseMatch: Record<string, unknown> = applyBotFilter({
       site_id: params.siteId,
       timestamp: { $gte: new Date(dateRange.from), $lte: new Date(dateRange.to) },
-    };
+    }, params.includeBots);
     const filterMatch = buildFilterMatch(params.filters);
 
     if (params.metric === 'pageviews') {
@@ -896,10 +908,10 @@ export class MongoDBAdapter implements DBAdapter {
 
     const pipeline: object[] = [
       {
-        $match: {
+        $match: applyBotFilter({
           site_id: params.siteId,
           timestamp: { $gte: startDate },
-        },
+        }, params.includeBots),
       },
       {
         $group: {
@@ -963,7 +975,7 @@ export class MongoDBAdapter implements DBAdapter {
     const limit = Math.min(params.limit ?? 50, 200);
     const offset = params.offset ?? 0;
 
-    const match: Record<string, unknown> = { site_id: params.siteId };
+    const match: Record<string, unknown> = applyBotFilter({ site_id: params.siteId }, params.includeBots);
 
     if (params.type) match.type = params.type;
     if (params.eventName) {
@@ -1031,7 +1043,7 @@ export class MongoDBAdapter implements DBAdapter {
     const limit = Math.min(params.limit ?? 50, 200);
     const offset = params.offset ?? 0;
 
-    const match: Record<string, unknown> = { site_id: params.siteId };
+    const match: Record<string, unknown> = applyBotFilter({ site_id: params.siteId }, params.includeBots);
 
     const pipeline: object[] = [
       { $match: match },
@@ -1312,10 +1324,10 @@ export class MongoDBAdapter implements DBAdapter {
     const limit = Math.min(params.limit ?? 50, 200);
     const offset = params.offset ?? 0;
 
-    const match: Record<string, unknown> = {
+    const match: Record<string, unknown> = applyBotFilter({
       site_id: siteId,
       visitor_id: { $in: visitorIds },
-    };
+    }, params.includeBots);
 
     if (params.type) match.type = params.type;
     if (params.eventName) {

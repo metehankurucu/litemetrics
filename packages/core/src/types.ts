@@ -353,6 +353,11 @@ export interface QueryParams {
   compare?: boolean;
   conversionEvents?: string[];
   timezone?: string;
+  /**
+   * Include events flagged by the bot filter. Defaults to false (bots excluded).
+   * When false, rows where `bot_flag` is non-null are excluded from analytics queries.
+   */
+  includeBots?: boolean;
 }
 
 export interface QueryResult {
@@ -384,6 +389,8 @@ export interface TimeSeriesParams {
   filters?: Record<string, string>;
   conversionEvents?: string[];
   timezone?: string;
+  /** Include events flagged by the bot filter. Defaults to false. */
+  includeBots?: boolean;
 }
 
 export interface TimeSeriesResult {
@@ -412,6 +419,8 @@ export interface EventListParams {
   dateTo?: string;
   limit?: number;
   offset?: number;
+  /** Include events flagged by the bot filter. Defaults to false. */
+  includeBots?: boolean;
 }
 
 export interface EventListItem {
@@ -454,6 +463,8 @@ export interface UserListParams {
   search?: string;
   limit?: number;
   offset?: number;
+  /** Include events flagged by the bot filter when aggregating user data. Defaults to false. */
+  includeBots?: boolean;
 }
 
 export interface UserDetail {
@@ -489,6 +500,8 @@ export interface RetentionParams {
   siteId: string;
   period?: Period;
   weeks?: number;
+  /** Include events flagged by the bot filter. Defaults to false. */
+  includeBots?: boolean;
 }
 
 export interface RetentionCohort {

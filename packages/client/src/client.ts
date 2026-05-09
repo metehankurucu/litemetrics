@@ -22,11 +22,15 @@ export interface StatsOptions {
   filters?: Record<string, string>;
   compare?: boolean;
   timezone?: string;
+  /** Include events flagged by the bot filter. Defaults to false. */
+  includeBots?: boolean;
 }
 
 export interface RetentionOptions {
   period?: Period;
   weeks?: number;
+  /** Include events flagged by the bot filter. Defaults to false. */
+  includeBots?: boolean;
 }
 
 export interface EventsListOptions {
@@ -41,6 +45,8 @@ export interface EventsListOptions {
   dateTo?: string;
   limit?: number;
   offset?: number;
+  /** Include events flagged by the bot filter. Defaults to false. */
+  includeBots?: boolean;
 }
 
 export interface TimeSeriesOptions {
@@ -50,12 +56,16 @@ export interface TimeSeriesOptions {
   granularity?: Granularity;
   filters?: Record<string, string>;
   timezone?: string;
+  /** Include events flagged by the bot filter. Defaults to false. */
+  includeBots?: boolean;
 }
 
 export interface UsersListOptions {
   search?: string;
   limit?: number;
   offset?: number;
+  /** Include events flagged by the bot filter. Defaults to false. */
+  includeBots?: boolean;
 }
 
 export class LitemetricsClient {
@@ -97,6 +107,7 @@ export class LitemetricsClient {
     if (options?.filters) params.filters = JSON.stringify(options.filters);
     if (options?.compare) params.compare = 'true';
     if (options?.timezone) params.timezone = options.timezone;
+    if (options?.includeBots) params.includeBots = 'true';
 
     const { data } = await this.http.get<QueryResult>(this.endpoint, { params });
     return data;
@@ -146,6 +157,7 @@ export class LitemetricsClient {
     if (options?.granularity) params.granularity = options.granularity;
     if (options?.filters) params.filters = JSON.stringify(options.filters);
     if (options?.timezone) params.timezone = options.timezone;
+    if (options?.includeBots) params.includeBots = 'true';
 
     const { data } = await this.http.get<TimeSeriesResult>(this.endpoint, { params });
     return data;
@@ -167,6 +179,7 @@ export class LitemetricsClient {
     if (options?.dateTo) params.dateTo = options.dateTo;
     if (options?.limit) params.limit = String(options.limit);
     if (options?.offset) params.offset = String(options.offset);
+    if (options?.includeBots) params.includeBots = 'true';
 
     const { data } = await this.http.get<EventListResult>('/api/events', { params });
     return data;
@@ -180,6 +193,7 @@ export class LitemetricsClient {
     if (options?.search) params.search = options.search;
     if (options?.limit) params.limit = String(options.limit);
     if (options?.offset) params.offset = String(options.offset);
+    if (options?.includeBots) params.includeBots = 'true';
 
     const { data } = await this.http.get<UserListResult>('/api/users', { params });
     return data;
@@ -203,6 +217,7 @@ export class LitemetricsClient {
     if (options?.dateTo) params.dateTo = options.dateTo;
     if (options?.limit) params.limit = String(options.limit);
     if (options?.offset) params.offset = String(options.offset);
+    if (options?.includeBots) params.includeBots = 'true';
 
     const { data } = await this.http.get<EventListResult>(`/api/users/${encodeURIComponent(identifier)}/events`, { params });
     return data;
@@ -218,6 +233,7 @@ export class LitemetricsClient {
 
     if (options?.period) params.period = options.period;
     if (options?.weeks) params.weeks = String(options.weeks);
+    if (options?.includeBots) params.includeBots = 'true';
 
     const { data } = await this.http.get<RetentionResult>(this.endpoint, { params });
     return data;

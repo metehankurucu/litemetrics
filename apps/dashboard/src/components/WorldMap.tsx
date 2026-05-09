@@ -53,20 +53,21 @@ interface WorldMapProps {
   siteId: string;
   period: Period;
   filters?: Record<string, string>;
+  includeBots?: boolean;
 }
 
 interface CountryData {
   [iso: string]: number;
 }
 
-export const WorldMap = memo(function WorldMap({ client, siteId, period, filters }: WorldMapProps) {
+export const WorldMap = memo(function WorldMap({ client, siteId, period, filters, includeBots }: WorldMapProps) {
   const [tooltip, setTooltip] = useState<{ name: string; value: number; x: number; y: number } | null>(null);
 
   const { data: countryData = {}, isLoading: loading } = useQuery({
-    queryKey: queryKeys.worldMap(siteId, period, filters),
+    queryKey: queryKeys.worldMap(siteId, period, filters, includeBots),
     queryFn: async () => {
       client.setSiteId(siteId);
-      const result = await client.getTopCountries({ period, limit: 200, filters, timezone: BROWSER_TIMEZONE });
+      const result = await client.getTopCountries({ period, limit: 200, filters, timezone: BROWSER_TIMEZONE, includeBots });
       const map: CountryData = {};
       for (const d of result.data) {
         map[d.key] = d.value;

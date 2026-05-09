@@ -392,6 +392,7 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
             granularity: q.granularity as TimeSeriesParams['granularity'],
             filters: q.filters ? JSON.parse(q.filters as string) : undefined,
             timezone: params.timezone,
+            includeBots: params.includeBots,
           };
           if (tsParams.metric === 'conversions') {
             const site = await db.getSite(params.siteId);
@@ -409,6 +410,7 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
             siteId: params.siteId,
             period: params.period,
             weeks: q.weeks ? parseInt(q.weeks as string, 10) : undefined,
+            includeBots: params.includeBots,
           };
           const result = await db.queryRetention(retentionParams);
           sendJson(res, 200, result);
@@ -552,6 +554,7 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
           dateTo: q.dateTo as string | undefined,
           limit: q.limit ? parseInt(q.limit as string, 10) : undefined,
           offset: q.offset ? parseInt(q.offset as string, 10) : undefined,
+          includeBots: q.includeBots === 'true' || q.includeBots === '1',
         };
 
         const result = await db.listEvents(params);
@@ -628,6 +631,7 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
             dateTo: q.dateTo as string | undefined,
             limit: q.limit ? parseInt(q.limit as string, 10) : undefined,
             offset: q.offset ? parseInt(q.offset as string, 10) : undefined,
+            includeBots: q.includeBots === 'true' || q.includeBots === '1',
           };
           const result = await db.getUserEvents(siteId, decodeURIComponent(visitorId), params);
           sendJson(res, 200, result);
@@ -651,6 +655,7 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
           search: q.search as string | undefined,
           limit: q.limit ? parseInt(q.limit as string, 10) : undefined,
           offset: q.offset ? parseInt(q.offset as string, 10) : undefined,
+          includeBots: q.includeBots === 'true' || q.includeBots === '1',
         };
         const result = await db.listUsers(params);
         sendJson(res, 200, result);

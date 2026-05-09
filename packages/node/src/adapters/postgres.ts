@@ -271,10 +271,28 @@ const FILTER_COLUMN_MAP: Record<string, string> = {
 };
 
 /**
+ * Returns the bot-filter SQL fragment to append to a WHERE clause.
+ * Default behaviour (`includeBots` falsy) excludes events flagged by the bot
+ * filter by requiring `bot_flag IS NULL`. Pass `includeBots = true` to disable.
+ * Optional `tableAlias` qualifies the column (e.g. 'e').
+ */
+function botFilterPgSql(includeBots?: boolean, tableAlias?: string): string {
+  if (includeBots) return '';
+  const prefix = tableAlias ? `${tableAlias}.` : '';
+  return ` AND ${prefix}bot_flag IS NULL`;
+}
+
+/**
  * Build filter conditions appended to a WHERE clause.
  * Returns the SQL fragment (with leading ` AND ` if any) and pushes params into `p`.
+ * Also appends the default bot-event exclusion unless `includeBots` is true.
  */
-function buildPgFilterConditions(p: PgParams, filters?: Record<string, string>): string {
+function buildPgFilterConditions(p: PgParams, filters?: Record<string, string>, includeBots?: boolean): string {
+  const segmentSql = buildPgFilterConditionsInner(p, filters);
+  return botFilterPgSql(includeBots) + segmentSql;
+}
+
+function buildPgFilterConditionsInner(p: PgParams, filters?: Record<string, string>): string {
   if (!filters) return '';
   const conditions: string[] = [];
   for (const [key, value] of Object.entries(filters)) {
@@ -454,7 +472,7 @@ export class PostgresAdapter implements DBAdapter {
       case 'pageviews': {
         const p = new PgParams();
         const where = `site_id = ${p.add(q.siteId)} AND timestamp >= ${p.add(dateRange.from)} AND timestamp <= ${p.add(dateRange.to)} AND type = 'pageview'`;
-        const filterSql = buildPgFilterConditions(p, q.filters);
+        const filterSql = buildPgFilterConditions(p, q.filters, q.includeBots);
         const r = await this.pool.query<{ value: string }>(
           `SELECT COUNT(*)::text AS value FROM ${EVENTS_TABLE} WHERE ${where}${filterSql}`,
           p.values,
@@ -467,7 +485,7 @@ export class PostgresAdapter implements DBAdapter {
       case 'visitors': {
         const p = new PgParams();
         const where = `site_id = ${p.add(q.siteId)} AND timestamp >= ${p.add(dateRange.from)} AND timestamp <= ${p.add(dateRange.to)}`;
-        const filterSql = buildPgFilterConditions(p, q.filters);
+        const filterSql = buildPgFilterConditions(p, q.filters, q.includeBots);
         const r = await this.pool.query<{ value: string }>(
           `SELECT COUNT(DISTINCT visitor_id)::text AS value FROM ${EVENTS_TABLE} WHERE ${where}${filterSql}`,
           p.values,
@@ -480,7 +498,7 @@ export class PostgresAdapter implements DBAdapter {
       case 'sessions': {
         const p = new PgParams();
         const where = `site_id = ${p.add(q.siteId)} AND timestamp >= ${p.add(dateRange.from)} AND timestamp <= ${p.add(dateRange.to)}`;
-        const filterSql = buildPgFilterConditions(p, q.filters);
+        const filterSql = buildPgFilterConditions(p, q.filters, q.includeBots);
         const r = await this.pool.query<{ value: string }>(
           `SELECT COUNT(DISTINCT session_id)::text AS value FROM ${EVENTS_TABLE} WHERE ${where}${filterSql}`,
           p.values,
@@ -493,7 +511,7 @@ export class PostgresAdapter implements DBAdapter {
       case 'events': {
         const p = new PgParams();
         const where = `site_id = ${p.add(q.siteId)} AND timestamp >= ${p.add(dateRange.from)} AND timestamp <= ${p.add(dateRange.to)} AND type = 'event'`;
-        const filterSql = buildPgFilterConditions(p, q.filters);
+        const filterSql = buildPgFilterConditions(p, q.filters, q.includeBots);
         const r = await this.pool.query<{ value: string }>(
           `SELECT COUNT(*)::text AS value FROM ${EVENTS_TABLE} WHERE ${where}${filterSql}`,
           p.values,
@@ -511,7 +529,7 @@ export class PostgresAdapter implements DBAdapter {
         }
         const p = new PgParams();
         const where = `site_id = ${p.add(q.siteId)} AND timestamp >= ${p.add(dateRange.from)} AND timestamp <= ${p.add(dateRange.to)} AND type = 'event' AND event_name = ANY(${p.add(conversionEvents)}::text[])`;
-        const filterSql = buildPgFilterConditions(p, q.filters);
+        const filterSql = buildPgFilterConditions(p, q.filters, q.includeBots);
         const r = await this.pool.query<{ value: string }>(
           `SELECT COUNT(*)::text AS value FROM ${EVENTS_TABLE} WHERE ${where}${filterSql}`,
           p.values,
@@ -524,7 +542,7 @@ export class PostgresAdapter implements DBAdapter {
       case 'top_pages': {
         const p = new PgParams();
         const where = `site_id = ${p.add(q.siteId)} AND timestamp >= ${p.add(dateRange.from)} AND timestamp <= ${p.add(dateRange.to)} AND type = 'pageview' AND url IS NOT NULL`;
-        const filterSql = buildPgFilterConditions(p, q.filters);
+        const filterSql = buildPgFilterConditions(p, q.filters, q.includeBots);
         const sql = `SELECT url AS key, COUNT(*)::text AS value FROM ${EVENTS_TABLE} WHERE ${where}${filterSql} GROUP BY url ORDER BY COUNT(*) DESC LIMIT ${p.add(limit)}`;
         const r = await this.pool.query<{ key: string; value: string }>(sql, p.values);
         data = r.rows.map((row) => ({ key: row.key, value: Number(row.value) }));
@@ -536,7 +554,7 @@ export class PostgresAdapter implements DBAdapter {
         const p = new PgParams();
         const expr = pgNormalizedReferrerExpr();
         const where = `site_id = ${p.add(q.siteId)} AND timestamp >= ${p.add(dateRange.from)} AND timestamp <= ${p.add(dateRange.to)} AND type = 'pageview' AND referrer IS NOT NULL AND referrer <> '' AND ${expr} <> ''`;
-        const filterSql = buildPgFilterConditions(p, q.filters);
+        const filterSql = buildPgFilterConditions(p, q.filters, q.includeBots);
         const sql = `SELECT ${expr} AS key, COUNT(*)::text AS value FROM ${EVENTS_TABLE} WHERE ${where}${filterSql} GROUP BY key ORDER BY COUNT(*) DESC LIMIT ${p.add(limit)}`;
         const r = await this.pool.query<{ key: string; value: string }>(sql, p.values);
         data = r.rows.map((row) => ({ key: row.key, value: Number(row.value) }));
@@ -547,7 +565,7 @@ export class PostgresAdapter implements DBAdapter {
       case 'top_countries': {
         const p = new PgParams();
         const where = `site_id = ${p.add(q.siteId)} AND timestamp >= ${p.add(dateRange.from)} AND timestamp <= ${p.add(dateRange.to)} AND country IS NOT NULL`;
-        const filterSql = buildPgFilterConditions(p, q.filters);
+        const filterSql = buildPgFilterConditions(p, q.filters, q.includeBots);
         const sql = `SELECT country AS key, COUNT(DISTINCT visitor_id)::text AS value FROM ${EVENTS_TABLE} WHERE ${where}${filterSql} GROUP BY country ORDER BY COUNT(DISTINCT visitor_id) DESC LIMIT ${p.add(limit)}`;
         const r = await this.pool.query<{ key: string; value: string }>(sql, p.values);
         data = r.rows.map((row) => ({ key: row.key, value: Number(row.value) }));
@@ -558,7 +576,7 @@ export class PostgresAdapter implements DBAdapter {
       case 'top_cities': {
         const p = new PgParams();
         const where = `site_id = ${p.add(q.siteId)} AND timestamp >= ${p.add(dateRange.from)} AND timestamp <= ${p.add(dateRange.to)} AND city IS NOT NULL`;
-        const filterSql = buildPgFilterConditions(p, q.filters);
+        const filterSql = buildPgFilterConditions(p, q.filters, q.includeBots);
         const sql = `SELECT city AS key, COUNT(DISTINCT visitor_id)::text AS value FROM ${EVENTS_TABLE} WHERE ${where}${filterSql} GROUP BY city ORDER BY COUNT(DISTINCT visitor_id) DESC LIMIT ${p.add(limit)}`;
         const r = await this.pool.query<{ key: string; value: string }>(sql, p.values);
         data = r.rows.map((row) => ({ key: row.key, value: Number(row.value) }));
@@ -569,7 +587,7 @@ export class PostgresAdapter implements DBAdapter {
       case 'top_events': {
         const p = new PgParams();
         const where = `site_id = ${p.add(q.siteId)} AND timestamp >= ${p.add(dateRange.from)} AND timestamp <= ${p.add(dateRange.to)} AND type = 'event' AND event_name IS NOT NULL`;
-        const filterSql = buildPgFilterConditions(p, q.filters);
+        const filterSql = buildPgFilterConditions(p, q.filters, q.includeBots);
         const sql = `SELECT event_name AS key, COUNT(*)::text AS value FROM ${EVENTS_TABLE} WHERE ${where}${filterSql} GROUP BY event_name ORDER BY COUNT(*) DESC LIMIT ${p.add(limit)}`;
         const r = await this.pool.query<{ key: string; value: string }>(sql, p.values);
         data = r.rows.map((row) => ({ key: row.key, value: Number(row.value) }));
@@ -582,7 +600,7 @@ export class PostgresAdapter implements DBAdapter {
         if (conversionEvents.length === 0) { data = []; break; }
         const p = new PgParams();
         const where = `site_id = ${p.add(q.siteId)} AND timestamp >= ${p.add(dateRange.from)} AND timestamp <= ${p.add(dateRange.to)} AND type = 'event' AND event_name = ANY(${p.add(conversionEvents)}::text[])`;
-        const filterSql = buildPgFilterConditions(p, q.filters);
+        const filterSql = buildPgFilterConditions(p, q.filters, q.includeBots);
         const sql = `SELECT event_name AS key, COUNT(*)::text AS value FROM ${EVENTS_TABLE} WHERE ${where}${filterSql} GROUP BY event_name ORDER BY COUNT(*) DESC LIMIT ${p.add(limit)}`;
         const r = await this.pool.query<{ key: string; value: string }>(sql, p.values);
         data = r.rows.map((row) => ({ key: row.key, value: Number(row.value) }));
@@ -593,7 +611,7 @@ export class PostgresAdapter implements DBAdapter {
       case 'top_exit_pages': {
         const p = new PgParams();
         const where = `site_id = ${p.add(q.siteId)} AND timestamp >= ${p.add(dateRange.from)} AND timestamp <= ${p.add(dateRange.to)} AND type = 'pageview' AND url IS NOT NULL`;
-        const filterSql = buildPgFilterConditions(p, q.filters);
+        const filterSql = buildPgFilterConditions(p, q.filters, q.includeBots);
         const sql = `
           SELECT exit_url AS key, COUNT(*)::text AS value FROM (
             SELECT session_id, (array_agg(url ORDER BY timestamp DESC))[1] AS exit_url
@@ -613,7 +631,7 @@ export class PostgresAdapter implements DBAdapter {
       case 'top_transitions': {
         const p = new PgParams();
         const where = `site_id = ${p.add(q.siteId)} AND timestamp >= ${p.add(dateRange.from)} AND timestamp <= ${p.add(dateRange.to)} AND type = 'pageview' AND url IS NOT NULL`;
-        const filterSql = buildPgFilterConditions(p, q.filters);
+        const filterSql = buildPgFilterConditions(p, q.filters, q.includeBots);
         const sql = `
           SELECT (prev_url || ' → ' || curr_url) AS key, COUNT(*)::text AS value FROM (
             SELECT session_id, url AS curr_url,
@@ -634,7 +652,7 @@ export class PostgresAdapter implements DBAdapter {
       case 'top_scroll_pages': {
         const p = new PgParams();
         const where = `site_id = ${p.add(q.siteId)} AND timestamp >= ${p.add(dateRange.from)} AND timestamp <= ${p.add(dateRange.to)} AND type = 'event' AND event_subtype = 'scroll_depth' AND page_path IS NOT NULL`;
-        const filterSql = buildPgFilterConditions(p, q.filters);
+        const filterSql = buildPgFilterConditions(p, q.filters, q.includeBots);
         const sql = `SELECT page_path AS key, COUNT(*)::text AS value FROM ${EVENTS_TABLE} WHERE ${where}${filterSql} GROUP BY page_path ORDER BY COUNT(*) DESC LIMIT ${p.add(limit)}`;
         const r = await this.pool.query<{ key: string; value: string }>(sql, p.values);
         data = r.rows.map((row) => ({ key: row.key, value: Number(row.value) }));
@@ -645,7 +663,7 @@ export class PostgresAdapter implements DBAdapter {
       case 'top_button_clicks': {
         const p = new PgParams();
         const where = `site_id = ${p.add(q.siteId)} AND timestamp >= ${p.add(dateRange.from)} AND timestamp <= ${p.add(dateRange.to)} AND type = 'event' AND event_subtype = 'button_click' AND (element_text IS NOT NULL OR element_selector IS NOT NULL)`;
-        const filterSql = buildPgFilterConditions(p, q.filters);
+        const filterSql = buildPgFilterConditions(p, q.filters, q.includeBots);
         const sql = `SELECT COALESCE(element_text, element_selector) AS key, COUNT(*)::text AS value FROM ${EVENTS_TABLE} WHERE ${where}${filterSql} GROUP BY key ORDER BY COUNT(*) DESC LIMIT ${p.add(limit)}`;
         const r = await this.pool.query<{ key: string; value: string }>(sql, p.values);
         data = r.rows.map((row) => ({ key: row.key, value: Number(row.value) }));
@@ -656,7 +674,7 @@ export class PostgresAdapter implements DBAdapter {
       case 'top_link_targets': {
         const p = new PgParams();
         const where = `site_id = ${p.add(q.siteId)} AND timestamp >= ${p.add(dateRange.from)} AND timestamp <= ${p.add(dateRange.to)} AND type = 'event' AND event_subtype IN ('link_click','outbound_click') AND target_url_path IS NOT NULL`;
-        const filterSql = buildPgFilterConditions(p, q.filters);
+        const filterSql = buildPgFilterConditions(p, q.filters, q.includeBots);
         const sql = `SELECT target_url_path AS key, COUNT(*)::text AS value FROM ${EVENTS_TABLE} WHERE ${where}${filterSql} GROUP BY target_url_path ORDER BY COUNT(*) DESC LIMIT ${p.add(limit)}`;
         const r = await this.pool.query<{ key: string; value: string }>(sql, p.values);
         data = r.rows.map((row) => ({ key: row.key, value: Number(row.value) }));
@@ -685,7 +703,7 @@ export class PostgresAdapter implements DBAdapter {
       case 'top_os_versions': {
         const p = new PgParams();
         const where = `site_id = ${p.add(q.siteId)} AND timestamp >= ${p.add(dateRange.from)} AND timestamp <= ${p.add(dateRange.to)} AND os IS NOT NULL AND os_version IS NOT NULL`;
-        const filterSql = buildPgFilterConditions(p, q.filters);
+        const filterSql = buildPgFilterConditions(p, q.filters, q.includeBots);
         const sql = `SELECT (os || ' ' || COALESCE(os_version, '')) AS key, COUNT(DISTINCT visitor_id)::text AS value FROM ${EVENTS_TABLE} WHERE ${where}${filterSql} GROUP BY key ORDER BY COUNT(DISTINCT visitor_id) DESC LIMIT ${p.add(limit)}`;
         const r = await this.pool.query<{ key: string; value: string }>(sql, p.values);
         data = r.rows.map((row) => ({ key: row.key, value: Number(row.value) }));
@@ -696,7 +714,7 @@ export class PostgresAdapter implements DBAdapter {
       case 'top_device_models': {
         const p = new PgParams();
         const where = `site_id = ${p.add(q.siteId)} AND timestamp >= ${p.add(dateRange.from)} AND timestamp <= ${p.add(dateRange.to)} AND device_model IS NOT NULL`;
-        const filterSql = buildPgFilterConditions(p, q.filters);
+        const filterSql = buildPgFilterConditions(p, q.filters, q.includeBots);
         const sql = `SELECT trim(COALESCE(device_brand, '') || ' ' || device_model) AS key, COUNT(DISTINCT visitor_id)::text AS value FROM ${EVENTS_TABLE} WHERE ${where}${filterSql} GROUP BY key ORDER BY COUNT(DISTINCT visitor_id) DESC LIMIT ${p.add(limit)}`;
         const r = await this.pool.query<{ key: string; value: string }>(sql, p.values);
         data = r.rows.map((row) => ({ key: row.key, value: Number(row.value) }));
@@ -713,7 +731,7 @@ export class PostgresAdapter implements DBAdapter {
       case 'top_utm_sources': {
         const p = new PgParams();
         const where = `site_id = ${p.add(q.siteId)} AND timestamp >= ${p.add(dateRange.from)} AND timestamp <= ${p.add(dateRange.to)} AND utm_source IS NOT NULL AND utm_source <> ''`;
-        const filterSql = buildPgFilterConditions(p, q.filters);
+        const filterSql = buildPgFilterConditions(p, q.filters, q.includeBots);
         const sql = `SELECT ${pgNormalizedUtmSourceExpr()} AS key, COUNT(DISTINCT visitor_id)::text AS value FROM ${EVENTS_TABLE} WHERE ${where}${filterSql} GROUP BY key ORDER BY COUNT(DISTINCT visitor_id) DESC LIMIT ${p.add(limit)}`;
         const r = await this.pool.query<{ key: string; value: string }>(sql, p.values);
         data = r.rows.map((row) => ({ key: row.key, value: Number(row.value) }));
@@ -724,7 +742,7 @@ export class PostgresAdapter implements DBAdapter {
       case 'top_utm_mediums': {
         const p = new PgParams();
         const where = `site_id = ${p.add(q.siteId)} AND timestamp >= ${p.add(dateRange.from)} AND timestamp <= ${p.add(dateRange.to)} AND utm_medium IS NOT NULL AND utm_medium <> ''`;
-        const filterSql = buildPgFilterConditions(p, q.filters);
+        const filterSql = buildPgFilterConditions(p, q.filters, q.includeBots);
         const sql = `SELECT ${pgNormalizedUtmMediumExpr()} AS key, COUNT(DISTINCT visitor_id)::text AS value FROM ${EVENTS_TABLE} WHERE ${where}${filterSql} GROUP BY key ORDER BY COUNT(DISTINCT visitor_id) DESC LIMIT ${p.add(limit)}`;
         const r = await this.pool.query<{ key: string; value: string }>(sql, p.values);
         data = r.rows.map((row) => ({ key: row.key, value: Number(row.value) }));
@@ -753,7 +771,7 @@ export class PostgresAdapter implements DBAdapter {
       case 'top_channels': {
         const p = new PgParams();
         const where = `site_id = ${p.add(q.siteId)} AND timestamp >= ${p.add(dateRange.from)} AND timestamp <= ${p.add(dateRange.to)}`;
-        const filterSql = buildPgFilterConditions(p, q.filters);
+        const filterSql = buildPgFilterConditions(p, q.filters, q.includeBots);
         const sql = `SELECT ${pgChannelClassificationExpr()} AS key, COUNT(DISTINCT visitor_id)::text AS value FROM ${EVENTS_TABLE} WHERE ${where}${filterSql} GROUP BY key ORDER BY COUNT(DISTINCT visitor_id) DESC LIMIT ${p.add(limit)}`;
         const r = await this.pool.query<{ key: string; value: string }>(sql, p.values);
         data = r.rows.map((row) => ({ key: row.key, value: Number(row.value) }));
@@ -804,7 +822,7 @@ export class PostgresAdapter implements DBAdapter {
     const p = new PgParams();
     const baseCondition = extraCondition ?? `${column} IS NOT NULL`;
     const where = `site_id = ${p.add(q.siteId)} AND timestamp >= ${p.add(dateRange.from)} AND timestamp <= ${p.add(dateRange.to)} AND ${baseCondition}`;
-    const filterSql = buildPgFilterConditions(p, q.filters);
+    const filterSql = buildPgFilterConditions(p, q.filters, q.includeBots);
     const sql = `SELECT ${column} AS key, COUNT(DISTINCT visitor_id)::text AS value FROM ${EVENTS_TABLE} WHERE ${where}${filterSql} GROUP BY ${column} ORDER BY COUNT(DISTINCT visitor_id) DESC LIMIT ${p.add(limit)}`;
     const r = await this.pool.query<{ key: string; value: string }>(sql, p.values);
     return r.rows.map((row) => ({ key: row.key, value: Number(row.value) }));
@@ -840,7 +858,7 @@ export class PostgresAdapter implements DBAdapter {
       conditions.push(`event_name = ANY(${p.add(eventNames)}::text[])`);
     }
 
-    const filterSql = buildPgFilterConditions(p, params.filters);
+    const filterSql = buildPgFilterConditions(p, params.filters, params.includeBots);
     const baseWhere = conditions.join(' AND ') + filterSql;
 
     let aggExpr: string;
@@ -931,7 +949,7 @@ export class PostgresAdapter implements DBAdapter {
       `WITH visitor_weeks AS (
          SELECT visitor_id, date_trunc('week', timestamp) AS active_week
          FROM ${EVENTS_TABLE}
-         WHERE site_id = $1 AND timestamp >= $2
+         WHERE site_id = $1 AND timestamp >= $2${botFilterPgSql(params.includeBots)}
          GROUP BY visitor_id, date_trunc('week', timestamp)
        ),
        visitor_cohorts AS (
@@ -989,6 +1007,8 @@ export class PostgresAdapter implements DBAdapter {
 
     const p = new PgParams();
     const conditions: string[] = [`site_id = ${p.add(params.siteId)}`];
+
+    if (!params.includeBots) conditions.push(`bot_flag IS NULL`);
 
     if (params.type) conditions.push(`type = ${p.add(params.type)}`);
     if (params.eventName) conditions.push(`event_name = ${p.add(params.eventName)}`);
@@ -1112,7 +1132,7 @@ export class PostgresAdapter implements DBAdapter {
         (array_agg(e.utm_content ORDER BY e.timestamp DESC) FILTER (WHERE e.utm_content IS NOT NULL))[1] AS utm_content
       FROM ${EVENTS_TABLE} e
       LEFT JOIN identity i ON e.visitor_id = i.visitor_id
-      WHERE e.site_id = ${siteIdParam}${timeCondition}${searchCondition}
+      WHERE e.site_id = ${siteIdParam}${botFilterPgSql(params.includeBots, 'e')}${timeCondition}${searchCondition}
       GROUP BY group_key
       ORDER BY last_seen DESC
       LIMIT ${limitParam} OFFSET ${offsetParam}
@@ -1124,7 +1144,7 @@ export class PostgresAdapter implements DBAdapter {
         SELECT ${groupKey} AS group_key
         FROM ${EVENTS_TABLE} e
         LEFT JOIN identity i ON e.visitor_id = i.visitor_id
-        WHERE e.site_id = ${siteIdParam}${timeCondition}${searchCondition}
+        WHERE e.site_id = ${siteIdParam}${botFilterPgSql(params.includeBots, 'e')}${timeCondition}${searchCondition}
         GROUP BY group_key
       ) t
     `;
@@ -1230,6 +1250,8 @@ export class PostgresAdapter implements DBAdapter {
       `site_id = ${p.add(siteId)}`,
       `visitor_id = ANY(${p.add(visitorIds)}::text[])`,
     ];
+
+    if (!params.includeBots) conditions.push(`bot_flag IS NULL`);
 
     if (params.type) conditions.push(`type = ${p.add(params.type)}`);
     if (params.eventName) conditions.push(`event_name = ${p.add(params.eventName)}`);

@@ -10,6 +10,7 @@ interface TimeSeriesChartProps {
   siteId: string;
   period: Period;
   filters?: Record<string, string>;
+  includeBots?: boolean;
 }
 
 type ChartMetric = 'pageviews' | 'visitors' | 'sessions';
@@ -40,14 +41,14 @@ function isDark() {
   return document.documentElement.classList.contains('dark');
 }
 
-export function TimeSeriesChart({ client, siteId, period, filters }: TimeSeriesChartProps) {
+export function TimeSeriesChart({ client, siteId, period, filters, includeBots }: TimeSeriesChartProps) {
   const [metric, setMetric] = useState<ChartMetric>('pageviews');
 
   const { data = [], isLoading: loading } = useQuery({
-    queryKey: queryKeys.timeSeries(siteId, period, metric, filters),
+    queryKey: queryKeys.timeSeries(siteId, period, metric, filters, includeBots),
     queryFn: async () => {
       client.setSiteId(siteId);
-      const result = await client.getTimeSeries(metric, { period, filters, timezone: BROWSER_TIMEZONE });
+      const result = await client.getTimeSeries(metric, { period, filters, timezone: BROWSER_TIMEZONE, includeBots });
       return result.data;
     },
   });
