@@ -49,7 +49,8 @@ function parseArgs(): Args {
     return i >= 0 ? argv[i + 1] : undefined;
   };
   // Postgres caps bind parameters per statement at 65,535 (uint16). Events INSERT has
-  // 44 columns/row → max safe batch = floor(65535/44) = 1489. Use 1400 with margin.
+  // 45 columns/row (event_id + EVENT_BASE_COLUMNS[43] + created_at) → max safe batch =
+  // floor(65535/45) = 1456. Use 1400 with margin.
   const requested = Number(get('--batch-size') ?? 1000);
   const MAX_SAFE = 1400;
   const batchSize = Math.min(requested, MAX_SAFE);

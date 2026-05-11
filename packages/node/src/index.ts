@@ -25,4 +25,7 @@ export type {
   UserListParams,
   UserListResult,
   UserDetail,
+  BotFilterMode,
+  BotFilterConfig,
+  BotDetectedInfo,
 } from '@litemetrics/core';

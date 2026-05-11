@@ -1,7 +1,5 @@
 import { UAParser } from 'ua-parser-js';
 
-const parser = new UAParser();
-
 export interface HeuristicBotInput {
   userAgent: string;
   acceptLanguage: string | undefined;
@@ -24,8 +22,7 @@ export interface HeuristicBotInput {
 export function isHeuristicBot(input: HeuristicBotInput): boolean {
   if (!input.userAgent) return true;
 
-  parser.setUA(input.userAgent);
-  const result = parser.getResult();
+  const result = new UAParser(input.userAgent).getResult();
   const hasBrowser = Boolean(result.browser?.name);
   const hasEngine = Boolean(result.engine?.name);
   const hasLang = Boolean(input.acceptLanguage && input.acceptLanguage.trim());

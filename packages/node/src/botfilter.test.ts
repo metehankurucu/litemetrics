@@ -35,6 +35,16 @@ describe('isBot', () => {
     ])('returns true for %s (%s)', (ua) => {
       expect(isBot(ua)).toBe(true);
     });
+
+    // Regression pin: the heuristic-bot layer is gated to strict/shadow modes
+    // precisely because isbot already classifies bare `Mozilla/5.0` (and the
+    // `Mozilla/5.0 (compatible)` scrubbed variant) as a signature bot in
+    // standard mode. If isbot ever weakens here, the L2 heuristic must be
+    // re-evaluated and a "drops heuristic in standard mode" test reinstated.
+    it('classifies bare Mozilla/5.0 as a signature bot (gates L2 heuristic behavior)', () => {
+      expect(isBot('Mozilla/5.0')).toBe(true);
+      expect(isBot('Mozilla/5.0 (compatible)')).toBe(true);
+    });
   });
 
   describe('allows real browsers', () => {

@@ -14,7 +14,6 @@ export interface RateLimitResult {
 
 interface IpEntry {
   timestamps: number[];
-  lastSeen: number;
 }
 
 export interface RateLimiter {
@@ -25,18 +24,14 @@ export interface RateLimiter {
 
 export function createRateLimiter(config: RateLimiterConfig): RateLimiter {
   const { windowMs, maxEvents, maxIps = 10_000 } = config;
+  // JS Map preserves insertion order; re-inserting on access moves the key
+  // to the end, so the first key returned by .keys() is the least-recently-used.
+  // This makes eviction O(1) under sustained unique-IP attacks.
   const map = new Map<string, IpEntry>();
 
   function evictOldest(): void {
-    let oldestKey: string | undefined;
-    let oldestSeen = Infinity;
-    for (const [k, v] of map) {
-      if (v.lastSeen < oldestSeen) {
-        oldestSeen = v.lastSeen;
-        oldestKey = k;
-      }
-    }
-    if (oldestKey) map.delete(oldestKey);
+    const oldest = map.keys().next();
+    if (!oldest.done) map.delete(oldest.value);
   }
 
   return {
@@ -47,18 +42,26 @@ export function createRateLimiter(config: RateLimiterConfig): RateLimiter {
       const cutoff = now - windowMs;
 
       let entry = map.get(ip);
-      if (!entry) {
+      if (entry) {
+        // Touch for LRU: move to end of insertion order.
+        map.delete(ip);
+        map.set(ip, entry);
+      } else {
         if (map.size >= maxIps) evictOldest();
-        entry = { timestamps: [], lastSeen: now };
+        entry = { timestamps: [] };
         map.set(ip, entry);
       }
 
       entry.timestamps = entry.timestamps.filter((t) => t > cutoff);
-      entry.timestamps.push(now);
-      entry.lastSeen = now;
+      const currentCount = entry.timestamps.length;
+      if (currentCount >= maxEvents) {
+        // Already at/over the limit. Don't grow the array under sustained attack;
+        // the count we report is the post-push count for caller compatibility.
+        return { limited: true, count: currentCount + 1 };
+      }
 
-      const count = entry.timestamps.length;
-      return { limited: count > maxEvents, count };
+      entry.timestamps.push(now);
+      return { limited: false, count: entry.timestamps.length };
     },
     size(): number {
       return map.size;

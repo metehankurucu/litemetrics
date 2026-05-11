@@ -617,8 +617,21 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
         const url = new URL(req.url || '/', 'http://localhost');
         const pathSegments = url.pathname.split('/').filter(Boolean);
         const usersIdx = pathSegments.indexOf('users');
-        const visitorId = usersIdx >= 0 ? pathSegments[usersIdx + 1] : undefined;
+        const rawVisitorId = usersIdx >= 0 ? pathSegments[usersIdx + 1] : undefined;
         const action = usersIdx >= 0 ? pathSegments[usersIdx + 2] : undefined;
+
+        // Decode once: malformed percent-encoding (e.g. `%ZZ`) is a client error,
+        // not a 500. Return 400 with a clear message rather than letting the
+        // exception bubble to the generic catch.
+        let visitorId: string | undefined;
+        if (rawVisitorId !== undefined) {
+          try {
+            visitorId = decodeURIComponent(rawVisitorId);
+          } catch {
+            sendJson(res, 400, { ok: false, error: 'Invalid visitor id (malformed URI encoding)' });
+            return;
+          }
+        }
 
         // DELETE /api/users/:visitorId/events
         if (req.method === 'DELETE') {
@@ -626,7 +639,7 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
             sendJson(res, 400, { ok: false, error: 'Bad path' });
             return;
           }
-          const result = await db.deleteUserEvents(siteId, decodeURIComponent(visitorId));
+          const result = await db.deleteUserEvents(siteId, visitorId);
           sendJson(res, 200, { ok: true, deleted: result.deleted });
           return;
         }
@@ -650,14 +663,14 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
             offset: q.offset ? parseInt(q.offset as string, 10) : undefined,
             includeBots: q.includeBots === 'true' || q.includeBots === '1',
           };
-          const result = await db.getUserEvents(siteId, decodeURIComponent(visitorId), params);
+          const result = await db.getUserEvents(siteId, visitorId, params);
           sendJson(res, 200, result);
           return;
         }
 
         // GET /api/users/:visitorId
         if (visitorId) {
-          const user = await db.getUserDetail(siteId, decodeURIComponent(visitorId));
+          const user = await db.getUserDetail(siteId, visitorId);
           if (!user) {
             sendJson(res, 404, { ok: false, error: 'User not found' });
             return;
