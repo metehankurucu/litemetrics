@@ -6,7 +6,7 @@ const features = [
       </svg>
     ),
     title: 'Ready-Made Dashboard',
-    description: 'Drop a full analytics dashboard into your React app. Charts, maps, tables — all pre-built. Your customers get analytics without you building anything.',
+    description: 'Drop a full analytics dashboard into your React app. Charts, maps, tables. All pre-built. Your customers get analytics without you building anything.',
     color: 'from-brand-500/20 to-brand-500/0',
     border: 'group-hover:border-brand-500/20',
     iconColor: 'text-brand-400',

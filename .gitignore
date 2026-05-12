@@ -32,6 +32,4 @@ yarn.lock
 
 # Local DB backups
 backup/
-
-# Implementation plans (kept locally, never committed)
-docs/plans/
+/docs/plans
