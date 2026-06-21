@@ -9,18 +9,20 @@ export function registerRetentionCommand(program: Command) {
     .description('Query cohort retention data')
     .option('-p, --period <period>', 'Period: 7d, 30d, 90d', '90d')
     .option('-w, --weeks <n>', 'Number of weeks', parseInt, 8)
+    .option('--include-bots', 'Include events flagged by the bot filter')
     .action(async (opts) => {
       const globalOpts = program.opts();
       const format = resolveFormat(globalOpts.format);
       try {
         const config = loadConfig({ url: globalOpts.url, adminSecret: globalOpts.secret, siteId: globalOpts.site });
-        const siteId = requireSiteId(config);
+        const siteId = await requireSiteId(config);
         const client = makeAnalyticsClient(config);
         client.setSiteId(siteId);
 
         const result = await client.getRetention({
           period: opts.period,
           weeks: opts.weeks,
+          includeBots: opts.includeBots,
         });
 
         const weekCount = result.cohorts.length > 0

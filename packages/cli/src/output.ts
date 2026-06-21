@@ -78,6 +78,43 @@ export function parseFilters(filterArgs?: string[]): Record<string, string> | un
   return Object.keys(filters).length > 0 ? filters : undefined;
 }
 
+function levenshtein(a: string, b: string): number {
+  const m = a.length, n = b.length;
+  const dp = Array.from({ length: m + 1 }, (_, i) => [i, ...Array(n).fill(0)]);
+  for (let j = 0; j <= n; j++) dp[0][j] = j;
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + cost);
+    }
+  }
+  return dp[m][n];
+}
+
+/** Closest candidates to `input` (substring matches first, then edit distance). */
+export function nearest(input: string, candidates: string[], n = 3): string[] {
+  return [...candidates]
+    .map(c => ({
+      c,
+      d: c.includes(input) || input.includes(c) ? 0 : levenshtein(input, c),
+    }))
+    .sort((x, y) => x.d - y.d)
+    .slice(0, n)
+    .map(x => x.c);
+}
+
+/** Print a helpful "unknown metric" error with suggestions and exit(1). */
+export function invalidMetric(metric: string, valid: string[], format: Format, listCmd: string): never {
+  const suggestions = nearest(metric, valid);
+  const message = `Unknown metric "${metric}". Did you mean: ${suggestions.join(', ')}? Run \`${listCmd}\` to list all.`;
+  if (format === 'json') {
+    console.error(JSON.stringify({ error: message, suggestions }));
+  } else {
+    console.error(`Error: ${message}`);
+  }
+  process.exit(1);
+}
+
 export function handleError(err: unknown, format: Format): void {
   const message = err instanceof Error ? err.message : String(err);
   if (format === 'json') {

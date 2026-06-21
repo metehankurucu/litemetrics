@@ -140,8 +140,12 @@ litemetrics stats <metric> [options]
 | `--from <date>` | Start date (ISO format) | — |
 | `--to <date>` | End date (ISO format) | — |
 | `-l, --limit <n>` | Limit results (for `top_*` metrics) | — |
-| `--filter <key=value>` | Filter (repeatable) | — |
+| `--filter <key=value>` | Filter (repeatable) — run `litemetrics filters` for keys | — |
 | `-c, --compare` | Include comparison with previous period | `false` |
+| `--timezone <tz>` | IANA timezone for bucketing (e.g. `Europe/Istanbul`) | UTC |
+| `--include-bots` | Include events flagged by the bot filter | `false` |
+
+> Unknown metric names are rejected with a "did you mean…" suggestion. Run `litemetrics metrics` for the full list.
 
 **Available metrics:**
 
@@ -212,6 +216,8 @@ litemetrics timeseries <metric> [options]
 | `--to <date>` | End date (ISO format) | — |
 | `-g, --granularity <g>` | `hour`, `day`, `week`, `month` | auto |
 | `--filter <key=value>` | Filter (repeatable) | — |
+| `--timezone <tz>` | IANA timezone for bucketing (e.g. `Europe/Istanbul`) | UTC |
+| `--include-bots` | Include events flagged by the bot filter | `false` |
 
 Metrics: `pageviews`, `visitors`, `sessions`, `events`, `conversions`
 
@@ -265,6 +271,7 @@ litemetrics events [options]
 | `--to <date>` | End date (ISO format) | — |
 | `-l, --limit <n>` | Limit results | `50` |
 | `--offset <n>` | Offset for pagination | `0` |
+| `--include-bots` | Include events flagged by the bot filter | `false` |
 
 ```bash
 # Recent events
@@ -312,6 +319,7 @@ litemetrics users [options]
 | `-s, --search <query>` | Search by visitor or user ID | — |
 | `-l, --limit <n>` | Limit results | `30` |
 | `--offset <n>` | Offset for pagination | `0` |
+| `--include-bots` | Include events flagged by the bot filter | `false` |
 
 ```bash
 litemetrics users -l 20
@@ -398,6 +406,7 @@ litemetrics retention [options]
 |--------|-------------|---------|
 | `-p, --period <period>` | `7d`, `30d`, `90d` | `90d` |
 | `-w, --weeks <n>` | Number of weeks | `8` |
+| `--include-bots` | Include events flagged by the bot filter | `false` |
 
 ```bash
 litemetrics retention -p 90d -w 12
@@ -412,6 +421,58 @@ litemetrics retention -p 30d -w 4
  2026-W07 | 42   | 76.2% | 0.0% | 0.0%
  2026-W08 | 53   | 39.6% | 0.0%
  2026-W09 | 22   | 0.0%
+```
+
+---
+
+### `bots`
+
+Show how many events the bot filter flagged, broken down by detection layer.
+
+```bash
+litemetrics bots [options]
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `-p, --period <period>` | `1h`, `24h`, `7d`, `30d`, `90d`, `custom` | `24h` |
+| `--from <date>` | Start date (ISO format) | — |
+| `--to <date>` | End date (ISO format) | — |
+
+```bash
+litemetrics bots -p 7d
+```
+
+**Example output:**
+
+```
+ Layer      | Flagged
+------------+--------
+ signature  | 128
+ heuristic  | 14
+ rate-limit | 3
+------------+--------
+Total flagged: 145
+```
+
+Re-run any metric with `--include-bots` to see totals that include this flagged traffic.
+
+---
+
+### `metrics`
+
+List every metric you can pass to `stats` / `timeseries`. No server call — works offline.
+
+```bash
+litemetrics metrics
+```
+
+### `filters`
+
+List every `--filter key=value` key with an example value. No server call.
+
+```bash
+litemetrics filters
 ```
 
 ---
@@ -500,6 +561,10 @@ litemetrics sites regenerate <siteId>
 The CLI is designed for AI agent integration. When output is piped (non-TTY), it automatically outputs JSON:
 
 ```bash
+# Discover the surface first (no server call, no site needed)
+litemetrics metrics | jq -r '.[].metric'
+litemetrics filters | jq -r '.[].key'
+
 # Automatically JSON when piped
 litemetrics overview -p 7d | jq '.pageviews.total'
 
@@ -510,6 +575,10 @@ litemetrics stats top_countries -p 30d | python3 -c "import sys,json; print(json
 SITE=$(litemetrics sites | jq -r '.sites[0].siteId')
 litemetrics overview --site $SITE -p 7d --compare
 ```
+
+Conveniences for agents:
+- **Site auto-resolve** — if no `--site` / `LITEMETRICS_SITE_ID` is set and the account has exactly one site, the CLI uses it automatically (a note is printed to stderr). With multiple sites it lists them and exits.
+- **Metric suggestions** — an unknown metric exits `1` with `{"error": "...", "suggestions": [...]}`.
 
 Error handling:
 - Errors are printed to stderr

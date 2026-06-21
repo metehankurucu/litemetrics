@@ -1,25 +1,31 @@
 import type { Command } from 'commander';
 import type { Metric } from '@litemetrics/core';
+import { METRIC_IDS } from '@litemetrics/core';
 import { loadConfig, requireSiteId } from '../config.js';
 import { makeAnalyticsClient } from '../client.js';
-import { resolveFormat, output, parseFilters, handleError } from '../output.js';
+import { resolveFormat, output, parseFilters, handleError, invalidMetric } from '../output.js';
 
 export function registerStatsCommand(program: Command) {
   program
     .command('stats <metric>')
-    .description('Query any metric (pageviews, visitors, top_pages, top_referrers, ...)')
+    .description('Query a metric (run `litemetrics metrics` for the full list)')
     .option('-p, --period <period>', 'Period: 1h, 24h, 7d, 30d, 90d, custom', '24h')
     .option('--from <date>', 'Start date (ISO)')
     .option('--to <date>', 'End date (ISO)')
     .option('-l, --limit <n>', 'Limit results', parseInt)
-    .option('--filter <kv...>', 'Filters (key=value, repeatable)')
+    .option('--filter <kv...>', 'Filters (key=value, repeatable). See `litemetrics filters`')
     .option('-c, --compare', 'Compare with previous period')
+    .option('--timezone <tz>', 'IANA timezone (e.g. Europe/Istanbul)')
+    .option('--include-bots', 'Include events flagged by the bot filter')
     .action(async (metric: string, opts) => {
       const globalOpts = program.opts();
       const format = resolveFormat(globalOpts.format);
+      if (!METRIC_IDS.includes(metric as Metric)) {
+        invalidMetric(metric, METRIC_IDS, format, 'litemetrics metrics');
+      }
       try {
         const config = loadConfig({ url: globalOpts.url, adminSecret: globalOpts.secret, siteId: globalOpts.site });
-        const siteId = requireSiteId(config);
+        const siteId = await requireSiteId(config);
         const client = makeAnalyticsClient(config);
         client.setSiteId(siteId);
 
@@ -30,6 +36,8 @@ export function registerStatsCommand(program: Command) {
           limit: opts.limit,
           filters: parseFilters(opts.filter),
           compare: opts.compare,
+          timezone: opts.timezone,
+          includeBots: opts.includeBots,
         });
 
         const isTopMetric = metric.startsWith('top_');

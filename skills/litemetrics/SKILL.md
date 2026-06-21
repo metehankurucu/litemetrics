@@ -97,6 +97,7 @@ Read the appropriate reference file based on the integration target:
 - **React app**: See [references/react-integration.md](references/react-integration.md) — provider, hooks (usePageView, useLitemetrics, useTrackEvent), React Router
 - **React Native / Expo**: See [references/react-native-integration.md](references/react-native-integration.md) — provider, navigation tracking, app state tracking
 - **Dashboard UI components**: See [references/dashboard-ui-integration.md](references/dashboard-ui-integration.md) — AnalyticsDashboard, individual widgets, theming, dark mode, hooks
+- **Querying from the CLI / terminal**: See [references/querying.md](references/querying.md) — `@litemetrics/cli` commands, metrics, filters, flags, agent patterns
 
 ## Environment Variables (Server)
 
@@ -129,7 +130,7 @@ docker run -p 3002:3002 \
 - **~3KB tracker**: The browser tracker is ~3KB gzipped with all auto-tracking features
 - Auto events are tagged with `event_source=auto` and a subtype (e.g. `scroll_depth`, `button_click`, `link_click`)
 - Manual `track()` events default to `event_source=manual` and `event_subtype=custom`. Older data may have `event_source` as null.
-- Available metrics: `pageviews`, `visitors`, `sessions`, `events`, `conversions`, `top_pages`, `top_referrers`, `top_countries`, `top_cities`, `top_events`, `top_conversions`, `top_exit_pages`, `top_transitions`, `top_scroll_pages`, `top_button_clicks`, `top_link_targets`, `top_devices`, `top_browsers`, `top_os`, `timeseries`, `retention`
+- Available metrics: `pageviews`, `visitors`, `sessions`, `events`, `conversions`, `top_pages`, `top_exit_pages`, `top_transitions`, `top_scroll_pages`, `top_referrers`, `top_channels`, `top_utm_sources`, `top_utm_mediums`, `top_utm_campaigns`, `top_utm_terms`, `top_utm_contents`, `top_countries`, `top_cities`, `top_devices`, `top_browsers`, `top_os`, `top_os_versions`, `top_device_models`, `top_app_versions`, `top_events`, `top_conversions`, `top_button_clicks`, `top_link_targets`, plus `timeseries`, `retention`, and `botStats`. The CLI's `metrics` / `filters` commands print the authoritative catalog — see [references/querying.md](references/querying.md).
 
 ## Conversions (by Event Name)
 

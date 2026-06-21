@@ -18,12 +18,13 @@ export function registerEventsCommand(program: Command) {
     .option('--to <date>', 'End date (ISO)')
     .option('-l, --limit <n>', 'Limit results', parseInt, 50)
     .option('--offset <n>', 'Offset for pagination', parseInt)
+    .option('--include-bots', 'Include events flagged by the bot filter')
     .action(async (opts) => {
       const globalOpts = program.opts();
       const format = resolveFormat(globalOpts.format);
       try {
         const config = loadConfig({ url: globalOpts.url, adminSecret: globalOpts.secret, siteId: globalOpts.site });
-        const siteId = requireSiteId(config);
+        const siteId = await requireSiteId(config);
         const client = makeAnalyticsClient(config);
         client.setSiteId(siteId);
 
@@ -39,6 +40,7 @@ export function registerEventsCommand(program: Command) {
           dateTo: opts.to,
           limit: opts.limit,
           offset: opts.offset,
+          includeBots: opts.includeBots,
         });
 
         const headers = ['Time', 'Type', 'Detail', 'Visitor', 'Country', 'City'];

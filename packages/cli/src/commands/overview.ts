@@ -13,12 +13,13 @@ export function registerOverviewCommand(program: Command) {
     .option('--to <date>', 'End date for custom period (ISO)')
     .option('-c, --compare', 'Compare with previous period')
     .option('-m, --metrics <list>', 'Comma-separated metrics', 'pageviews,visitors,sessions,events,conversions')
+    .option('--include-bots', 'Include events flagged by the bot filter')
     .action(async (opts) => {
       const globalOpts = program.opts();
       const format = resolveFormat(globalOpts.format);
       try {
         const config = loadConfig({ url: globalOpts.url, adminSecret: globalOpts.secret, siteId: globalOpts.site });
-        const siteId = requireSiteId(config);
+        const siteId = await requireSiteId(config);
         const client = makeAnalyticsClient(config);
         client.setSiteId(siteId);
 
@@ -28,6 +29,7 @@ export function registerOverviewCommand(program: Command) {
           dateFrom: opts.from,
           dateTo: opts.to,
           compare: opts.compare,
+          includeBots: opts.includeBots,
         });
 
         const headers = opts.compare

@@ -10,12 +10,13 @@ export function registerUsersCommand(program: Command) {
     .option('-s, --search <query>', 'Search by visitor/user ID')
     .option('-l, --limit <n>', 'Limit results', parseInt, 30)
     .option('--offset <n>', 'Offset for pagination', parseInt)
+    .option('--include-bots', 'Include events flagged by the bot filter')
     .action(async (opts) => {
       const globalOpts = program.opts();
       const format = resolveFormat(globalOpts.format);
       try {
         const config = loadConfig({ url: globalOpts.url, adminSecret: globalOpts.secret, siteId: globalOpts.site });
-        const siteId = requireSiteId(config);
+        const siteId = await requireSiteId(config);
         const client = makeAnalyticsClient(config);
         client.setSiteId(siteId);
 
@@ -23,6 +24,7 @@ export function registerUsersCommand(program: Command) {
           search: opts.search,
           limit: opts.limit,
           offset: opts.offset,
+          includeBots: opts.includeBots,
         });
 
         const headers = ['User', 'Visitor ID', 'Events', 'Pages', 'Sessions', 'Last Seen', 'Country'];
@@ -51,7 +53,7 @@ export function registerUsersCommand(program: Command) {
       const format = resolveFormat(globalOpts.format);
       try {
         const config = loadConfig({ url: globalOpts.url, adminSecret: globalOpts.secret, siteId: globalOpts.site });
-        const siteId = requireSiteId(config);
+        const siteId = await requireSiteId(config);
         const client = makeAnalyticsClient(config);
         client.setSiteId(siteId);
 
@@ -102,12 +104,13 @@ export function registerUsersCommand(program: Command) {
     .option('-p, --period <period>', 'Period', '30d')
     .option('-l, --limit <n>', 'Limit results', parseInt, 30)
     .option('--offset <n>', 'Offset for pagination', parseInt)
+    .option('--include-bots', 'Include events flagged by the bot filter')
     .action(async (identifier: string, opts) => {
       const globalOpts = program.opts();
       const format = resolveFormat(globalOpts.format);
       try {
         const config = loadConfig({ url: globalOpts.url, adminSecret: globalOpts.secret, siteId: globalOpts.site });
-        const siteId = requireSiteId(config);
+        const siteId = await requireSiteId(config);
         const client = makeAnalyticsClient(config);
         client.setSiteId(siteId);
 
@@ -117,6 +120,7 @@ export function registerUsersCommand(program: Command) {
           period: opts.period,
           limit: opts.limit,
           offset: opts.offset,
+          includeBots: opts.includeBots,
         });
 
         const headers = ['Time', 'Type', 'Detail', 'Country', 'City'];
