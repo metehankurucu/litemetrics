@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { parseFilters, resolveFormat, outputCSV } from './output';
+import { parseFilters, resolveFormat, outputCSV, nearest, invalidMetric } from './output';
 
 describe('parseFilters', () => {
   it('parses key=value pairs', () => {
@@ -103,5 +103,71 @@ describe('outputCSV', () => {
     outputCSV(['name'], [['hello']]);
     expect(spy).toHaveBeenCalledWith('hello');
     spy.mockRestore();
+  });
+});
+
+describe('nearest', () => {
+  const metrics = ['pageviews', 'visitors', 'sessions', 'top_pages', 'top_browsers'];
+
+  it('ranks an exact substring match first', () => {
+    expect(nearest('page', metrics)[0]).toBe('pageviews');
+  });
+
+  it('finds the closest by edit distance for a typo', () => {
+    expect(nearest('visiters', metrics)[0]).toBe('visitors');
+  });
+
+  it('returns at most n suggestions', () => {
+    expect(nearest('top', metrics, 2)).toHaveLength(2);
+  });
+
+  it('defaults to at most 3 suggestions', () => {
+    expect(nearest('top', metrics).length).toBeLessThanOrEqual(3);
+  });
+
+  it('does not throw on empty input and still returns at most 3', () => {
+    const result = nearest('', metrics);
+    expect(result.length).toBeLessThanOrEqual(3);
+    expect(result.every(r => metrics.includes(r))).toBe(true);
+  });
+
+  it('does not throw on garbage input far from every candidate', () => {
+    const result = nearest('zzzzzzzz', metrics);
+    expect(result.length).toBeLessThanOrEqual(3);
+    expect(result.every(r => metrics.includes(r))).toBe(true);
+  });
+
+  it('returns an empty array when there are no candidates', () => {
+    expect(nearest('anything', [])).toEqual([]);
+  });
+});
+
+describe('invalidMetric', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('exits 1 with suggestions and a JSON error payload', () => {
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {
+      throw new Error('exit');
+    }) as never);
+
+    expect(() => invalidMetric('pageview', ['pageviews', 'visitors'], 'json', 'litemetrics metrics')).toThrow('exit');
+    expect(exitSpy).toHaveBeenCalledWith(1);
+
+    const payload = JSON.parse(errSpy.mock.calls[0][0] as string);
+    expect(payload.suggestions).toContain('pageviews');
+    expect(payload.error).toContain('pageview');
+  });
+
+  it('writes a human-readable error in non-json mode', () => {
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(process, 'exit').mockImplementation((() => {
+      throw new Error('exit');
+    }) as never);
+
+    expect(() => invalidMetric('pageview', ['pageviews'], 'table', 'litemetrics metrics')).toThrow('exit');
+    expect(errSpy.mock.calls[0][0]).toContain('Did you mean');
   });
 });
