@@ -195,7 +195,7 @@ Total: 98
 | Category | Keys |
 |----------|------|
 | Geography | `geo.country`, `geo.region`, `geo.city` |
-| Device | `device.type`, `device.browser`, `device.os`, `device.osVersion`, `device.deviceModel`, `device.deviceBrand`, `device.appVersion` |
+| Device | `language`, `device.type`, `device.browser`, `device.os`, `device.osVersion`, `device.deviceModel`, `device.deviceBrand`, `device.appVersion` |
 | Attribution | `referrer`, `channel`, `utm.source`, `utm.medium`, `utm.campaign`, `utm.term`, `utm.content` |
 | Event | `event_source`, `event_subtype`, `event_name`, `type`, `page_path`, `target_url_path` |
 
