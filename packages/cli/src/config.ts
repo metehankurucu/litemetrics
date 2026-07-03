@@ -1,6 +1,7 @@
 import { readFileSync } from 'fs';
 import { homedir } from 'os';
 import { join } from 'path';
+import { errorEnvelope, type Format } from './output.js';
 
 export interface CLIConfig {
   url: string;
@@ -24,7 +25,7 @@ function loadRCFile(): RCFile {
   }
 }
 
-export function loadConfig(flags: Partial<CLIConfig>): CLIConfig {
+export function loadConfig(flags: Partial<CLIConfig>, format: Format): CLIConfig {
   const rc = loadRCFile();
 
   const url = flags.url || process.env.LITEMETRICS_URL || rc.url || '';
@@ -32,13 +33,11 @@ export function loadConfig(flags: Partial<CLIConfig>): CLIConfig {
   const siteId = flags.siteId || process.env.LITEMETRICS_SITE_ID || rc.siteId;
 
   if (!url) {
-    console.error('Error: Server URL is required. Use --url, LITEMETRICS_URL env var, or ~/.litemetricsrc');
-    process.exit(1);
+    errorEnvelope('Server URL is required. Use --url, LITEMETRICS_URL env var, or ~/.litemetricsrc', format);
   }
 
   if (!adminSecret) {
-    console.error('Error: Admin secret is required. Use --secret, LITEMETRICS_ADMIN_SECRET env var, or ~/.litemetricsrc');
-    process.exit(1);
+    errorEnvelope('Admin secret is required. Use --secret, LITEMETRICS_ADMIN_SECRET env var, or ~/.litemetricsrc', format);
   }
 
   return { url, adminSecret, siteId };
@@ -49,7 +48,7 @@ export function loadConfig(flags: Partial<CLIConfig>): CLIConfig {
  * account has exactly one site, use it; otherwise print a helpful list/hint and
  * exit. This lets agents query without first looking up the site ID.
  */
-export async function requireSiteId(config: CLIConfig): Promise<string> {
+export async function requireSiteId(config: CLIConfig, format: Format): Promise<string> {
   if (config.siteId) return config.siteId;
 
   try {
@@ -62,15 +61,20 @@ export async function requireSiteId(config: CLIConfig): Promise<string> {
       return only.siteId;
     }
     if (sites.length === 0) {
-      console.error('Error: no sites found. Create one with `litemetrics sites create -n "Name"`.');
-      process.exit(1);
+      errorEnvelope('No sites found. Create one with `litemetrics sites create -n "Name"`.', format);
     }
-    console.error('Error: multiple sites found. Specify --site <siteId> (or LITEMETRICS_SITE_ID). Available:');
-    for (const s of sites) console.error(`  ${s.siteId}  ${s.name}`);
-    process.exit(1);
+    const available = sites.map((s) => `${s.siteId} (${s.name})`);
+    errorEnvelope(
+      `Multiple sites found. Specify --site <siteId> (or LITEMETRICS_SITE_ID). Available: ${available.join(', ')}`,
+      format,
+      { suggestions: sites.map((s) => s.siteId) },
+    );
   } catch (err) {
+    if (err instanceof Error && err.message === 'exit') throw err;
     const message = err instanceof Error ? err.message : String(err);
-    console.error(`Error: Site ID is required (--site, LITEMETRICS_SITE_ID, or ~/.litemetricsrc). Auto-resolve failed: ${message}`);
-    process.exit(1);
+    errorEnvelope(
+      `Site ID is required (--site, LITEMETRICS_SITE_ID, or ~/.litemetricsrc). Auto-resolve failed: ${message}`,
+      format,
+    );
   }
 }

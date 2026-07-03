@@ -25,7 +25,7 @@ export function registerSitesCommand(program: Command) {
       const globalOpts = program.opts();
       const format = resolveFormat(globalOpts.format);
       try {
-        const config = loadConfig({ url: globalOpts.url, adminSecret: globalOpts.secret });
+        const config = loadConfig({ url: globalOpts.url, adminSecret: globalOpts.secret }, format);
         const client = makeSitesClient(config);
         const result = await client.getSite(siteId);
 
@@ -60,7 +60,7 @@ export function registerSitesCommand(program: Command) {
       const globalOpts = program.opts();
       const format = resolveFormat(globalOpts.format);
       try {
-        const config = loadConfig({ url: globalOpts.url, adminSecret: globalOpts.secret });
+        const config = loadConfig({ url: globalOpts.url, adminSecret: globalOpts.secret }, format);
         const client = makeSitesClient(config);
         const result = await client.createSite({
           name: opts.name,
@@ -94,7 +94,7 @@ export function registerSitesCommand(program: Command) {
       const globalOpts = program.opts();
       const format = resolveFormat(globalOpts.format);
       try {
-        const config = loadConfig({ url: globalOpts.url, adminSecret: globalOpts.secret });
+        const config = loadConfig({ url: globalOpts.url, adminSecret: globalOpts.secret }, format);
         const client = makeSitesClient(config);
         const result = await client.updateSite(siteId, {
           name: opts.name,
@@ -121,7 +121,7 @@ export function registerSitesCommand(program: Command) {
       const globalOpts = program.opts();
       const format = resolveFormat(globalOpts.format);
       try {
-        const config = loadConfig({ url: globalOpts.url, adminSecret: globalOpts.secret });
+        const config = loadConfig({ url: globalOpts.url, adminSecret: globalOpts.secret }, format);
         const client = makeSitesClient(config);
         const result = await client.deleteSite(siteId);
 
@@ -142,7 +142,7 @@ export function registerSitesCommand(program: Command) {
       const globalOpts = program.opts();
       const format = resolveFormat(globalOpts.format);
       try {
-        const config = loadConfig({ url: globalOpts.url, adminSecret: globalOpts.secret });
+        const config = loadConfig({ url: globalOpts.url, adminSecret: globalOpts.secret }, format);
         const client = makeSitesClient(config);
         const result = await client.regenerateSecret(siteId);
 
@@ -162,7 +162,7 @@ async function listSites(program: Command) {
   const globalOpts = program.opts();
   const format = resolveFormat(globalOpts.format);
   try {
-    const config = loadConfig({ url: globalOpts.url, adminSecret: globalOpts.secret });
+    const config = loadConfig({ url: globalOpts.url, adminSecret: globalOpts.secret }, format);
     const client = makeSitesClient(config);
     const result = await client.listSites();
 

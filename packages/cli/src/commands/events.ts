@@ -1,7 +1,7 @@
 import type { Command } from 'commander';
 import { loadConfig, requireSiteId } from '../config.js';
 import { makeAnalyticsClient } from '../client.js';
-import { resolveFormat, output, handleError } from '../output.js';
+import { resolveFormat, output, handleError, validatePeriod } from '../output.js';
 
 export function registerEventsCommand(program: Command) {
   program
@@ -22,9 +22,10 @@ export function registerEventsCommand(program: Command) {
     .action(async (opts) => {
       const globalOpts = program.opts();
       const format = resolveFormat(globalOpts.format);
+      validatePeriod(opts.period, opts.from, opts.to, format);
       try {
-        const config = loadConfig({ url: globalOpts.url, adminSecret: globalOpts.secret, siteId: globalOpts.site });
-        const siteId = await requireSiteId(config);
+        const config = loadConfig({ url: globalOpts.url, adminSecret: globalOpts.secret, siteId: globalOpts.site }, format);
+        const siteId = await requireSiteId(config, format);
         const client = makeAnalyticsClient(config);
         client.setSiteId(siteId);
 

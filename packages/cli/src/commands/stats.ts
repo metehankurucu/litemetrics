@@ -3,7 +3,7 @@ import type { Metric } from '@litemetrics/core';
 import { METRIC_IDS } from '@litemetrics/core';
 import { loadConfig, requireSiteId } from '../config.js';
 import { makeAnalyticsClient } from '../client.js';
-import { resolveFormat, output, parseFilters, handleError, invalidMetric } from '../output.js';
+import { resolveFormat, output, parseFilters, handleError, invalidMetric, validatePeriod } from '../output.js';
 
 export function registerStatsCommand(program: Command) {
   program
@@ -23,9 +23,10 @@ export function registerStatsCommand(program: Command) {
       if (!METRIC_IDS.includes(metric as Metric)) {
         invalidMetric(metric, METRIC_IDS, format, 'litemetrics metrics');
       }
+      validatePeriod(opts.period, opts.from, opts.to, format);
       try {
-        const config = loadConfig({ url: globalOpts.url, adminSecret: globalOpts.secret, siteId: globalOpts.site });
-        const siteId = await requireSiteId(config);
+        const config = loadConfig({ url: globalOpts.url, adminSecret: globalOpts.secret, siteId: globalOpts.site }, format);
+        const siteId = await requireSiteId(config, format);
         const client = makeAnalyticsClient(config);
         client.setSiteId(siteId);
 

@@ -1,7 +1,7 @@
 import type { Command } from 'commander';
 import { loadConfig, requireSiteId } from '../config.js';
 import { makeAnalyticsClient } from '../client.js';
-import { resolveFormat, output, handleError } from '../output.js';
+import { resolveFormat, output, handleError, validatePeriod } from '../output.js';
 
 export function registerUsersCommand(program: Command) {
   const users = program
@@ -15,8 +15,8 @@ export function registerUsersCommand(program: Command) {
       const globalOpts = program.opts();
       const format = resolveFormat(globalOpts.format);
       try {
-        const config = loadConfig({ url: globalOpts.url, adminSecret: globalOpts.secret, siteId: globalOpts.site });
-        const siteId = await requireSiteId(config);
+        const config = loadConfig({ url: globalOpts.url, adminSecret: globalOpts.secret, siteId: globalOpts.site }, format);
+        const siteId = await requireSiteId(config, format);
         const client = makeAnalyticsClient(config);
         client.setSiteId(siteId);
 
@@ -52,8 +52,8 @@ export function registerUsersCommand(program: Command) {
       const globalOpts = program.opts();
       const format = resolveFormat(globalOpts.format);
       try {
-        const config = loadConfig({ url: globalOpts.url, adminSecret: globalOpts.secret, siteId: globalOpts.site });
-        const siteId = await requireSiteId(config);
+        const config = loadConfig({ url: globalOpts.url, adminSecret: globalOpts.secret, siteId: globalOpts.site }, format);
+        const siteId = await requireSiteId(config, format);
         const client = makeAnalyticsClient(config);
         client.setSiteId(siteId);
 
@@ -108,9 +108,10 @@ export function registerUsersCommand(program: Command) {
     .action(async (identifier: string, opts) => {
       const globalOpts = program.opts();
       const format = resolveFormat(globalOpts.format);
+      validatePeriod(opts.period, undefined, undefined, format);
       try {
-        const config = loadConfig({ url: globalOpts.url, adminSecret: globalOpts.secret, siteId: globalOpts.site });
-        const siteId = await requireSiteId(config);
+        const config = loadConfig({ url: globalOpts.url, adminSecret: globalOpts.secret, siteId: globalOpts.site }, format);
+        const siteId = await requireSiteId(config, format);
         const client = makeAnalyticsClient(config);
         client.setSiteId(siteId);
 

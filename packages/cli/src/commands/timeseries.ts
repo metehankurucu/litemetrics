@@ -2,7 +2,7 @@ import type { Command } from 'commander';
 import { TIMESERIES_METRIC_IDS } from '@litemetrics/core';
 import { loadConfig, requireSiteId } from '../config.js';
 import { makeAnalyticsClient } from '../client.js';
-import { resolveFormat, output, parseFilters, handleError, invalidMetric } from '../output.js';
+import { resolveFormat, output, parseFilters, handleError, invalidMetric, validatePeriod } from '../output.js';
 
 type TSMetric = 'pageviews' | 'visitors' | 'sessions' | 'events' | 'conversions';
 
@@ -23,9 +23,10 @@ export function registerTimeseriesCommand(program: Command) {
       if (!TIMESERIES_METRIC_IDS.includes(metric as TSMetric)) {
         invalidMetric(metric, TIMESERIES_METRIC_IDS, format, 'litemetrics metrics');
       }
+      validatePeriod(opts.period, opts.from, opts.to, format);
       try {
-        const config = loadConfig({ url: globalOpts.url, adminSecret: globalOpts.secret, siteId: globalOpts.site });
-        const siteId = await requireSiteId(config);
+        const config = loadConfig({ url: globalOpts.url, adminSecret: globalOpts.secret, siteId: globalOpts.site }, format);
+        const siteId = await requireSiteId(config, format);
         const client = makeAnalyticsClient(config);
         client.setSiteId(siteId);
 

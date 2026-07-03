@@ -1,5 +1,14 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { parseFilters, resolveFormat, outputCSV, nearest, invalidMetric } from './output';
+import {
+  parseFilters,
+  resolveFormat,
+  outputCSV,
+  nearest,
+  invalidMetric,
+  validatePeriod,
+  errorEnvelope,
+  PERIODS,
+} from './output';
 
 describe('parseFilters', () => {
   it('parses key=value pairs', () => {
@@ -169,5 +178,129 @@ describe('invalidMetric', () => {
 
     expect(() => invalidMetric('pageview', ['pageviews'], 'table', 'litemetrics metrics')).toThrow('exit');
     expect(errSpy.mock.calls[0][0]).toContain('Did you mean');
+  });
+});
+
+// ─── R1: period validation ───────────────────────────
+
+describe('validatePeriod', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const mockExit = () => {
+    vi.spyOn(process, 'exit').mockImplementation((() => {
+      throw new Error('exit');
+    }) as never);
+    return vi.spyOn(console, 'error').mockImplementation(() => {});
+  };
+
+  it('accepts every value in the enum', () => {
+    mockExit();
+    for (const p of PERIODS) {
+      // custom needs from/to; supply them so only the enum membership is under test
+      expect(() => validatePeriod(p, '2026-01-01', '2026-02-01', 'json')).not.toThrow();
+    }
+  });
+
+  it('accepts an undefined period (commander default applies)', () => {
+    mockExit();
+    expect(() => validatePeriod(undefined, undefined, undefined, 'json')).not.toThrow();
+  });
+
+  it('rejects a value outside the enum with exit 1 and suggestions (json envelope)', () => {
+    const errSpy = mockExit();
+    expect(() => validatePeriod('14d', undefined, undefined, 'json')).toThrow('exit');
+    const payload = JSON.parse(errSpy.mock.calls[0][0] as string);
+    expect(payload.error).toContain('14d');
+    expect(Array.isArray(payload.suggestions)).toBe(true);
+    // '14d' is closest to the day-based tokens
+    expect(payload.suggestions.length).toBeGreaterThan(0);
+  });
+
+  it('rejects an unknown period in table mode with a human-readable line', () => {
+    const errSpy = mockExit();
+    expect(() => validatePeriod('1y', undefined, undefined, 'table')).toThrow('exit');
+    expect(errSpy.mock.calls[0][0]).toContain('Invalid period');
+    expect(errSpy.mock.calls[0][0]).toContain('1y');
+  });
+
+  it('rejects custom without --from', () => {
+    const errSpy = mockExit();
+    expect(() => validatePeriod('custom', undefined, '2026-02-01', 'json')).toThrow('exit');
+    const payload = JSON.parse(errSpy.mock.calls[0][0] as string);
+    expect(payload.error).toContain('custom');
+    expect(payload.error).toContain('--from');
+  });
+
+  it('rejects custom without --to', () => {
+    mockExit();
+    expect(() => validatePeriod('custom', '2026-01-01', undefined, 'json')).toThrow('exit');
+  });
+
+  it('accepts custom with both --from and --to', () => {
+    mockExit();
+    expect(() => validatePeriod('custom', '2026-01-01', '2026-02-01', 'json')).not.toThrow();
+  });
+});
+
+// ─── R5: error envelope + strict format ──────────────
+
+describe('errorEnvelope', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('emits {error} JSON and exits 1 in json mode', () => {
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {
+      throw new Error('exit');
+    }) as never);
+    expect(() => errorEnvelope('boom', 'json')).toThrow('exit');
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    expect(JSON.parse(errSpy.mock.calls[0][0] as string)).toEqual({ error: 'boom' });
+  });
+
+  it('includes suggestions only when non-empty', () => {
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(process, 'exit').mockImplementation((() => {
+      throw new Error('exit');
+    }) as never);
+    expect(() => errorEnvelope('boom', 'json', { suggestions: ['a', 'b'] })).toThrow('exit');
+    expect(JSON.parse(errSpy.mock.calls[0][0] as string)).toEqual({ error: 'boom', suggestions: ['a', 'b'] });
+  });
+
+  it('prints a prose line in table mode', () => {
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(process, 'exit').mockImplementation((() => {
+      throw new Error('exit');
+    }) as never);
+    expect(() => errorEnvelope('boom', 'table')).toThrow('exit');
+    expect(errSpy.mock.calls[0][0]).toBe('Error: boom');
+  });
+});
+
+describe('resolveFormat (strict)', () => {
+  const originalEnv = process.env.LITEMETRICS_FORMAT;
+  const originalIsTTY = process.stdout.isTTY;
+
+  afterEach(() => {
+    process.env.LITEMETRICS_FORMAT = originalEnv;
+    Object.defineProperty(process.stdout, 'isTTY', { value: originalIsTTY, writable: true });
+    vi.restoreAllMocks();
+  });
+
+  it('rejects an invalid explicit format with exit 1 and an envelope', () => {
+    delete process.env.LITEMETRICS_FORMAT;
+    Object.defineProperty(process.stdout, 'isTTY', { value: false, writable: true });
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {
+      throw new Error('exit');
+    }) as never);
+    expect(() => resolveFormat('xml')).toThrow('exit');
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    // non-TTY, no env → error is emitted as JSON
+    const payload = JSON.parse(errSpy.mock.calls[0][0] as string);
+    expect(payload.error).toContain('xml');
   });
 });

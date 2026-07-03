@@ -1,9 +1,67 @@
 export type Format = 'json' | 'table' | 'csv';
 
-export function resolveFormat(format?: string): Format {
-  if (format === 'json' || format === 'table' || format === 'csv') return format;
+const FORMATS: Format[] = ['json', 'table', 'csv'];
+
+/** Valid `--period` tokens (mirrors the `Period` enum in @litemetrics/core). */
+export const PERIODS = ['1h', '24h', '7d', '30d', '90d', 'custom'] as const;
+
+/** Format-agnostic default used when the requested format is itself invalid. */
+function defaultFormat(): Format {
   if (process.env.LITEMETRICS_FORMAT === 'json') return 'json';
   return process.stdout.isTTY ? 'table' : 'json';
+}
+
+export function resolveFormat(format?: string): Format {
+  if (format !== undefined && !FORMATS.includes(format as Format)) {
+    errorEnvelope(`Invalid --format "${format}". Valid: ${FORMATS.join(', ')}.`, defaultFormat(), {
+      suggestions: nearest(format, FORMATS),
+    });
+  }
+  if (format === 'json' || format === 'table' || format === 'csv') return format;
+  return defaultFormat();
+}
+
+/**
+ * Print an error as a `{ "error", ... }` JSON envelope (json mode) or a prose
+ * `Error: <message>` line (table/csv mode) on stderr, then exit(1). Single
+ * source for every user-facing CLI error so JSON consumers never get prose.
+ */
+export function errorEnvelope(
+  message: string,
+  format: Format,
+  extra?: { suggestions?: string[]; status?: number },
+): never {
+  if (format === 'json') {
+    const payload: Record<string, unknown> = { error: message };
+    if (extra?.suggestions && extra.suggestions.length > 0) payload.suggestions = extra.suggestions;
+    if (extra?.status !== undefined) payload.status = extra.status;
+    console.error(JSON.stringify(payload));
+  } else {
+    console.error(`Error: ${message}`);
+  }
+  process.exit(1);
+}
+
+/**
+ * R1: reject any `--period` outside the enum (with did-you-mean suggestions),
+ * and reject `custom` unless both `--from` and `--to` are supplied. A no-op when
+ * `period` is undefined (commander's per-command default has already applied).
+ */
+export function validatePeriod(
+  period: string | undefined,
+  from: string | undefined,
+  to: string | undefined,
+  format: Format,
+): void {
+  if (period === undefined) return;
+  if (!(PERIODS as readonly string[]).includes(period)) {
+    errorEnvelope(`Invalid period "${period}". Valid: ${PERIODS.join(', ')}.`, format, {
+      suggestions: nearest(period, [...PERIODS]),
+    });
+  }
+  if (period === 'custom' && (!from || !to)) {
+    errorEnvelope('Period "custom" requires both --from and --to (ISO dates).', format);
+  }
 }
 
 export function outputJSON(data: unknown): void {
@@ -107,12 +165,7 @@ export function nearest(input: string, candidates: string[], n = 3): string[] {
 export function invalidMetric(metric: string, valid: string[], format: Format, listCmd: string): never {
   const suggestions = nearest(metric, valid);
   const message = `Unknown metric "${metric}". Did you mean: ${suggestions.join(', ')}? Run \`${listCmd}\` to list all.`;
-  if (format === 'json') {
-    console.error(JSON.stringify({ error: message, suggestions }));
-  } else {
-    console.error(`Error: ${message}`);
-  }
-  process.exit(1);
+  errorEnvelope(message, format, { suggestions });
 }
 
 export function handleError(err: unknown, format: Format): void {
