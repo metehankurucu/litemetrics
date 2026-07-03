@@ -1,6 +1,6 @@
 import type { DBAdapter, EnrichedEvent, QueryParams, QueryResult, QueryDataPoint, TimeSeriesParams, TimeSeriesResult, RetentionParams, RetentionResult, RetentionCohort, Site, CreateSiteRequest, UpdateSiteRequest, EventListParams, EventListResult, EventListItem, UserListParams, UserListResult, UserDetail, BotFilterMode } from '@litemetrics/core';
 import { MongoClient, type Collection, type Db } from 'mongodb';
-import { resolvePeriod, previousPeriodRange, autoGranularity, granularityToDateFormat, fillBuckets, getISOWeek, generateSiteId, generateSecretKey } from './utils';
+import { resolvePeriod, previousPeriodRange, autoGranularity, granularityToDateFormat, fillBuckets, getISOWeek, generateSiteId, generateSecretKey, capLimit, assertTimeseriesBudget } from './utils';
 import { normalizeReferrer } from '../normalize-referrer.js';
 import { aggregateBotStats } from '../query-helpers.js';
 
@@ -389,7 +389,7 @@ export class MongoDBAdapter implements DBAdapter {
   async query(q: QueryParams): Promise<QueryResult> {
     const { dateRange, period } = resolvePeriod(q);
     const siteId = q.siteId;
-    const limit = q.limit ?? 10;
+    const limit = capLimit(q.limit, 10, 1000);
 
     const baseMatch: Record<string, unknown> = applyBotFilter({
       site_id: siteId,
@@ -821,6 +821,7 @@ export class MongoDBAdapter implements DBAdapter {
     });
 
     const granularity = params.granularity ?? autoGranularity(period);
+    assertTimeseriesBudget(new Date(dateRange.from), new Date(dateRange.to), granularity);
 
     const baseMatch: Record<string, unknown> = applyBotFilter({
       site_id: params.siteId,
@@ -973,7 +974,7 @@ export class MongoDBAdapter implements DBAdapter {
   // ─── Event Listing ──────────────────────────────────────
 
   async listEvents(params: EventListParams): Promise<EventListResult> {
-    const limit = Math.min(params.limit ?? 50, 200);
+    const limit = capLimit(params.limit, 50, 200);
     const offset = params.offset ?? 0;
 
     const match: Record<string, unknown> = applyBotFilter({ site_id: params.siteId }, params.includeBots);
@@ -1041,7 +1042,7 @@ export class MongoDBAdapter implements DBAdapter {
   // ─── User Listing ──────────────────────────────────────
 
   async listUsers(params: UserListParams): Promise<UserListResult> {
-    const limit = Math.min(params.limit ?? 50, 200);
+    const limit = capLimit(params.limit, 50, 200);
     const offset = params.offset ?? 0;
 
     const match: Record<string, unknown> = applyBotFilter({ site_id: params.siteId }, params.includeBots);
@@ -1339,7 +1340,7 @@ export class MongoDBAdapter implements DBAdapter {
   }
 
   private async listEventsForVisitorIds(siteId: string, visitorIds: string[], params: EventListParams): Promise<EventListResult> {
-    const limit = Math.min(params.limit ?? 50, 200);
+    const limit = capLimit(params.limit, 50, 200);
     const offset = params.offset ?? 0;
 
     const match: Record<string, unknown> = applyBotFilter({

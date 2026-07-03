@@ -6,6 +6,7 @@ const {
   getSite,
   getSiteBySecret,
   query,
+  queryTimeSeries,
   listEvents,
   listUsers,
   getUserEvents,
@@ -15,6 +16,7 @@ const {
   getSite: vi.fn<(siteId: string) => Promise<any>>(async () => null),
   getSiteBySecret: vi.fn<(secret: string) => Promise<any>>(async () => null),
   query: vi.fn<(params: any) => Promise<any>>(async () => ({})),
+  queryTimeSeries: vi.fn<(params: any) => Promise<any>>(async () => ({})),
   listEvents: vi.fn<(params: any) => Promise<any>>(async () => ({})),
   listUsers: vi.fn<(params: any) => Promise<any>>(async () => ({})),
   getUserEvents: vi.fn<(siteId: string, identifier: string, params: any) => Promise<any>>(
@@ -31,7 +33,7 @@ vi.mock('./adapters/clickhouse', () => {
     init = async () => {};
     insertEvents = insertEvents;
     query = query;
-    queryTimeSeries = async () => ({});
+    queryTimeSeries = queryTimeSeries;
     queryRetention = async () => ({});
     close = async () => {};
     listEvents = listEvents;
@@ -102,6 +104,8 @@ function resetAdapterMocks() {
   getSiteBySecret.mockImplementation(async () => null);
   query.mockClear();
   query.mockImplementation(async () => ({}));
+  queryTimeSeries.mockClear();
+  queryTimeSeries.mockImplementation(async () => ({}));
   listEvents.mockClear();
   listEvents.mockImplementation(async () => ({}));
   listUsers.mockClear();
@@ -702,6 +706,39 @@ describe('collector includeBots query param plumbing', () => {
       makeRes(),
     );
     expect(query.mock.calls[0]![0].includeBots).toBe(false);
+  });
+
+  // ── R3: timeseries bucket-budget rejection surfaces as 400 ──
+
+  it("timeseries: a QueryValidationError from the adapter is mapped to HTTP 400", async () => {
+    const { QueryValidationError } = await import('./adapters/utils');
+    queryTimeSeries.mockImplementation(async () => {
+      throw new QueryValidationError('Time range too large for "hour" granularity: 2161 buckets exceeds the 2000-bucket limit.');
+    });
+    const collector = await makeAuthedCollector();
+    const handler = collector.queryHandler();
+    const res = makeRes();
+    await handler(
+      makeAuthedGet('/api/query?siteId=site_test&metric=timeseries&tsMetric=pageviews&period=90d&granularity=hour'),
+      res,
+    );
+    expect(res.statusCode).toBe(400);
+    expect(res.body).toMatchObject({ ok: false });
+    expect((res.body as { error: string }).error).toContain('2000-bucket limit');
+  });
+
+  it("query: a generic adapter error still maps to HTTP 500", async () => {
+    query.mockImplementation(async () => {
+      throw new Error('connection refused');
+    });
+    const collector = await makeAuthedCollector();
+    const handler = collector.queryHandler();
+    const res = makeRes();
+    await handler(
+      makeAuthedGet('/api/query?siteId=site_test&metric=pageviews'),
+      res,
+    );
+    expect(res.statusCode).toBe(500);
   });
 
   // ── per-user events handler ────────────────────────────

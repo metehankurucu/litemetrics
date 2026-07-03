@@ -1,6 +1,6 @@
 import type { DBAdapter, EnrichedEvent, QueryParams, QueryResult, QueryDataPoint, Granularity, TimeSeriesParams, TimeSeriesResult, RetentionParams, RetentionResult, RetentionCohort, Site, CreateSiteRequest, UpdateSiteRequest, EventListParams, EventListResult, EventListItem, UserListParams, UserListResult, UserDetail, BotFilterMode } from '@litemetrics/core';
 import { Pool } from 'pg';
-import { resolvePeriod, previousPeriodRange, autoGranularity, granularityToDateFormat, fillBuckets, getISOWeek, generateSiteId, generateSecretKey } from './utils';
+import { resolvePeriod, previousPeriodRange, autoGranularity, granularityToDateFormat, fillBuckets, getISOWeek, generateSiteId, generateSecretKey, capLimit, assertTimeseriesBudget } from './utils';
 import { normalizeReferrer } from '../normalize-referrer.js';
 import { isValidTimezone, aggregateBotStats } from '../query-helpers.js';
 
@@ -463,7 +463,7 @@ export class PostgresAdapter implements DBAdapter {
 
   async query(q: QueryParams): Promise<QueryResult> {
     const { dateRange, period } = resolvePeriod(q);
-    const limit = q.limit ?? 10;
+    const limit = capLimit(q.limit, 10, 1000);
 
     let data: QueryDataPoint[] = [];
     let total = 0;
@@ -838,6 +838,7 @@ export class PostgresAdapter implements DBAdapter {
     });
 
     const granularity = params.granularity ?? autoGranularity(period);
+    assertTimeseriesBudget(new Date(dateRange.from), new Date(dateRange.to), granularity);
     const dateFormat = granularityToDateFormat(granularity);
 
     const p = new PgParams();
@@ -1002,7 +1003,7 @@ export class PostgresAdapter implements DBAdapter {
   // ─── Event Listing ──────────────────────────────────────
 
   async listEvents(params: EventListParams): Promise<EventListResult> {
-    const limit = Math.min(params.limit ?? 50, 200);
+    const limit = capLimit(params.limit, 50, 200);
     const offset = params.offset ?? 0;
 
     const p = new PgParams();
@@ -1065,7 +1066,7 @@ export class PostgresAdapter implements DBAdapter {
   // ─── User Listing ──────────────────────────────────────
 
   async listUsers(params: UserListParams): Promise<UserListResult> {
-    const limit = Math.min(params.limit ?? 50, 200);
+    const limit = capLimit(params.limit, 50, 200);
     const offset = params.offset ?? 0;
 
     const p = new PgParams();
@@ -1259,7 +1260,7 @@ export class PostgresAdapter implements DBAdapter {
   }
 
   private async listEventsForVisitorIds(siteId: string, visitorIds: string[], params: EventListParams): Promise<EventListResult> {
-    const limit = Math.min(params.limit ?? 50, 200);
+    const limit = capLimit(params.limit, 50, 200);
     const offset = params.offset ?? 0;
 
     const p = new PgParams();

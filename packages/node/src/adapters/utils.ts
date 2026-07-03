@@ -64,6 +64,74 @@ export function previousPeriodRange(currentRange: { from: string; to: string }):
   return { from: prevFrom.toISOString(), to: prevTo.toISOString() };
 }
 
+/**
+ * R2: clamp a query limit to a maximum, falling back to a default when unset.
+ * Single source for both the top-N cap (max 1000) and the events/users list
+ * cap (max 200), so no query path can ask an adapter for unbounded rows.
+ */
+export function capLimit(limit: number | undefined, def: number, max: number): number {
+  return Math.min(limit ?? def, max);
+}
+
+/** Default ceiling on the number of buckets a single timeseries may return. */
+export const MAX_TIMESERIES_BUCKETS = 2000;
+
+/** Granularities from finest to coarsest, for suggesting a coarser bucket. */
+const GRANULARITY_ORDER: Granularity[] = ['hour', 'day', 'week', 'month'];
+
+function coarserGranularity(g: Granularity): Granularity | undefined {
+  const i = GRANULARITY_ORDER.indexOf(g);
+  return i >= 0 && i < GRANULARITY_ORDER.length - 1 ? GRANULARITY_ORDER[i + 1] : undefined;
+}
+
+/**
+ * A validation failure that should surface to the HTTP client as a 400 (not a
+ * 500). The collector's error path reads `statusCode` off the thrown error.
+ */
+export class QueryValidationError extends Error {
+  readonly statusCode = 400;
+  constructor(message: string) {
+    super(message);
+    this.name = 'QueryValidationError';
+  }
+}
+
+/** Number of buckets a [from, to] range spans at the given granularity (inclusive). */
+export function countBuckets(from: Date, to: Date, granularity: Granularity): number {
+  const HOUR = 60 * 60 * 1000;
+  const DAY = 24 * HOUR;
+  const ms = Math.max(0, to.getTime() - from.getTime());
+  switch (granularity) {
+    case 'hour': return Math.floor(ms / HOUR) + 1;
+    case 'day': return Math.floor(ms / DAY) + 1;
+    case 'week': return Math.floor(ms / (7 * DAY)) + 1;
+    case 'month': return Math.floor(ms / (30 * DAY)) + 1;
+  }
+}
+
+/**
+ * R3: reject any range x granularity that would produce more than `max`
+ * timeseries buckets, with a message suggesting a coarser granularity. Called
+ * by every adapter's queryTimeSeries before it hits the database.
+ */
+export function assertTimeseriesBudget(
+  from: Date,
+  to: Date,
+  granularity: Granularity,
+  max: number = MAX_TIMESERIES_BUCKETS,
+): void {
+  const buckets = countBuckets(from, to, granularity);
+  if (buckets > max) {
+    const coarser = coarserGranularity(granularity);
+    const hint = coarser
+      ? ` Use a coarser granularity (e.g. "${coarser}") or a shorter period.`
+      : ' Use a shorter period.';
+    throw new QueryValidationError(
+      `Time range too large for "${granularity}" granularity: ${buckets} buckets exceeds the ${max}-bucket limit.${hint}`,
+    );
+  }
+}
+
 export function autoGranularity(period: Period): Granularity {
   switch (period) {
     case '1h': return 'hour';

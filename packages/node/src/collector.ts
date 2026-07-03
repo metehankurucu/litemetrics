@@ -445,7 +445,9 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
         }
         sendJson(res, 200, result);
       } catch (err) {
-        sendJson(res, 500, { ok: false, error: err instanceof Error ? err.message : 'Internal error' });
+        const code = (err as { statusCode?: unknown }).statusCode;
+        const status = err instanceof Error && typeof code === 'number' ? code : 500;
+        sendJson(res, status, { ok: false, error: err instanceof Error ? err.message : 'Internal error' });
       }
     };
   }

@@ -1,6 +1,6 @@
 import type { DBAdapter, EnrichedEvent, QueryParams, QueryResult, QueryDataPoint, Granularity, TimeSeriesParams, TimeSeriesResult, RetentionParams, RetentionResult, RetentionCohort, Site, CreateSiteRequest, UpdateSiteRequest, EventListParams, EventListResult, EventListItem, UserListParams, UserListResult, UserDetail, BotFilterMode } from '@litemetrics/core';
 import { createClient, type ClickHouseClient } from '@clickhouse/client';
-import { resolvePeriod, previousPeriodRange, autoGranularity, fillBuckets, granularityToDateFormat, getISOWeek, generateSiteId, generateSecretKey, toUTCDate } from './utils';
+import { resolvePeriod, previousPeriodRange, autoGranularity, fillBuckets, granularityToDateFormat, getISOWeek, generateSiteId, generateSecretKey, toUTCDate, capLimit, assertTimeseriesBudget } from './utils';
 import { isValidTimezone, aggregateBotStats } from '../query-helpers.js';
 import { normalizeReferrer } from '../normalize-referrer.js';
 
@@ -370,7 +370,7 @@ export class ClickHouseAdapter implements DBAdapter {
   async query(q: QueryParams): Promise<QueryResult> {
     const { dateRange, period } = resolvePeriod(q);
     const siteId = q.siteId;
-    const limit = q.limit ?? 10;
+    const limit = capLimit(q.limit, 10, 1000);
 
     const params = {
       siteId,
@@ -923,6 +923,7 @@ export class ClickHouseAdapter implements DBAdapter {
     });
 
     const granularity = params.granularity ?? autoGranularity(period);
+    assertTimeseriesBudget(new Date(dateRange.from), new Date(dateRange.to), granularity);
     const bucketFn = this.granularityToClickHouseFunc(granularity, params.timezone);
     const dateFormat = granularityToDateFormat(granularity);
 
@@ -1094,7 +1095,7 @@ export class ClickHouseAdapter implements DBAdapter {
   // ─── Event Listing ──────────────────────────────────────
 
   async listEvents(params: EventListParams): Promise<EventListResult> {
-    const limit = Math.min(params.limit ?? 50, 200);
+    const limit = capLimit(params.limit, 50, 200);
     const offset = params.offset ?? 0;
 
     const conditions: string[] = [`site_id = {siteId:String}`];
@@ -1174,7 +1175,7 @@ export class ClickHouseAdapter implements DBAdapter {
   // ─── User Listing ──────────────────────────────────────
 
   async listUsers(params: UserListParams): Promise<UserListResult> {
-    const limit = Math.min(params.limit ?? 50, 200);
+    const limit = capLimit(params.limit, 50, 200);
     const offset = params.offset ?? 0;
 
     const conditions: string[] = [`site_id = {siteId:String}`];
@@ -1459,7 +1460,7 @@ export class ClickHouseAdapter implements DBAdapter {
   }
 
   private async listEventsForVisitorIds(siteId: string, visitorIds: string[], params: EventListParams): Promise<EventListResult> {
-    const limit = Math.min(params.limit ?? 50, 200);
+    const limit = capLimit(params.limit, 50, 200);
     const offset = params.offset ?? 0;
 
     const conditions: string[] = [`site_id = {siteId:String}`, `visitor_id IN {visitorIds:Array(String)}`];

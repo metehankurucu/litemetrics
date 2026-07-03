@@ -11,6 +11,11 @@ import {
   fillBuckets,
   generateSiteId,
   generateSecretKey,
+  capLimit,
+  countBuckets,
+  assertTimeseriesBudget,
+  QueryValidationError,
+  MAX_TIMESERIES_BUCKETS,
 } from './utils';
 
 // ─── toUTCDate ───────────────────────────────────────
@@ -515,5 +520,109 @@ describe('generateSecretKey', () => {
   it('generates unique keys', () => {
     const keys = new Set(Array.from({ length: 100 }, () => generateSecretKey()));
     expect(keys.size).toBe(100);
+  });
+});
+
+// ─── R2: capLimit (top-N + list caps) ────────────────
+
+describe('capLimit', () => {
+  it('clamps an oversized top-N limit to the 1000 max', () => {
+    expect(capLimit(100000, 10, 1000)).toBe(1000);
+  });
+
+  it('falls back to the default when limit is undefined', () => {
+    expect(capLimit(undefined, 10, 1000)).toBe(10);
+    expect(capLimit(undefined, 50, 200)).toBe(50);
+  });
+
+  it('passes a within-bounds limit through unchanged', () => {
+    expect(capLimit(25, 10, 1000)).toBe(25);
+  });
+
+  it('clamps the events/users list cap at 200', () => {
+    expect(capLimit(5000, 50, 200)).toBe(200);
+  });
+
+  it('returns exactly the max at the boundary', () => {
+    expect(capLimit(1000, 10, 1000)).toBe(1000);
+    expect(capLimit(1001, 10, 1000)).toBe(1000);
+  });
+});
+
+// ─── R3: timeseries bucket budget ────────────────────
+
+describe('countBuckets', () => {
+  const day = 24 * 60 * 60 * 1000;
+
+  it('counts hourly buckets over 7 days (<= 2000)', () => {
+    const from = new Date('2026-01-01T00:00:00Z');
+    const to = new Date(from.getTime() + 7 * day);
+    // 7*24 = 168 hours + 1 inclusive bucket
+    expect(countBuckets(from, to, 'hour')).toBe(169);
+  });
+
+  it('counts hourly buckets over 90 days (> 2000)', () => {
+    const from = new Date('2026-01-01T00:00:00Z');
+    const to = new Date(from.getTime() + 90 * day);
+    expect(countBuckets(from, to, 'hour')).toBe(90 * 24 + 1);
+  });
+
+  it('counts daily buckets over 30 days', () => {
+    const from = new Date('2026-01-01T00:00:00Z');
+    const to = new Date(from.getTime() + 30 * day);
+    expect(countBuckets(from, to, 'day')).toBe(31);
+  });
+
+  it('never returns negative for an inverted range', () => {
+    const from = new Date('2026-02-01T00:00:00Z');
+    const to = new Date('2026-01-01T00:00:00Z');
+    expect(countBuckets(from, to, 'hour')).toBe(1);
+  });
+});
+
+describe('assertTimeseriesBudget', () => {
+  const day = 24 * 60 * 60 * 1000;
+
+  it('passes for 7d + hour (169 buckets)', () => {
+    const from = new Date('2026-01-01T00:00:00Z');
+    const to = new Date(from.getTime() + 7 * day);
+    expect(() => assertTimeseriesBudget(from, to, 'hour')).not.toThrow();
+  });
+
+  it('rejects 90d + hour with a QueryValidationError carrying statusCode 400', () => {
+    const from = new Date('2026-01-01T00:00:00Z');
+    const to = new Date(from.getTime() + 90 * day);
+    let caught: unknown;
+    try {
+      assertTimeseriesBudget(from, to, 'hour');
+    } catch (e) {
+      caught = e;
+    }
+    expect(caught).toBeInstanceOf(QueryValidationError);
+    expect((caught as QueryValidationError).statusCode).toBe(400);
+  });
+
+  it('suggests a coarser granularity in the rejection message', () => {
+    const from = new Date('2026-01-01T00:00:00Z');
+    const to = new Date(from.getTime() + 365 * day);
+    expect(() => assertTimeseriesBudget(from, to, 'hour')).toThrow(/coarser granularity.*"day"/);
+  });
+
+  it('does not suggest a coarser granularity when already at month', () => {
+    // 3000 months would be needed; use a huge range to force > 2000 month buckets
+    const from = new Date('1000-01-01T00:00:00Z');
+    const to = new Date('3026-01-01T00:00:00Z');
+    expect(() => assertTimeseriesBudget(from, to, 'month')).toThrow(/shorter period/);
+  });
+
+  it('respects a custom max', () => {
+    const from = new Date('2026-01-01T00:00:00Z');
+    const to = new Date(from.getTime() + 5 * day);
+    // 5 daily buckets, max 3 → reject
+    expect(() => assertTimeseriesBudget(from, to, 'day', 3)).toThrow(QueryValidationError);
+  });
+
+  it('exposes the default max of 2000', () => {
+    expect(MAX_TIMESERIES_BUCKETS).toBe(2000);
   });
 });
