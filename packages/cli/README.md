@@ -68,6 +68,15 @@ You can also set the default format via environment variable:
 export LITEMETRICS_FORMAT=json
 ```
 
+### Compact JSON
+
+By default JSON is pretty-printed (2-space). Pass `--compact` (or set `LITEMETRICS_COMPACT=1`) to emit single-line JSON, which is cheaper for agents to read:
+
+```bash
+litemetrics overview -p 7d -f json --compact
+# {"pageviews":{"total":206,...},"visitors":{...}}
+```
+
 ## Global Options
 
 These options are available on all commands:
@@ -75,11 +84,30 @@ These options are available on all commands:
 ```
 --url <url>           Litemetrics server URL
 --secret <secret>     Admin secret
---site <siteId>       Site ID
+--site <siteId>       Site ID (or a comma-separated list to query several sites)
 -f, --format <fmt>    Output format: json, table, csv
+--compact             Single-line JSON output (or LITEMETRICS_COMPACT=1)
 -V, --version         Show version
 -h, --help            Show help
 ```
+
+### Multiple sites in one call
+
+`--site` accepts a comma-separated list. Querying several sites runs the query
+per site in-process and returns one JSON object keyed by site ID:
+
+```bash
+litemetrics overview -p 7d --site site_a,site_b -f json | jq 'keys'
+# ["site_a", "site_b"]
+```
+
+- Single site: output is unchanged (the raw result object).
+- Multiple sites: the top-level keys are the site IDs; table mode prints one
+  section per site.
+- If any site fails, its message is collected under an `"errors"` key
+  (`{"site_a": {...}, "errors": {"site_b": "Unauthorized ..."}}`), the successful
+  sites are still emitted, and the process exits `1`. JSON is the recommended
+  format for multi-site queries.
 
 ---
 
@@ -139,13 +167,19 @@ litemetrics stats <metric> [options]
 | `-p, --period <period>` | `1h`, `24h`, `7d`, `30d`, `90d`, `custom` | `24h` |
 | `--from <date>` | Start date (ISO format) | — |
 | `--to <date>` | End date (ISO format) | — |
-| `-l, --limit <n>` | Limit results (for `top_*` metrics) | — |
+| `-l, --limit <n>` | Limit results for `top_*` metrics (default 10, **capped at 1000**) | `10` |
 | `--filter <key=value>` | Filter (repeatable) — run `litemetrics filters` for keys | — |
 | `-c, --compare` | Include comparison with previous period | `false` |
 | `--timezone <tz>` | IANA timezone for bucketing (e.g. `Europe/Istanbul`) | UTC |
 | `--include-bots` | Include events flagged by the bot filter | `false` |
 
 > Unknown metric names are rejected with a "did you mean…" suggestion. Run `litemetrics metrics` for the full list.
+>
+> `-l` is clamped server-side to **1000** for `top_*` metrics, so a request for
+> `-l 100000` returns at most 1000 rows. An invalid `--period` (any token outside
+> `1h|24h|7d|30d|90d|custom`, or `custom` without both `--from` and `--to`) is
+> rejected with exit `1` and a suggestions envelope; it is never silently
+> coerced to a default period.
 
 **Available metrics:**
 
@@ -221,6 +255,10 @@ litemetrics timeseries <metric> [options]
 
 Metrics: `pageviews`, `visitors`, `sessions`, `events`, `conversions`
 
+> The response is bounded to **2000 buckets**. A period × granularity that would
+> exceed that (e.g. `-p 90d -g hour`) is rejected with exit `1` and a message
+> suggesting a coarser granularity.
+
 ```bash
 # Daily pageviews for 30 days
 litemetrics timeseries pageviews -p 30d -g day
@@ -269,9 +307,12 @@ litemetrics events [options]
 | `-p, --period <period>` | `1h`, `24h`, `7d`, `30d`, `90d`, `custom` | `24h` |
 | `--from <date>` | Start date (ISO format) | — |
 | `--to <date>` | End date (ISO format) | — |
-| `-l, --limit <n>` | Limit results | `50` |
+| `-l, --limit <n>` | Limit results (default 50, **capped at 200**) | `50` |
 | `--offset <n>` | Offset for pagination | `0` |
 | `--include-bots` | Include events flagged by the bot filter | `false` |
+
+> `events` (and `users` / `users events`) clamp `-l` to **200** server-side; page
+> through larger result sets with `--offset`.
 
 ```bash
 # Recent events
@@ -578,9 +619,28 @@ litemetrics overview --site $SITE -p 7d --compare
 
 Conveniences for agents:
 - **Site auto-resolve** — if no `--site` / `LITEMETRICS_SITE_ID` is set and the account has exactly one site, the CLI uses it automatically (a note is printed to stderr). With multiple sites it lists them and exits.
-- **Metric suggestions** — an unknown metric exits `1` with `{"error": "...", "suggestions": [...]}`.
+- **Multi-site** - `--site a,b` queries several sites in one call; the JSON result is keyed by site ID (see [Multiple sites in one call](#multiple-sites-in-one-call)).
+- **Compact JSON** - `--compact` (or `LITEMETRICS_COMPACT=1`) emits single-line JSON.
+- **Metric suggestions** - an unknown metric exits `1` with `{"error": "...", "suggestions": [...]}`.
+- **Strict periods** - an invalid `--period` (or `custom` missing `--from`/`--to`) exits `1` with suggestions instead of silently defaulting.
 
-Error handling:
-- Errors are printed to stderr
-- Exit code `0` for success, `1` for errors
-- JSON errors: `{"error": "message"}`
+## Output contract for agents
+
+The CLI is safe to parse programmatically because it holds to a fixed contract:
+
+- **stdout is data only.** Query results (JSON / table / CSV) go to stdout and nothing else: no logs, prompts, spinners, or ANSI. Notes and diagnostics (e.g. the site auto-resolve note) go to **stderr**.
+- **Exit codes.** `0` on success, `1` on any error (bad input, config missing, server error, or any failed site in a multi-site run).
+- **Error envelope.** In JSON mode every error is a single-line object on stderr:
+  ```json
+  {"error": "Unauthorized - invalid or missing admin secret", "status": 401, "suggestions": ["..."]}
+  ```
+  - `error` is the server's explanatory message when there is one (the CLI surfaces `response.data.error`, not the opaque `Request failed with status code 401`), otherwise the underlying error message.
+  - `status` is present when the failure came from an HTTP response (the status code).
+  - `suggestions` is present for did-you-mean cases (unknown metric, invalid period/format).
+- **Caps are silent and safe.** `top_*` limits clamp to 1000; `events`/`users` limits clamp to 200; `timeseries` is bounded to 2000 buckets (over-wide requests are rejected, not truncated). You never receive more rows than the cap, and a too-coarse-vs-too-wide `timeseries` fails loudly rather than returning a giant payload.
+- **Compact + pretty both parse.** Default JSON is pretty-printed; `--compact` is single-line. Both are valid JSON.
+
+Error handling summary:
+- Errors are printed to **stderr** (data stays on stdout).
+- Exit code `0` for success, `1` for errors.
+- JSON errors: `{"error": "message", "status"?: <http>, "suggestions"?: [...]}`.
