@@ -1,7 +1,7 @@
 import type { Command } from 'commander';
 import { loadConfig } from '../config.js';
 import { makeSitesClient } from '../client.js';
-import { resolveFormat, output, handleError, outputJSON } from '../output.js';
+import { resolveFormat, output, handleError } from '../output.js';
 
 export function registerSitesCommand(program: Command) {
   const sites = program
@@ -70,13 +70,10 @@ export function registerSitesCommand(program: Command) {
           conversionEvents: opts.conversions ? opts.conversions.split(',').map((s: string) => s.trim()) : undefined,
         });
 
-        if (format === 'json') {
-          outputJSON(result);
-        } else {
-          console.log(`Site created: ${result.site.siteId}`);
-          console.log(`Name: ${result.site.name}`);
-          console.log(`Secret Key: ${result.site.secretKey}`);
-        }
+        output(result, format, {
+          headers: ['Site ID', 'Name', 'Secret Key'],
+          rows: [[result.site.siteId, result.site.name, result.site.secretKey]],
+        });
       } catch (err) {
         handleError(err, format);
       }
@@ -104,11 +101,10 @@ export function registerSitesCommand(program: Command) {
           conversionEvents: opts.conversions ? opts.conversions.split(',').map((s: string) => s.trim()) : undefined,
         });
 
-        if (format === 'json') {
-          outputJSON(result);
-        } else {
-          console.log(`Site updated: ${result.site.siteId}`);
-        }
+        output(result, format, {
+          headers: ['Site ID', 'Name'],
+          rows: [[result.site.siteId, result.site.name]],
+        });
       } catch (err) {
         handleError(err, format);
       }
@@ -125,11 +121,10 @@ export function registerSitesCommand(program: Command) {
         const client = makeSitesClient(config);
         const result = await client.deleteSite(siteId);
 
-        if (format === 'json') {
-          outputJSON(result);
-        } else {
-          console.log(`Site deleted: ${siteId}`);
-        }
+        output(result, format, {
+          headers: ['Site ID', 'Deleted'],
+          rows: [[siteId, String(result.ok)]],
+        });
       } catch (err) {
         handleError(err, format);
       }
@@ -146,12 +141,10 @@ export function registerSitesCommand(program: Command) {
         const client = makeSitesClient(config);
         const result = await client.regenerateSecret(siteId);
 
-        if (format === 'json') {
-          outputJSON(result);
-        } else {
-          console.log(`Secret regenerated for: ${siteId}`);
-          console.log(`New Secret Key: ${result.site.secretKey}`);
-        }
+        output(result, format, {
+          headers: ['Site ID', 'Secret Key'],
+          rows: [[result.site.siteId, result.site.secretKey]],
+        });
       } catch (err) {
         handleError(err, format);
       }
