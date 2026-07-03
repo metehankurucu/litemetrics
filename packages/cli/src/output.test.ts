@@ -7,6 +7,7 @@ import {
   invalidMetric,
   validatePeriod,
   errorEnvelope,
+  handleError,
   PERIODS,
 } from './output';
 
@@ -277,6 +278,84 @@ describe('errorEnvelope', () => {
     }) as never);
     expect(() => errorEnvelope('boom', 'table')).toThrow('exit');
     expect(errSpy.mock.calls[0][0]).toBe('Error: boom');
+  });
+});
+
+// ─── R4: error transparency ──────────────────────────
+
+describe('handleError', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const mockExit = () => {
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {
+      throw new Error('exit');
+    }) as never);
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    return { exitSpy, errSpy };
+  };
+
+  it('surfaces the server error message (response.data.error) over the axios message, with status', () => {
+    const { errSpy } = mockExit();
+    const axiosErr = {
+      message: 'Request failed with status code 401',
+      response: { status: 401, data: { ok: false, error: 'Unauthorized - invalid or missing admin secret' } },
+    };
+    expect(() => handleError(axiosErr, 'json')).toThrow('exit');
+    const payload = JSON.parse(errSpy.mock.calls[0][0] as string);
+    expect(payload.error).toBe('Unauthorized - invalid or missing admin secret');
+    expect(payload.status).toBe(401);
+  });
+
+  it('falls back to response.data.message when there is no data.error', () => {
+    const { errSpy } = mockExit();
+    const axiosErr = {
+      message: 'Request failed with status code 404',
+      response: { status: 404, data: { message: 'Site not found' } },
+    };
+    expect(() => handleError(axiosErr, 'json')).toThrow('exit');
+    const payload = JSON.parse(errSpy.mock.calls[0][0] as string);
+    expect(payload.error).toBe('Site not found');
+    expect(payload.status).toBe(404);
+  });
+
+  it('prefers data.error when BOTH data.error and data.message are present', () => {
+    const { errSpy } = mockExit();
+    const axiosErr = {
+      message: 'Request failed with status code 400',
+      response: { status: 400, data: { error: 'the real cause', message: 'generic' } },
+    };
+    expect(() => handleError(axiosErr, 'json')).toThrow('exit');
+    expect(JSON.parse(errSpy.mock.calls[0][0] as string).error).toBe('the real cause');
+  });
+
+  it('falls back to err.message for a network error with no response (no status field)', () => {
+    const { errSpy } = mockExit();
+    const netErr = new Error('connect ECONNREFUSED 127.0.0.1:3000');
+    expect(() => handleError(netErr, 'json')).toThrow('exit');
+    const payload = JSON.parse(errSpy.mock.calls[0][0] as string);
+    expect(payload.error).toBe('connect ECONNREFUSED 127.0.0.1:3000');
+    expect(payload).not.toHaveProperty('status');
+  });
+
+  it('surfaces the server message and HTTP status in table mode too', () => {
+    const { errSpy } = mockExit();
+    const axiosErr = {
+      message: 'Request failed with status code 401',
+      response: { status: 401, data: { error: 'Unauthorized - invalid or missing admin secret' } },
+    };
+    expect(() => handleError(axiosErr, 'table')).toThrow('exit');
+    const line = errSpy.mock.calls[0][0] as string;
+    expect(line).toContain('Unauthorized - invalid or missing admin secret');
+    expect(line).toContain('401');
+    expect(() => JSON.parse(line)).toThrow();
+  });
+
+  it('exits 1', () => {
+    const { exitSpy } = mockExit();
+    expect(() => handleError(new Error('boom'), 'json')).toThrow('exit');
+    expect(exitSpy).toHaveBeenCalledWith(1);
   });
 });
 

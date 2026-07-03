@@ -37,7 +37,8 @@ export function errorEnvelope(
     if (extra?.status !== undefined) payload.status = extra.status;
     console.error(JSON.stringify(payload));
   } else {
-    console.error(`Error: ${message}`);
+    const suffix = extra?.status !== undefined ? ` (HTTP ${extra.status})` : '';
+    console.error(`Error: ${message}${suffix}`);
   }
   process.exit(1);
 }
@@ -168,12 +169,17 @@ export function invalidMetric(metric: string, valid: string[], format: Format, l
   errorEnvelope(message, format, { suggestions });
 }
 
-export function handleError(err: unknown, format: Format): void {
-  const message = err instanceof Error ? err.message : String(err);
-  if (format === 'json') {
-    console.error(JSON.stringify({ error: message }));
-  } else {
-    console.error(`Error: ${message}`);
-  }
-  process.exit(1);
+/**
+ * R4: surface the server's explanatory message rather than axios's opaque
+ * "Request failed with status code 401". Prefers `response.data.error`, then
+ * `response.data.message`, then the thrown error's own message; the JSON
+ * envelope also carries the HTTP `status` when the failure came from a response.
+ */
+export function handleError(err: unknown, format: Format): never {
+  const e = err as {
+    response?: { status?: number; data?: { error?: string; message?: string } };
+  };
+  const serverMessage = e?.response?.data?.error ?? e?.response?.data?.message;
+  const message = serverMessage ?? (err instanceof Error ? err.message : String(err));
+  errorEnvelope(message, format, { status: e?.response?.status });
 }
