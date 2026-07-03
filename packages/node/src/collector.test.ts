@@ -741,6 +741,20 @@ describe('collector includeBots query param plumbing', () => {
     expect(res.statusCode).toBe(500);
   });
 
+  it("query: a non-Error throw (e.g. null) is handled without crashing → 500", async () => {
+    query.mockImplementation(async () => {
+      throw null;
+    });
+    const collector = await makeAuthedCollector();
+    const handler = collector.queryHandler();
+    const res = makeRes();
+    // must resolve (the catch must not itself throw on `null.statusCode`)
+    await expect(
+      handler(makeAuthedGet('/api/query?siteId=site_test&metric=pageviews'), res),
+    ).resolves.toBeUndefined();
+    expect(res.statusCode).toBe(500);
+  });
+
   // ── per-user events handler ────────────────────────────
 
   it("getUserEvents: ?includeBots=true reaches adapter", async () => {
