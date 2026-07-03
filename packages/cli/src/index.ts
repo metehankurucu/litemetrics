@@ -8,6 +8,7 @@ import { registerRetentionCommand } from './commands/retention.js';
 import { registerBotsCommand } from './commands/bots.js';
 import { registerDiscoverCommands } from './commands/discover.js';
 import { registerSitesCommand } from './commands/sites.js';
+import { resolveCompact, setCompactMode } from './output.js';
 
 const program = new Command();
 
@@ -17,8 +18,15 @@ program
   .version('0.5.0')
   .option('--url <url>', 'Litemetrics server URL')
   .option('--secret <secret>', 'Admin secret')
-  .option('--site <siteId>', 'Site ID')
-  .option('-f, --format <format>', 'Output format: json, table, csv');
+  .option('--site <siteId>', 'Site ID (or a comma-separated list to query several sites)')
+  .option('-f, --format <format>', 'Output format: json, table, csv')
+  .option('--compact', 'Single-line JSON output (also via LITEMETRICS_COMPACT=1)');
+
+// Resolve compact mode once, before any command action runs, from the global
+// flag or the LITEMETRICS_COMPACT env var. Inherited by every subcommand.
+program.hook('preAction', () => {
+  setCompactMode(resolveCompact(program.opts().compact));
+});
 
 registerOverviewCommand(program);
 registerStatsCommand(program);

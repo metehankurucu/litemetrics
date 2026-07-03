@@ -44,12 +44,27 @@ export function loadConfig(flags: Partial<CLIConfig>, format: Format): CLIConfig
 }
 
 /**
- * Resolve the site ID to query. If none is configured, auto-resolve: when the
- * account has exactly one site, use it; otherwise print a helpful list/hint and
- * exit. This lets agents query without first looking up the site ID.
+ * R7: split a `--site` value (which may be a comma-separated list) into an
+ * array of trimmed, non-empty site IDs. Returns `[]` for undefined/empty input.
  */
-export async function requireSiteId(config: CLIConfig, format: Format): Promise<string> {
-  if (config.siteId) return config.siteId;
+export function splitSiteIds(raw: string | undefined): string[] {
+  if (!raw) return [];
+  return raw
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+}
+
+/**
+ * Resolve the site IDs to query. An explicit `--site` (possibly a comma list) is
+ * used verbatim. When none is configured, auto-resolve: exactly one site => use
+ * it (with a note on stderr); zero or many => error envelope + exit(1). Always
+ * returns at least one ID. This lets agents query without first looking up IDs,
+ * and query several sites in one invocation with `--site a,b`.
+ */
+export async function resolveSiteIds(config: CLIConfig, format: Format): Promise<string[]> {
+  const explicit = splitSiteIds(config.siteId);
+  if (explicit.length > 0) return explicit;
 
   try {
     const { makeSitesClient } = await import('./client.js');
@@ -58,14 +73,14 @@ export async function requireSiteId(config: CLIConfig, format: Format): Promise<
     if (sites.length === 1) {
       const only = sites[0];
       console.error(`Note: no --site given; using the only site: ${only.siteId} (${only.name})`);
-      return only.siteId;
+      return [only.siteId];
     }
     if (sites.length === 0) {
       errorEnvelope('No sites found. Create one with `litemetrics sites create -n "Name"`.', format);
     }
     const available = sites.map((s) => `${s.siteId} (${s.name})`);
     errorEnvelope(
-      `Multiple sites found. Specify --site <siteId> (or LITEMETRICS_SITE_ID). Available: ${available.join(', ')}`,
+      `Multiple sites found. Specify --site <siteId> (or a comma list, or LITEMETRICS_SITE_ID). Available: ${available.join(', ')}`,
       format,
       { suggestions: sites.map((s) => s.siteId) },
     );

@@ -1,7 +1,8 @@
 import type { Command } from 'commander';
-import { loadConfig, requireSiteId } from '../config.js';
+import { loadConfig, resolveSiteIds } from '../config.js';
 import { makeAnalyticsClient } from '../client.js';
-import { resolveFormat, output, handleError, validatePeriod } from '../output.js';
+import { resolveFormat, handleError, validatePeriod } from '../output.js';
+import { runPerSite } from '../multisite.js';
 
 export function registerUsersCommand(program: Command) {
   const users = program
@@ -16,30 +17,34 @@ export function registerUsersCommand(program: Command) {
       const format = resolveFormat(globalOpts.format);
       try {
         const config = loadConfig({ url: globalOpts.url, adminSecret: globalOpts.secret, siteId: globalOpts.site }, format);
-        const siteId = await requireSiteId(config, format);
+        const siteIds = await resolveSiteIds(config, format);
         const client = makeAnalyticsClient(config);
-        client.setSiteId(siteId);
 
-        const result = await client.getUsers({
-          search: opts.search,
-          limit: opts.limit,
-          offset: opts.offset,
-          includeBots: opts.includeBots,
+        await runPerSite(siteIds, format, {
+          run: (siteId) => {
+            client.setSiteId(siteId);
+            return client.getUsers({
+              search: opts.search,
+              limit: opts.limit,
+              offset: opts.offset,
+              includeBots: opts.includeBots,
+            });
+          },
+          table: (result) => {
+            const headers = ['User', 'Visitor ID', 'Events', 'Pages', 'Sessions', 'Last Seen', 'Country'];
+            const rows = result.users.map(u => [
+              u.userId || 'Anonymous',
+              u.visitorId.slice(0, 12),
+              String(u.totalEvents),
+              String(u.totalPageviews),
+              String(u.totalSessions),
+              new Date(u.lastSeen).toLocaleString(),
+              u.geo?.country || '',
+            ]);
+            const footer = `Total: ${result.total} | Showing: ${result.offset}-${result.offset + result.users.length}`;
+            return { headers, rows, footer };
+          },
         });
-
-        const headers = ['User', 'Visitor ID', 'Events', 'Pages', 'Sessions', 'Last Seen', 'Country'];
-        const rows = result.users.map(u => [
-          u.userId || 'Anonymous',
-          u.visitorId.slice(0, 12),
-          String(u.totalEvents),
-          String(u.totalPageviews),
-          String(u.totalSessions),
-          new Date(u.lastSeen).toLocaleString(),
-          u.geo?.country || '',
-        ]);
-        const footer = `Total: ${result.total} | Showing: ${result.offset}-${result.offset + result.users.length}`;
-
-        output(result, format, { headers, rows, footer });
       } catch (err) {
         handleError(err, format);
       }
@@ -53,44 +58,49 @@ export function registerUsersCommand(program: Command) {
       const format = resolveFormat(globalOpts.format);
       try {
         const config = loadConfig({ url: globalOpts.url, adminSecret: globalOpts.secret, siteId: globalOpts.site }, format);
-        const siteId = await requireSiteId(config, format);
+        const siteIds = await resolveSiteIds(config, format);
         const client = makeAnalyticsClient(config);
-        client.setSiteId(siteId);
 
-        const result = await client.getUserDetail(identifier);
+        await runPerSite(siteIds, format, {
+          run: (siteId) => {
+            client.setSiteId(siteId);
+            return client.getUserDetail(identifier);
+          },
+          table: (result) => {
+            const headers = ['Field', 'Value'];
+            const rows = [
+              ['User ID', result.userId || 'Anonymous'],
+              ['Visitor ID', result.visitorId],
+              ['Linked Devices', String(result.visitorIds?.length || 1)],
+              ['First Seen', new Date(result.firstSeen).toLocaleString()],
+              ['Last Seen', new Date(result.lastSeen).toLocaleString()],
+              ['Total Events', String(result.totalEvents)],
+              ['Total Pageviews', String(result.totalPageviews)],
+              ['Total Sessions', String(result.totalSessions)],
+              ['Last URL', result.lastUrl || '-'],
+              ['Referrer', result.referrer || '-'],
+              ['Country', result.geo?.country || '-'],
+              ['City', result.geo?.city || '-'],
+              ['Browser', result.device?.browser || '-'],
+              ['OS', result.device?.os || '-'],
+              ['Device', result.device?.type || '-'],
+              ['Language', result.language || '-'],
+              ['Timezone', result.timezone || '-'],
+            ];
 
-        const headers = ['Field', 'Value'];
-        const rows = [
-          ['User ID', result.userId || 'Anonymous'],
-          ['Visitor ID', result.visitorId],
-          ['Linked Devices', String(result.visitorIds?.length || 1)],
-          ['First Seen', new Date(result.firstSeen).toLocaleString()],
-          ['Last Seen', new Date(result.lastSeen).toLocaleString()],
-          ['Total Events', String(result.totalEvents)],
-          ['Total Pageviews', String(result.totalPageviews)],
-          ['Total Sessions', String(result.totalSessions)],
-          ['Last URL', result.lastUrl || '-'],
-          ['Referrer', result.referrer || '-'],
-          ['Country', result.geo?.country || '-'],
-          ['City', result.geo?.city || '-'],
-          ['Browser', result.device?.browser || '-'],
-          ['OS', result.device?.os || '-'],
-          ['Device', result.device?.type || '-'],
-          ['Language', result.language || '-'],
-          ['Timezone', result.timezone || '-'],
-        ];
+            if (result.utm) {
+              if (result.utm.source) rows.push(['UTM Source', result.utm.source]);
+              if (result.utm.medium) rows.push(['UTM Medium', result.utm.medium]);
+              if (result.utm.campaign) rows.push(['UTM Campaign', result.utm.campaign]);
+            }
 
-        if (result.utm) {
-          if (result.utm.source) rows.push(['UTM Source', result.utm.source]);
-          if (result.utm.medium) rows.push(['UTM Medium', result.utm.medium]);
-          if (result.utm.campaign) rows.push(['UTM Campaign', result.utm.campaign]);
-        }
+            if (result.traits && Object.keys(result.traits).length > 0) {
+              rows.push(['Traits', JSON.stringify(result.traits)]);
+            }
 
-        if (result.traits && Object.keys(result.traits).length > 0) {
-          rows.push(['Traits', JSON.stringify(result.traits)]);
-        }
-
-        output(result, format, { headers, rows });
+            return { headers, rows };
+          },
+        });
       } catch (err) {
         handleError(err, format);
       }
@@ -111,28 +121,32 @@ export function registerUsersCommand(program: Command) {
       validatePeriod(opts.period, undefined, undefined, format);
       try {
         const config = loadConfig({ url: globalOpts.url, adminSecret: globalOpts.secret, siteId: globalOpts.site }, format);
-        const siteId = await requireSiteId(config, format);
+        const siteIds = await resolveSiteIds(config, format);
         const client = makeAnalyticsClient(config);
-        client.setSiteId(siteId);
 
-        const result = await client.getUserEvents(identifier, {
-          type: opts.type,
-          eventName: opts.name,
-          period: opts.period,
-          limit: opts.limit,
-          offset: opts.offset,
-          includeBots: opts.includeBots,
+        await runPerSite(siteIds, format, {
+          run: (siteId) => {
+            client.setSiteId(siteId);
+            return client.getUserEvents(identifier, {
+              type: opts.type,
+              eventName: opts.name,
+              period: opts.period,
+              limit: opts.limit,
+              offset: opts.offset,
+              includeBots: opts.includeBots,
+            });
+          },
+          table: (result) => {
+            const headers = ['Time', 'Type', 'Detail', 'Country', 'City'];
+            const rows = result.events.map(e => {
+              const time = new Date(e.timestamp).toLocaleString();
+              const detail = e.type === 'pageview' ? (e.url || '') : e.type === 'event' ? (e.name || '') : (e.userId || '');
+              return [time, e.type, detail, e.geo?.country || '', e.geo?.city || ''];
+            });
+            const footer = `Total: ${result.total} | Showing: ${result.offset}-${result.offset + result.events.length}`;
+            return { headers, rows, footer };
+          },
         });
-
-        const headers = ['Time', 'Type', 'Detail', 'Country', 'City'];
-        const rows = result.events.map(e => {
-          const time = new Date(e.timestamp).toLocaleString();
-          const detail = e.type === 'pageview' ? (e.url || '') : e.type === 'event' ? (e.name || '') : (e.userId || '');
-          return [time, e.type, detail, e.geo?.country || '', e.geo?.city || ''];
-        });
-        const footer = `Total: ${result.total} | Showing: ${result.offset}-${result.offset + result.events.length}`;
-
-        output(result, format, { headers, rows, footer });
       } catch (err) {
         handleError(err, format);
       }

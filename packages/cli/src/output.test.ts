@@ -3,11 +3,14 @@ import {
   parseFilters,
   resolveFormat,
   outputCSV,
+  outputJSON,
   nearest,
   invalidMetric,
   validatePeriod,
   errorEnvelope,
   handleError,
+  resolveCompact,
+  setCompactMode,
   PERIODS,
 } from './output';
 
@@ -113,6 +116,60 @@ describe('outputCSV', () => {
     outputCSV(['name'], [['hello']]);
     expect(spy).toHaveBeenCalledWith('hello');
     spy.mockRestore();
+  });
+});
+
+// ─── R6: compact JSON ────────────────────────────────
+
+describe('compact JSON output', () => {
+  const orig = process.env.LITEMETRICS_COMPACT;
+  afterEach(() => {
+    setCompactMode(false);
+    if (orig === undefined) delete process.env.LITEMETRICS_COMPACT;
+    else process.env.LITEMETRICS_COMPACT = orig;
+    vi.restoreAllMocks();
+  });
+
+  it('resolveCompact is true when the flag is passed', () => {
+    delete process.env.LITEMETRICS_COMPACT;
+    expect(resolveCompact(true)).toBe(true);
+  });
+
+  it('resolveCompact honors LITEMETRICS_COMPACT=1 with no flag', () => {
+    process.env.LITEMETRICS_COMPACT = '1';
+    expect(resolveCompact(undefined)).toBe(true);
+  });
+
+  it('resolveCompact honors LITEMETRICS_COMPACT=true with no flag', () => {
+    process.env.LITEMETRICS_COMPACT = 'true';
+    expect(resolveCompact(undefined)).toBe(true);
+  });
+
+  it('resolveCompact ignores other LITEMETRICS_COMPACT values (e.g. 0)', () => {
+    process.env.LITEMETRICS_COMPACT = '0';
+    expect(resolveCompact(undefined)).toBe(false);
+  });
+
+  it('resolveCompact is false by default', () => {
+    delete process.env.LITEMETRICS_COMPACT;
+    expect(resolveCompact(undefined)).toBe(false);
+  });
+
+  it('outputJSON pretty-prints by default (multi-line, 2-space)', () => {
+    setCompactMode(false);
+    const spy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    outputJSON({ a: 1, b: [2, 3] });
+    expect(spy).toHaveBeenCalledWith(JSON.stringify({ a: 1, b: [2, 3] }, null, 2));
+    expect((spy.mock.calls[0][0] as string)).toContain('\n');
+  });
+
+  it('outputJSON emits a single line when compact mode is on, and it parses', () => {
+    setCompactMode(true);
+    const spy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    outputJSON({ a: 1, b: [2, 3] });
+    const line = spy.mock.calls[0][0] as string;
+    expect(line).not.toContain('\n');
+    expect(JSON.parse(line)).toEqual({ a: 1, b: [2, 3] });
   });
 });
 
@@ -356,6 +413,18 @@ describe('handleError', () => {
     const { exitSpy } = mockExit();
     expect(() => handleError(new Error('boom'), 'json')).toThrow('exit');
     expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+
+  it('ignores a blank server data.error and keeps the axios message', () => {
+    const { errSpy } = mockExit();
+    // real AxiosError is an Error instance; a blank data.error must not win
+    const axiosErr = Object.assign(new Error('Request failed with status code 500'), {
+      response: { status: 500, data: { error: '' } },
+    });
+    expect(() => handleError(axiosErr, 'json')).toThrow('exit');
+    const payload = JSON.parse(errSpy.mock.calls[0][0] as string);
+    expect(payload.error).toBe('Request failed with status code 500');
+    expect(payload.status).toBe(500);
   });
 });
 

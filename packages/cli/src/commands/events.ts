@@ -1,7 +1,8 @@
 import type { Command } from 'commander';
-import { loadConfig, requireSiteId } from '../config.js';
+import { loadConfig, resolveSiteIds } from '../config.js';
 import { makeAnalyticsClient } from '../client.js';
-import { resolveFormat, output, handleError, validatePeriod } from '../output.js';
+import { resolveFormat, handleError, validatePeriod } from '../output.js';
+import { runPerSite } from '../multisite.js';
 
 export function registerEventsCommand(program: Command) {
   program
@@ -25,41 +26,45 @@ export function registerEventsCommand(program: Command) {
       validatePeriod(opts.period, opts.from, opts.to, format);
       try {
         const config = loadConfig({ url: globalOpts.url, adminSecret: globalOpts.secret, siteId: globalOpts.site }, format);
-        const siteId = await requireSiteId(config, format);
+        const siteIds = await resolveSiteIds(config, format);
         const client = makeAnalyticsClient(config);
-        client.setSiteId(siteId);
 
-        const result = await client.getEventsList({
-          type: opts.type,
-          eventName: opts.name,
-          eventNames: opts.names ? opts.names.split(',') : undefined,
-          eventSource: opts.source,
-          visitorId: opts.visitor,
-          userId: opts.user,
-          period: opts.period,
-          dateFrom: opts.from,
-          dateTo: opts.to,
-          limit: opts.limit,
-          offset: opts.offset,
-          includeBots: opts.includeBots,
+        await runPerSite(siteIds, format, {
+          run: (siteId) => {
+            client.setSiteId(siteId);
+            return client.getEventsList({
+              type: opts.type,
+              eventName: opts.name,
+              eventNames: opts.names ? opts.names.split(',') : undefined,
+              eventSource: opts.source,
+              visitorId: opts.visitor,
+              userId: opts.user,
+              period: opts.period,
+              dateFrom: opts.from,
+              dateTo: opts.to,
+              limit: opts.limit,
+              offset: opts.offset,
+              includeBots: opts.includeBots,
+            });
+          },
+          table: (result) => {
+            const headers = ['Time', 'Type', 'Detail', 'Visitor', 'Country', 'City'];
+            const rows = result.events.map(e => {
+              const time = new Date(e.timestamp).toLocaleString();
+              const detail = e.type === 'pageview' ? (e.url || '') : e.type === 'event' ? (e.name || '') : (e.userId || '');
+              return [
+                time,
+                e.type,
+                detail,
+                e.visitorId?.slice(0, 12) || '',
+                e.geo?.country || '',
+                e.geo?.city || '',
+              ];
+            });
+            const footer = `Total: ${result.total} | Showing: ${result.offset}-${result.offset + result.events.length}`;
+            return { headers, rows, footer };
+          },
         });
-
-        const headers = ['Time', 'Type', 'Detail', 'Visitor', 'Country', 'City'];
-        const rows = result.events.map(e => {
-          const time = new Date(e.timestamp).toLocaleString();
-          const detail = e.type === 'pageview' ? (e.url || '') : e.type === 'event' ? (e.name || '') : (e.userId || '');
-          return [
-            time,
-            e.type,
-            detail,
-            e.visitorId?.slice(0, 12) || '',
-            e.geo?.country || '',
-            e.geo?.city || '',
-          ];
-        });
-        const footer = `Total: ${result.total} | Showing: ${result.offset}-${result.offset + result.events.length}`;
-
-        output(result, format, { headers, rows, footer });
       } catch (err) {
         handleError(err, format);
       }

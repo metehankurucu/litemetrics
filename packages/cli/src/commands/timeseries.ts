@@ -1,8 +1,9 @@
 import type { Command } from 'commander';
 import { TIMESERIES_METRIC_IDS } from '@litemetrics/core';
-import { loadConfig, requireSiteId } from '../config.js';
+import { loadConfig, resolveSiteIds } from '../config.js';
 import { makeAnalyticsClient } from '../client.js';
-import { resolveFormat, output, parseFilters, handleError, invalidMetric, validatePeriod } from '../output.js';
+import { resolveFormat, parseFilters, handleError, invalidMetric, validatePeriod } from '../output.js';
+import { runPerSite } from '../multisite.js';
 
 type TSMetric = 'pageviews' | 'visitors' | 'sessions' | 'events' | 'conversions';
 
@@ -26,25 +27,28 @@ export function registerTimeseriesCommand(program: Command) {
       validatePeriod(opts.period, opts.from, opts.to, format);
       try {
         const config = loadConfig({ url: globalOpts.url, adminSecret: globalOpts.secret, siteId: globalOpts.site }, format);
-        const siteId = await requireSiteId(config, format);
+        const siteIds = await resolveSiteIds(config, format);
         const client = makeAnalyticsClient(config);
-        client.setSiteId(siteId);
 
-        const result = await client.getTimeSeries(metric as TSMetric, {
-          period: opts.period,
-          dateFrom: opts.from,
-          dateTo: opts.to,
-          granularity: opts.granularity,
-          filters: parseFilters(opts.filter),
-          timezone: opts.timezone,
-          includeBots: opts.includeBots,
+        await runPerSite(siteIds, format, {
+          run: (siteId) => {
+            client.setSiteId(siteId);
+            return client.getTimeSeries(metric as TSMetric, {
+              period: opts.period,
+              dateFrom: opts.from,
+              dateTo: opts.to,
+              granularity: opts.granularity,
+              filters: parseFilters(opts.filter),
+              timezone: opts.timezone,
+              includeBots: opts.includeBots,
+            });
+          },
+          table: (result) => ({
+            headers: ['Date', 'Value'],
+            rows: result.data.map(d => [d.date, String(d.value)]),
+            footer: `Metric: ${result.metric} | Granularity: ${result.granularity}`,
+          }),
         });
-
-        const headers = ['Date', 'Value'];
-        const rows = result.data.map(d => [d.date, String(d.value)]);
-        const footer = `Metric: ${result.metric} | Granularity: ${result.granularity}`;
-
-        output(result, format, { headers, rows, footer });
       } catch (err) {
         handleError(err, format);
       }

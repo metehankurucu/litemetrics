@@ -65,8 +65,26 @@ export function validatePeriod(
   }
 }
 
+// ─── R6: compact JSON ────────────────────────────────
+
+let compactMode = false;
+
+/** Toggle single-line JSON output (set once from the global flag / env). */
+export function setCompactMode(on: boolean): void {
+  compactMode = on;
+}
+
+/** Resolve compact mode from the `--compact` flag or `LITEMETRICS_COMPACT`. */
+export function resolveCompact(flag?: boolean): boolean {
+  return (
+    Boolean(flag) ||
+    process.env.LITEMETRICS_COMPACT === '1' ||
+    process.env.LITEMETRICS_COMPACT === 'true'
+  );
+}
+
 export function outputJSON(data: unknown): void {
-  console.log(JSON.stringify(data, null, 2));
+  console.log(compactMode ? JSON.stringify(data) : JSON.stringify(data, null, 2));
 }
 
 export function outputTable(headers: string[], rows: string[][], footer?: string): void {
@@ -171,15 +189,27 @@ export function invalidMetric(metric: string, valid: string[], format: Format, l
 
 /**
  * R4: surface the server's explanatory message rather than axios's opaque
- * "Request failed with status code 401". Prefers `response.data.error`, then
- * `response.data.message`, then the thrown error's own message; the JSON
- * envelope also carries the HTTP `status` when the failure came from a response.
+ * "Request failed with status code 401". Prefers the server's structured
+ * `response.data.error`, then `response.data.message`, then the thrown error's
+ * own message. Blank / non-string server fields are ignored so a `{error: ""}`
+ * body never blanks out the more useful axios message.
  */
+export function errorMessage(err: unknown): string {
+  const e = err as { response?: { data?: { error?: unknown; message?: unknown } } };
+  const str = (v: unknown): string | undefined =>
+    typeof v === 'string' && v.trim() !== '' ? v : undefined;
+  return (
+    str(e?.response?.data?.error) ??
+    str(e?.response?.data?.message) ??
+    (err instanceof Error ? err.message : String(err))
+  );
+}
+
+/** HTTP status of an axios-style error, if the failure came from a response. */
+export function errorStatus(err: unknown): number | undefined {
+  return (err as { response?: { status?: number } })?.response?.status;
+}
+
 export function handleError(err: unknown, format: Format): never {
-  const e = err as {
-    response?: { status?: number; data?: { error?: string; message?: string } };
-  };
-  const serverMessage = e?.response?.data?.error ?? e?.response?.data?.message;
-  const message = serverMessage ?? (err instanceof Error ? err.message : String(err));
-  errorEnvelope(message, format, { status: e?.response?.status });
+  errorEnvelope(errorMessage(err), format, { status: errorStatus(err) });
 }
