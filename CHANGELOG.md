@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.5.0 - Agent-UX Hardening
+
+Hardens the CLI as an AI-agent query surface: strict input validation, hard output caps, transparent errors, compact JSON, and one-call multi-site querying.
+
+### `@litemetrics/cli` (0.5.0 -> 0.6.0)
+
+**Strict input validation:** an out-of-enum `--period` (e.g. `14d`), or `custom` without both `--from`/`--to`, now exits `1` with a `{ error, suggestions }` envelope instead of silently coercing to a default period. Unknown metric names and an invalid `--format` are rejected the same way.
+
+**Output caps:** `top_*` limits clamp to 1000, `events`/`users` to 200; an over-wide `timeseries` (period x granularity beyond 2000 buckets) fails loudly with a coarser-granularity hint rather than returning a giant payload.
+
+**Error transparency:** every error is a single-line `{ "error", "status"?, "suggestions"? }` object on stderr. `error` is the server's real message (`response.data.error`) rather than axios's opaque `Request failed with status code 401`; `status` is the HTTP code; a blank-message network error (e.g. a dual-stack `ECONNREFUSED`) falls back to `err.code` so the envelope is never `{"error":""}`.
+
+**Compact JSON:** `--compact` (or `LITEMETRICS_COMPACT=1`) emits single-line JSON; the default stays pretty-printed (backward compatible).
+
+**Multi-site:** `--site a,b` queries several sites in one call and emits one JSON object keyed by site id (table/csv print one section per site). Partial failures keep the successful sites and collect the rest under an `"errors"` key, exiting `1`. Single-site output is unchanged.
+
+**Output contract for agents:** stdout is data-only; notes and errors go to stderr; exit `0` on success, `1` on any error. Documented in the README's new "Output contract for agents" section.
+
+### `@litemetrics/node` (0.6.0 -> 0.7.0)
+
+- **Top-N cap:** all three adapters (ClickHouse, MongoDB, Postgres) clamp `top_*` limits to 1000 through a shared `capLimit` helper; the existing events/users 200 cap now uses the same single source.
+- **Timeseries budget:** `queryTimeSeries` rejects any range x granularity exceeding 2000 buckets with a `QueryValidationError` (HTTP 400) before hitting the database, suggesting a coarser granularity.
+- **Error mapping:** null-safe `statusCode` read in the collector's query error path, so a thrown non-object no longer hangs the request.
+
 ## 0.4.0 — Timestamp Sanitization
 
 ### `@litemetrics/node`
