@@ -15,7 +15,7 @@ const program = new Command();
 program
   .name('litemetrics')
   .description('Litemetrics analytics CLI - query data, manage sites, AI-agent friendly')
-  .version('0.5.0')
+  .version('0.6.0')
   .option('--url <url>', 'Litemetrics server URL')
   .option('--secret <secret>', 'Admin secret')
   .option('--site <siteId>', 'Site ID (or a comma-separated list to query several sites)')
