@@ -191,17 +191,21 @@ export function invalidMetric(metric: string, valid: string[], format: Format, l
  * R4: surface the server's explanatory message rather than axios's opaque
  * "Request failed with status code 401". Prefers the server's structured
  * `response.data.error`, then `response.data.message`, then the thrown error's
- * own message. Blank / non-string server fields are ignored so a `{error: ""}`
- * body never blanks out the more useful axios message.
+ * own message, then its `code`. Blank / non-string values are skipped at every
+ * step so a `{error: ""}` body never wins, and a dual-stack ECONNREFUSED (whose
+ * AxiosError has a blank `message` but a `code`) surfaces the code instead of an
+ * empty `{"error":""}` envelope.
  */
 export function errorMessage(err: unknown): string {
-  const e = err as { response?: { data?: { error?: unknown; message?: unknown } } };
+  const e = err as { response?: { data?: { error?: unknown; message?: unknown } }; code?: unknown };
   const str = (v: unknown): string | undefined =>
     typeof v === 'string' && v.trim() !== '' ? v : undefined;
   return (
     str(e?.response?.data?.error) ??
     str(e?.response?.data?.message) ??
-    (err instanceof Error ? err.message : String(err))
+    str(err instanceof Error ? err.message : undefined) ??
+    str(e?.code) ??
+    String(err)
   );
 }
 

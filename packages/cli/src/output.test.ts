@@ -396,6 +396,26 @@ describe('handleError', () => {
     expect(payload).not.toHaveProperty('status');
   });
 
+  it('surfaces err.code when a network error has a blank message (dual-stack ECONNREFUSED)', () => {
+    const { errSpy } = mockExit();
+    // Real axios ECONNREFUSED against a host that resolves to both ::1 and
+    // 127.0.0.1 (e.g. localhost) wraps a Node AggregateError: the AxiosError is
+    // an Error instance whose `message` is '' but whose `code` carries the useful
+    // signal. A raw err.message fallback would emit {"error":""}.
+    const netErr = Object.assign(new Error(''), { code: 'ECONNREFUSED' });
+    expect(() => handleError(netErr, 'json')).toThrow('exit');
+    const payload = JSON.parse(errSpy.mock.calls[0][0] as string);
+    expect(payload.error).toBe('ECONNREFUSED');
+    expect(payload).not.toHaveProperty('status');
+  });
+
+  it('prefers a populated err.message over err.code', () => {
+    const { errSpy } = mockExit();
+    const netErr = Object.assign(new Error('connect ETIMEDOUT 10.0.0.1:443'), { code: 'ETIMEDOUT' });
+    expect(() => handleError(netErr, 'json')).toThrow('exit');
+    expect(JSON.parse(errSpy.mock.calls[0][0] as string).error).toBe('connect ETIMEDOUT 10.0.0.1:443');
+  });
+
   it('surfaces the server message and HTTP status in table mode too', () => {
     const { errSpy } = mockExit();
     const axiosErr = {
