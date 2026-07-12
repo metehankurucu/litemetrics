@@ -169,6 +169,13 @@ ADMIN_SECRET=your-secret docker compose up -d
 
 Open `http://localhost:3002` for the dashboard.
 
+Prefer PostgreSQL over ClickHouse? Use the Postgres variant (the database stays on the internal network and is not exposed to the host):
+
+```bash
+POSTGRES_PASSWORD=change-me ADMIN_SECRET=your-secret \
+  docker compose -f docker-compose.postgres.yml up -d
+```
+
 ### Docker (standalone)
 
 ```bash

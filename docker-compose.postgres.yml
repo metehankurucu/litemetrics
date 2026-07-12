@@ -1,0 +1,48 @@
+# PostgreSQL variant of docker-compose.yml. Mirrors a "one server + one Postgres"
+# production setup (e.g. Railway) and is ready for panel deploys (Dokploy/Coolify).
+#
+# Usage:
+#   POSTGRES_PASSWORD=change-me ADMIN_SECRET=your-secret \
+#     docker compose -f docker-compose.postgres.yml up -d
+#
+# Notes:
+# - Postgres is intentionally NOT exposed on the host (safe default for public
+#   VPS deploys); the app reaches it over the internal compose network.
+# - Secrets are required and fail closed: POSTGRES_PASSWORD, ADMIN_SECRET.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: litemetrics
+      POSTGRES_USER: litemetrics
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U litemetrics -d litemetrics"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  litemetrics:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - '3002:3002'
+    environment:
+      PORT: 3002
+      DB_ADAPTER: postgres
+      POSTGRES_URL: postgres://litemetrics:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/litemetrics
+      ADMIN_SECRET: ${ADMIN_SECRET:?set ADMIN_SECRET}
+      GEOIP: ${GEOIP:-true}
+      TRUST_PROXY: 'true'
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
