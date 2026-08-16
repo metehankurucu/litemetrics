@@ -82,6 +82,14 @@ const collector = await createCollector({
       // Lightweight audit log - kept structured so it's grep-friendly in Railway logs.
       console.log(`[bot-filter] ${info.action} layer=${info.layer} mode=${info.mode} site=${info.siteId} ip=${info.ip}`);
     },
+    onSiteTypeMismatch: (info) => {
+      // This site sends app SDK events but is not typed as an app, so it is still
+      // filtered as browser traffic and will keep losing its Android events. Fix is
+      // one call: PUT /api/sites/<id> {"type":"app"}.
+      console.warn(
+        `[site-type-mismatch] site=${info.siteId} type=${info.siteType ?? 'unset'} platform=${info.platform} - app SDK events on a non-app site are still filtered as browser traffic`,
+      );
+    },
   },
 });
 
