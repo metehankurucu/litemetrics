@@ -187,6 +187,20 @@ export interface BotFilterConfig {
   rateLimitMaxEvents?: number;
   /** Optional callback fired whenever an event is flagged or dropped (analytics/audit). */
   onBotDetected?: (info: BotDetectedInfo) => void;
+  /**
+   * Fired once per site when app-SDK events arrive at a site that is not typed as
+   * `app`. Such a site is filtered as browser traffic, which silently drops its
+   * Android events. Reporting only - the request is filtered exactly as before.
+   */
+  onSiteTypeMismatch?: (info: SiteTypeMismatchInfo) => void;
+}
+
+export interface SiteTypeMismatchInfo {
+  siteId: string;
+  /** The site's configured type, or undefined when it was never set. */
+  siteType: SiteType | undefined;
+  /** The platform the SDK declared in the event payload. */
+  platform: string;
 }
 
 export interface BotDetectedInfo {

@@ -78,6 +78,19 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
     return site?.botFilterMode ?? defaultBotMode;
   }
 
+  // Only ever holds ids of sites that exist, so an unknown siteId from a request
+  // body cannot grow it.
+  const reportedTypeMismatches = new Set<string>();
+
+  function reportSiteTypeMismatch(site: Site, events: ClientEvent[]): void {
+    if (!botCfg.onSiteTypeMismatch) return;
+    if (reportedTypeMismatches.has(site.siteId)) return;
+    const platform = events.find((event) => event.mobile?.platform)?.mobile?.platform;
+    if (!platform) return;
+    reportedTypeMismatches.add(site.siteId);
+    botCfg.onSiteTypeMismatch({ siteId: site.siteId, siteType: site.type, platform });
+  }
+
   // ─── Auth helpers ──────────────────────────────────────
 
   function isAdmin(req: any): boolean {
@@ -320,13 +333,26 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
 
         let botFlag: 'signature' | 'heuristic' | 'rate-limit' | undefined;
 
+        // The signature and heuristic layers are browser heuristics: one matches a
+        // User-Agent against a crawler list, the other flags a request with no
+        // browser, engine, Accept-Language or Referer. An app SDK has none of those
+        // by construction - on Android, React Native's fetch goes out through OkHttp
+        // with `User-Agent: okhttp/<version>`, which isbot matches - so on an app
+        // site both layers only ever misfire. Rate limiting still applies: abuse of
+        // an app site id is a volume problem, not a User-Agent one.
+        const isAppSite = site?.type === 'app';
+        if (site && !isAppSite) reportSiteTypeMismatch(site, payload.events);
+
+        const rateLimited = mode === 'strict' || mode === 'shadow';
+
         if (mode !== 'off') {
-          if (isBot(userAgent)) botFlag = 'signature';
-          else if ((mode === 'strict' || mode === 'shadow') &&
-                   isHeuristicBot({ userAgent, acceptLanguage, referer })) {
+          if (isAppSite) {
+            if (rateLimited && rateLimiter.check(ip).limited) botFlag = 'rate-limit';
+          } else if (isBot(userAgent)) {
+            botFlag = 'signature';
+          } else if (rateLimited && isHeuristicBot({ userAgent, acceptLanguage, referer })) {
             botFlag = 'heuristic';
-          } else if ((mode === 'strict' || mode === 'shadow') &&
-                     rateLimiter.check(ip).limited) {
+          } else if (rateLimited && rateLimiter.check(ip).limited) {
             botFlag = 'rate-limit';
           }
         }

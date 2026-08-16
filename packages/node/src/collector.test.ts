@@ -492,6 +492,237 @@ describe('collector per-site bot filter override', () => {
   });
 });
 
+// The signature and heuristic layers both reason about browser User-Agents, and an
+// app SDK does not send one. On Android, React Native's fetch goes through OkHttp,
+// which fills in `User-Agent: okhttp/<version>`; isbot matches that, so every Android
+// event from every app was dropped. Measured in production: four app sites, 6053
+// events over 90 days, zero of them Android, while Play was 34.5% of gross revenue.
+describe('collector bot filter - app-type sites', () => {
+  beforeEach(() => {
+    resetAdapterMocks();
+  });
+
+  function appSite(extra: Record<string, unknown> = {}) {
+    return { siteId: 'site_test', name: 'Test App', secretKey: 'k', type: 'app', ...extra };
+  }
+
+  function makeReqFor(ua: string, headers: Record<string, string> = {}, mobile?: unknown) {
+    return {
+      method: 'POST',
+      headers: { 'user-agent': ua, ...headers },
+      body: {
+        events: [
+          {
+            siteId: 'site_test',
+            visitorId: 'v1',
+            sessionId: 's1',
+            type: 'pageview',
+            name: '$pageview',
+            timestamp: Date.now(),
+            url: 'https://x.test/',
+            ...(mobile ? { mobile } : {}),
+          },
+        ],
+      },
+      socket: { remoteAddress: '9.9.9.9' },
+    };
+  }
+
+  // R1 + R8: the regression this whole change exists to prevent.
+  it.each(['okhttp/3.14.9', 'okhttp/4.9.2', 'okhttp/4.12.0', 'okhttp/5.0.0-alpha.14'])(
+    'stores an app-site event sent with the OkHttp default UA %s',
+    async (ua) => {
+      getSite.mockImplementation(async () => appSite());
+      const collector = await createCollector({
+        db: { adapter: 'clickhouse', url: 'http://x' },
+        botFilter: { defaultMode: 'standard' },
+      });
+      await collector.handler()(makeReqFor(ua), makeRes());
+      expect(insertEvents).toHaveBeenCalledOnce();
+      expect(insertEvents.mock.calls[0]![0][0]!.botFlag).toBeUndefined();
+    },
+  );
+
+  // R5: the fix must not loosen anything for web traffic.
+  it('still drops the same UA on a web-type site', async () => {
+    getSite.mockImplementation(async () => ({
+      siteId: 'site_test', name: 'Test Web', secretKey: 'k', type: 'web',
+    }));
+    const collector = await createCollector({
+      db: { adapter: 'clickhouse', url: 'http://x' },
+      botFilter: { defaultMode: 'standard' },
+    });
+    await collector.handler()(makeReqFor('okhttp/4.12.0'), makeRes());
+    expect(insertEvents).not.toHaveBeenCalled();
+  });
+
+  it('treats a site with no type set as web, not as app', async () => {
+    getSite.mockImplementation(async () => ({ siteId: 'site_test', name: 'Test', secretKey: 'k' }));
+    const collector = await createCollector({
+      db: { adapter: 'clickhouse', url: 'http://x' },
+      botFilter: { defaultMode: 'standard' },
+    });
+    await collector.handler()(makeReqFor('okhttp/4.12.0'), makeRes());
+    expect(insertEvents).not.toHaveBeenCalled();
+  });
+
+  // R2: every RN request has no browser, no engine, no Accept-Language and no Referer,
+  // so the heuristic layer would flag 100% of app traffic the moment strict is enabled.
+  it('does not let the heuristic layer fire on app traffic even in strict mode', async () => {
+    getSite.mockImplementation(async () => appSite());
+    const collector = await createCollector({
+      db: { adapter: 'clickhouse', url: 'http://x' },
+      botFilter: { defaultMode: 'strict' },
+    });
+    await collector.handler()(makeReqFor('MyApp/1.0 CFNetwork/1498.700.2 Darwin/23.6.0'), makeRes());
+    expect(insertEvents).toHaveBeenCalledOnce();
+  });
+
+  // The deliberate trade-off, pinned so nobody discovers it by accident: an app site
+  // no longer rejects a self-declared crawler UA. Abuse of an app site id is a
+  // volume problem, which is the rate-limit layer's job, not the UA list's.
+  it('no longer drops a declared crawler UA on an app site', async () => {
+    getSite.mockImplementation(async () => appSite());
+    const collector = await createCollector({
+      db: { adapter: 'clickhouse', url: 'http://x' },
+      botFilter: { defaultMode: 'strict' },
+    });
+    await collector.handler()(
+      makeReqFor('Googlebot/2.1 (+http://www.google.com/bot.html)'),
+      makeRes(),
+    );
+    expect(insertEvents).toHaveBeenCalledOnce();
+  });
+
+  // R3: the one layer that still protects an app site must keep working.
+  it('still drops an app-site request that overflows the rate-limit window in strict mode', async () => {
+    getSite.mockImplementation(async () => appSite());
+    const onBotDetected = vi.fn();
+    const collector = await createCollector({
+      db: { adapter: 'clickhouse', url: 'http://x' },
+      botFilter: { defaultMode: 'strict', rateLimitMaxEvents: 1, onBotDetected },
+    });
+    const handler = collector.handler();
+    await handler(makeReqFor('okhttp/4.12.0'), makeRes());
+    expect(insertEvents).toHaveBeenCalledOnce();
+    await handler(makeReqFor('okhttp/4.12.0'), makeRes());
+    expect(insertEvents).toHaveBeenCalledOnce(); // second one dropped
+    expect(onBotDetected).toHaveBeenCalledWith(
+      expect.objectContaining({ layer: 'rate-limit', action: 'dropped' }),
+    );
+  });
+
+  // R3: standard mode never ran the rate-limit layer and must not start now.
+  it('does not start rate-limiting app sites in standard mode', async () => {
+    getSite.mockImplementation(async () => appSite());
+    const collector = await createCollector({
+      db: { adapter: 'clickhouse', url: 'http://x' },
+      botFilter: { defaultMode: 'standard', rateLimitMaxEvents: 1 },
+    });
+    const handler = collector.handler();
+    await handler(makeReqFor('okhttp/4.12.0'), makeRes());
+    await handler(makeReqFor('okhttp/4.12.0'), makeRes());
+    expect(insertEvents).toHaveBeenCalledTimes(2);
+  });
+
+  // R4: an explicit per-site override still means what it said.
+  it("honours an explicit botFilterMode='off' on an app site", async () => {
+    getSite.mockImplementation(async () => appSite({ botFilterMode: 'off' }));
+    const collector = await createCollector({
+      db: { adapter: 'clickhouse', url: 'http://x' },
+      botFilter: { defaultMode: 'strict', rateLimitMaxEvents: 1 },
+    });
+    const handler = collector.handler();
+    await handler(makeReqFor('okhttp/4.12.0'), makeRes());
+    await handler(makeReqFor('okhttp/4.12.0'), makeRes());
+    expect(insertEvents).toHaveBeenCalledTimes(2);
+  });
+});
+
+// R7: a site created without type='app' still sends app payloads and still gets
+// filtered as browser traffic. Reporting it is deliberate - acting on the payload
+// would hand every caller a way to opt out of the filter by adding one JSON field.
+describe('collector bot filter - app payload on a non-app site', () => {
+  beforeEach(() => {
+    resetAdapterMocks();
+  });
+
+  const mobile = { platform: 'android', osVersion: '14', sdkName: 'litemetrics-react-native' };
+
+  function makeMobileReq(ua: string, siteId = 'site_test') {
+    return {
+      method: 'POST',
+      headers: { 'user-agent': ua },
+      body: {
+        events: [{
+          siteId, visitorId: 'v1', sessionId: 's1', type: 'pageview',
+          name: '$pageview', timestamp: Date.now(), url: 'https://x.test/', mobile,
+        }],
+      },
+      socket: { remoteAddress: '9.9.9.9' },
+    };
+  }
+
+  it('reports the mismatch and still applies the filter', async () => {
+    getSite.mockImplementation(async () => ({
+      siteId: 'site_test', name: 'Test', secretKey: 'k', type: 'web',
+    }));
+    const onSiteTypeMismatch = vi.fn();
+    const collector = await createCollector({
+      db: { adapter: 'clickhouse', url: 'http://x' },
+      botFilter: { defaultMode: 'standard', onSiteTypeMismatch },
+    });
+    await collector.handler()(makeMobileReq('okhttp/4.12.0'), makeRes());
+    expect(onSiteTypeMismatch).toHaveBeenCalledWith(
+      expect.objectContaining({ siteId: 'site_test', siteType: 'web', platform: 'android' }),
+    );
+    // Reported, not bypassed.
+    expect(insertEvents).not.toHaveBeenCalled();
+  });
+
+  it('reports each site only once so a busy site cannot flood the log', async () => {
+    getSite.mockImplementation(async () => ({
+      siteId: 'site_test', name: 'Test', secretKey: 'k', type: 'web',
+    }));
+    const onSiteTypeMismatch = vi.fn();
+    const collector = await createCollector({
+      db: { adapter: 'clickhouse', url: 'http://x' },
+      botFilter: { defaultMode: 'standard', onSiteTypeMismatch },
+    });
+    const handler = collector.handler();
+    for (let i = 0; i < 5; i++) await handler(makeMobileReq('okhttp/4.12.0'), makeRes());
+    expect(onSiteTypeMismatch).toHaveBeenCalledOnce();
+  });
+
+  it('stays quiet for an app-type site', async () => {
+    getSite.mockImplementation(async () => ({
+      siteId: 'site_test', name: 'Test', secretKey: 'k', type: 'app',
+    }));
+    const onSiteTypeMismatch = vi.fn();
+    const collector = await createCollector({
+      db: { adapter: 'clickhouse', url: 'http://x' },
+      botFilter: { defaultMode: 'standard', onSiteTypeMismatch },
+    });
+    await collector.handler()(makeMobileReq('okhttp/4.12.0'), makeRes());
+    expect(onSiteTypeMismatch).not.toHaveBeenCalled();
+  });
+
+  // An unknown siteId is attacker-supplied, so it must not become a map key.
+  it('stays quiet for a siteId that does not exist', async () => {
+    getSite.mockImplementation(async () => null);
+    const onSiteTypeMismatch = vi.fn();
+    const collector = await createCollector({
+      db: { adapter: 'clickhouse', url: 'http://x' },
+      botFilter: { defaultMode: 'standard', onSiteTypeMismatch },
+    });
+    const handler = collector.handler();
+    for (let i = 0; i < 50; i++) {
+      await handler(makeMobileReq('okhttp/4.12.0', `site_bogus_${i}`), makeRes());
+    }
+    expect(onSiteTypeMismatch).not.toHaveBeenCalled();
+  });
+});
+
 describe('collector deleteUserEvents - extended auth + path cases', () => {
   beforeEach(() => {
     resetAdapterMocks();
