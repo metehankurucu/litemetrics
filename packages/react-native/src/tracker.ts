@@ -21,8 +21,7 @@ export interface RNTrackerInstance {
   destroy(): void;
 }
 
-const SDK_NAME = 'litemetrics-react-native';
-const SDK_VERSION = '0.2.2';
+
 
 let sessionId: string | null = null;
 let visitorId: string | null = null;
@@ -38,6 +37,7 @@ function generateId(): string {
 }
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { SDK_NAME, SDK_VERSION, buildUserAgent } from './user-agent';
 
 const VISITOR_KEY = '@litemetrics_vid';
 
@@ -149,7 +149,12 @@ export function createRNTracker(config: RNTrackerConfig): RNTrackerInstance {
 
     fetch(endpoint, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        // Without this, Android sends OkHttp's default okhttp/<version> and the
+        // server's bot filter drops the batch. See ./user-agent.ts.
+        'User-Agent': buildUserAgent(Platform.OS),
+      },
       body: JSON.stringify({ events }),
     }).catch((err) => {
       if (debug) console.warn('[litemetrics:rn] send failed', err);
