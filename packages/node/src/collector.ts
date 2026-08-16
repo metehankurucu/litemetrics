@@ -23,10 +23,10 @@ import { PostgresAdapter } from './adapters/postgres';
 import { resolvePeriod } from './adapters/utils';
 import { initGeoIP, resolveGeo } from './geoip';
 import { parseUserAgent } from './useragent';
-import { isBot } from './botfilter';
-import { isHeuristicBot } from './heuristic-bot';
+import { classifyUserAgent } from './botfilter';
+import { classifyHeuristicBot } from './heuristic-bot';
 import { createRateLimiter } from './rate-limit';
-import type { BotFilterMode, BotDetectedInfo } from '@litemetrics/core';
+import type { BotFilterMode, BotDetectedInfo, BotDropReason } from '@litemetrics/core';
 import { resolveTimestampSanity, sanitizeEventTimestamp } from './timestamp-sanity';
 import { normalizeReferrer } from './normalize-referrer';
 
@@ -319,26 +319,35 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
         }
 
         let botFlag: 'signature' | 'heuristic' | 'rate-limit' | undefined;
+        let botReason: BotDropReason | undefined;
 
         if (mode !== 'off') {
-          if (isBot(userAgent)) botFlag = 'signature';
-          else if ((mode === 'strict' || mode === 'shadow') &&
-                   isHeuristicBot({ userAgent, acceptLanguage, referer })) {
-            botFlag = 'heuristic';
-          } else if ((mode === 'strict' || mode === 'shadow') &&
-                     rateLimiter.check(ip).limited) {
-            botFlag = 'rate-limit';
+          const signature = classifyUserAgent(userAgent);
+          if (signature) {
+            botFlag = 'signature';
+            botReason = signature;
+          } else if (mode === 'strict' || mode === 'shadow') {
+            // Deliberately short-circuits: a heuristic hit must not also consume a
+            // rate-limit slot, which is what the original nested conditions did.
+            const heuristic = classifyHeuristicBot({ userAgent, acceptLanguage, referer });
+            if (heuristic) {
+              botFlag = 'heuristic';
+              botReason = heuristic;
+            } else if (rateLimiter.check(ip).limited) {
+              botFlag = 'rate-limit';
+              botReason = 'rate-limit';
+            }
           }
         }
 
-        if (botFlag) {
+        if (botFlag && botReason) {
           const shouldDrop =
             mode === 'standard' ? botFlag === 'signature' :
             mode === 'strict'   ? true :
             /* shadow / off */    false;
 
           reportBot({
-            siteId, ip, userAgent, layer: botFlag,
+            siteId, ip, userAgent, layer: botFlag, reason: botReason,
             action: shouldDrop ? 'dropped' : 'flagged', mode,
           });
 

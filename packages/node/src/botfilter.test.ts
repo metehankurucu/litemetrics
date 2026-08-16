@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isBot } from './botfilter';
+import { isBot, classifyUserAgent } from './botfilter';
 
 describe('isBot', () => {
   describe('detects bots', () => {
@@ -57,5 +57,55 @@ describe('isBot', () => {
     ])('returns false for %s (%s)', (ua) => {
       expect(isBot(ua)).toBe(false);
     });
+  });
+});
+
+describe('classifyUserAgent', () => {
+  it('reports a missing UA as empty-ua, not as a signature match', () => {
+    expect(classifyUserAgent('')).toBe('empty-ua');
+  });
+
+  it('reports an isbot list match as ua-signature', () => {
+    expect(classifyUserAgent('Googlebot/2.1 (+http://www.google.com/bot.html)')).toBe('ua-signature');
+    expect(classifyUserAgent('curl/7.68.0')).toBe('ua-signature');
+  });
+
+  it('returns null for real browsers', () => {
+    expect(
+      classifyUserAgent(
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      ),
+    ).toBeNull();
+  });
+
+  // The reason this whole field exists: on Android, React Native's fetch goes through
+  // OkHttp, which fills in `User-Agent: okhttp/<version>` when the caller sets none.
+  // isbot matches it, so app traffic was being dropped as a signature bot with no way
+  // to tell it apart from a real crawler in the logs.
+  it.each(['okhttp/3.14.9', 'okhttp/4.9.2', 'okhttp/4.12.0', 'okhttp/5.0.0-alpha.14'])(
+    'classifies the OkHttp default UA %s as ua-signature',
+    (ua) => {
+      expect(classifyUserAgent(ua)).toBe('ua-signature');
+    },
+  );
+
+  // R2: adding the reason must not move the boolean gate for any input, or every
+  // existing deployment silently changes what it drops.
+  it('agrees with isBot on every corpus entry', () => {
+    const corpus = [
+      '',
+      'curl/7.68.0',
+      'Googlebot/2.1 (+http://www.google.com/bot.html)',
+      'okhttp/4.12.0',
+      'Mozilla/5.0',
+      'Mozilla/5.0 (compatible)',
+      ' ',
+      'OK NOK/1.0 CFNetwork/1498.700.2 Darwin/23.6.0',
+      'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+      'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.43 Mobile Safari/537.36',
+    ];
+    for (const ua of corpus) {
+      expect(classifyUserAgent(ua) !== null, `mismatch for ${JSON.stringify(ua)}`).toBe(isBot(ua));
+    }
   });
 });
