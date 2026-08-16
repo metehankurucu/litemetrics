@@ -25,11 +25,11 @@ export function sanitizeUserAgent(ua: string | undefined, maxLength = 200): stri
  * whitespace, so anything outside printable ASCII is dropped rather than replaced -
  * that keeps `key=value` parseable no matter what was sent.
  */
-export function sanitizeToken(value: string | undefined, maxLength = 64): string {
+export function sanitizeToken(value: string | undefined, maxLength = 64, truncationMarker = ''): string {
   if (!value) return '-';
   const clean = value.replace(/[^\x21-\x7e]/g, '');
   if (!clean) return '-';
-  return clean.length > maxLength ? clean.slice(0, maxLength) : clean;
+  return clean.length > maxLength ? clean.slice(0, maxLength) + truncationMarker : clean;
 }
 
 /**
@@ -66,7 +66,9 @@ export function formatAccessLine(input: AccessLogInput): string {
   const parts = [
     time,
     sanitizeToken(input.method, 10),
-    sanitizeToken(input.url, 200),
+    // Marked rather than silently cut: a truncated path that still looks like a
+    // path is worse than no path, because it reads as a request that never happened.
+    sanitizeToken(input.url, 200, '...'),
     String(input.statusCode),
     `${Math.round(input.durationMs)}ms`,
   ];

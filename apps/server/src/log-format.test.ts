@@ -71,6 +71,11 @@ describe('sanitizeToken', () => {
     expect(sanitizeToken('a'.repeat(500), 64)).toHaveLength(64);
   });
 
+  it('marks the cut when a marker is asked for', () => {
+    expect(sanitizeToken('a'.repeat(500), 8, '...')).toBe('aaaaaaaa...');
+    expect(sanitizeToken('short', 8, '...')).toBe('short');
+  });
+
   it.each([[undefined], ['']])('renders %s as a dash', (input) => {
     expect(sanitizeToken(input as string | undefined)).toBe('-');
   });
@@ -155,6 +160,19 @@ describe('formatAccessLine', () => {
       auth: '',
     });
     expect(line).toContain(' 500 0ms');
+  });
+
+  it('marks a truncated URL so it cannot be read as a real path', () => {
+    const line = formatAccessLine({
+      timestamp: Date.parse('2026-08-16T07:30:41.000Z'),
+      method: 'GET',
+      url: `/api/events?q=${'x'.repeat(400)}`,
+      statusCode: 200,
+      durationMs: 1,
+      auth: '',
+    });
+    expect(line).toContain('...');
+    expect(line.split(' ')[2]).toHaveLength(203);
   });
 
   it('stays a single line for a hostile URL', () => {

@@ -50,20 +50,14 @@ const BOT_LOG_MAX_PER_MIN = intEnv('BOT_LOG_MAX_PER_MIN', 20);
 
 const COLLECT_PATH = '/api/collect';
 
-// ─── CORS ────────────────────────────────────────────────
-const corsOptions = cors({
-  origin: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'X-Litemetrics-Secret', 'X-Litemetrics-Admin-Secret'],
-});
-
-app.options('/{*path}', corsOptions);
-app.use(corsOptions);
-app.use(express.json());
-
 // ─── Request logger ──────────────────────────────────────
 // /api/collect is aggregated into one line per minute; everything else keeps a
 // per-request line, now with the response status and how long it took.
+//
+// Registered before CORS and the body parser on purpose. Behind those, a request
+// whose body never finishes arriving is rejected by express.json() before this
+// middleware ever runs, so the aborted collect batch is invisible - and a lost batch
+// is lost data, the one thing this summary exists to make countable.
 const collectSummary = createCollectSummary({ maxBotLinesPerMinute: BOT_LOG_MAX_PER_MIN });
 
 app.use((req, res, next) => {
@@ -73,12 +67,17 @@ app.use((req, res, next) => {
   const url = req.originalUrl || req.url;
   const method = req.method;
 
-  res.on('finish', () => {
+  // 'close' rather than 'finish': 'finish' never fires for a request the client hung
+  // up on, and a dropped collect batch is lost data. Those land here as the 4xx that
+  // express answered them with, which is what a real abort was measured to produce.
+  res.on('close', () => {
     const durationMs = Number(process.hrtime.bigint() - startedAt) / 1e6;
+
     if (isCollect) {
       collectSummary.recordRequest(res.statusCode, durationMs);
       return;
     }
+
     const auth = req.headers['x-litemetrics-admin-secret']
       ? '[admin]'
       : req.headers['x-litemetrics-secret']
@@ -98,6 +97,17 @@ app.use((req, res, next) => {
 
   next();
 });
+
+// ─── CORS ────────────────────────────────────────────────
+const corsOptions = cors({
+  origin: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'X-Litemetrics-Secret', 'X-Litemetrics-Admin-Secret'],
+});
+
+app.options('/{*path}', corsOptions);
+app.use(corsOptions);
+app.use(express.json());
 
 // ─── Initialize collector ────────────────────────────────
 const collector = await createCollector({

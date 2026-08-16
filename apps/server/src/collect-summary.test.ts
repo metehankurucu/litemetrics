@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { createCollectSummary, type CollectSummary } from './collect-summary';
+import { createCollectSummary, type BotHit, type CollectSummary } from './collect-summary';
 
 const MINUTE = 60_000;
 const T0 = Date.parse('2026-08-16T14:59:00.000Z');
@@ -139,11 +139,27 @@ describe('createCollectSummary', () => {
     expect(field(h.lines[0], 'sites')).toBe('site_a:2,site_b:1,+2');
   });
 
+  // siteId comes from the request body, so a caller rotating it could otherwise mint
+  // unbounded map keys inside a single minute.
+  it('stops growing the site map past the cap without losing the totals', () => {
+    const h = harness({ maxTrackedSites: 3, topSites: 10 });
+    open = h.summary;
+
+    for (let i = 0; i < 500; i++)
+      h.summary.recordBot({ siteId: `site_${i}`, reason: 'ua-signature', action: 'dropped' });
+    h.summary.flush();
+
+    const line = h.lines[0];
+    expect(field(line, 'bot_dropped')).toBe('500');
+    // The cap must not make the line read as "only 3 sites were hit".
+    expect(field(line, 'sites')).toBe('site_0:1,site_1:1,site_2:1,untracked:497');
+  });
+
   it('caps detail lines per minute and reports the suppressed count', () => {
     const h = harness({ maxBotLinesPerMinute: 2 });
     open = h.summary;
 
-    const hit = { siteId: 'site_a', reason: 'ua-signature', action: 'dropped' as const };
+    const hit: BotHit = { siteId: 'site_a', reason: 'ua-signature', action: 'dropped' };
     expect(h.summary.recordBot(hit)).toBe(true);
     expect(h.summary.recordBot(hit)).toBe(true);
     expect(h.summary.recordBot(hit)).toBe(false);
@@ -157,7 +173,7 @@ describe('createCollectSummary', () => {
     const h = harness({ maxBotLinesPerMinute: 1 });
     open = h.summary;
 
-    const hit = { siteId: 'site_a', reason: 'ua-signature', action: 'dropped' as const };
+    const hit: BotHit = { siteId: 'site_a', reason: 'ua-signature', action: 'dropped' };
     expect(h.summary.recordBot(hit)).toBe(true);
     expect(h.summary.recordBot(hit)).toBe(false);
     h.at(MINUTE);

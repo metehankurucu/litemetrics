@@ -1,3 +1,4 @@
+import type { BotDropReason } from '@litemetrics/node';
 import { sanitizeToken } from './log-format';
 
 /**
@@ -24,11 +25,17 @@ export interface CollectSummaryConfig {
   topSites?: number;
   /** Upper bound on retained duration samples per minute. Default 1000. */
   maxDurationSamples?: number;
+  /**
+   * Upper bound on distinct site ids tracked per minute. The site id comes from the
+   * request body, so without a cap one caller could mint unbounded map keys.
+   * Default 200.
+   */
+  maxTrackedSites?: number;
 }
 
 export interface BotHit {
   siteId: string;
-  reason: string;
+  reason: BotDropReason;
   action: 'dropped' | 'flagged';
 }
 
@@ -62,6 +69,7 @@ interface Bucket {
   flagged: number;
   reasons: Map<string, number>;
   sites: Map<string, number>;
+  sitesOverflow: number;
   botLines: number;
   suppressed: number;
 }
@@ -85,6 +93,7 @@ function newBucket(key: string): Bucket {
     flagged: 0,
     reasons: new Map(),
     sites: new Map(),
+    sitesOverflow: 0,
     botLines: 0,
     suppressed: 0,
   };
@@ -95,12 +104,15 @@ function percentile(sorted: number[], p: number): number {
   return sorted[Math.max(0, index)];
 }
 
-function topN(counts: Map<string, number>, limit: number, sanitize: boolean): string {
-  if (counts.size === 0) return '-';
+function topN(counts: Map<string, number>, limit: number, sanitize: boolean, overflow = 0): string {
+  if (counts.size === 0 && overflow === 0) return '-';
   const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1]);
   const head = sorted.slice(0, limit).map(([key, n]) => `${sanitize ? sanitizeToken(key) : key}:${n}`);
   const rest = sorted.length - head.length;
   if (rest > 0) head.push(`+${rest}`);
+  // Hits that arrived after the tracking cap. Named rather than folded into the
+  // listed sites, so the line never reads as "only these sites were hit".
+  if (overflow > 0) head.push(`untracked:${overflow}`);
   return head.join(',');
 }
 
@@ -111,6 +123,7 @@ export function createCollectSummary(config: CollectSummaryConfig = {}): Collect
   const maxBotLinesPerMinute = config.maxBotLinesPerMinute ?? 20;
   const topSites = config.topSites ?? 5;
   const maxDurationSamples = config.maxDurationSamples ?? 1_000;
+  const maxTrackedSites = config.maxTrackedSites ?? 200;
 
   let bucket: Bucket | null = null;
 
@@ -141,7 +154,7 @@ export function createCollectSummary(config: CollectSummaryConfig = {}): Collect
         `bot_dropped=${b.dropped}`,
         `bot_flagged=${b.flagged}`,
         `reasons=${topN(b.reasons, b.reasons.size, false)}`,
-        `sites=${topN(b.sites, topSites, true)}`,
+        `sites=${topN(b.sites, topSites, true, b.sitesOverflow)}`,
         `suppressed=${b.suppressed}`,
       ].join(' '),
     );
@@ -188,7 +201,13 @@ export function createCollectSummary(config: CollectSummaryConfig = {}): Collect
       if (hit.action === 'dropped') b.dropped++;
       else b.flagged++;
       b.reasons.set(hit.reason, (b.reasons.get(hit.reason) ?? 0) + 1);
-      b.sites.set(hit.siteId, (b.sites.get(hit.siteId) ?? 0) + 1);
+      // Only grow the site map up to the cap; hits for sites past it still land in
+      // the dropped/flagged totals, they just do not each get their own key.
+      if (b.sites.has(hit.siteId) || b.sites.size < maxTrackedSites) {
+        b.sites.set(hit.siteId, (b.sites.get(hit.siteId) ?? 0) + 1);
+      } else {
+        b.sitesOverflow++;
+      }
 
       if (b.botLines < maxBotLinesPerMinute) {
         b.botLines++;
