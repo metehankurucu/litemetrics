@@ -154,7 +154,9 @@ export function createCollectSummary(config: CollectSummaryConfig = {}): Collect
         `bot_dropped=${b.dropped}`,
         `bot_flagged=${b.flagged}`,
         `reasons=${topN(b.reasons, b.reasons.size, false)}`,
-        `sites=${topN(b.sites, topSites, true, b.sitesOverflow)}`,
+        // Named bot_sites, not sites: this map is fed only by recordBot, so it counts
+        // bot hits per site - not request volume, which sits in reqs.
+        `bot_sites=${topN(b.sites, topSites, true, b.sitesOverflow)}`,
         `suppressed=${b.suppressed}`,
       ].join(' '),
     );

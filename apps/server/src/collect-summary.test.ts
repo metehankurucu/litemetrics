@@ -125,7 +125,22 @@ describe('createCollectSummary', () => {
     expect(field(line, 'bot_dropped')).toBe('4');
     expect(field(line, 'bot_flagged')).toBe('1');
     expect(field(line, 'reasons')).toBe('ua-signature:4,empty-ua:1');
-    expect(field(line, 'sites')).toBe('site_a:4,site_b:1');
+    expect(field(line, 'bot_sites')).toBe('site_a:4,site_b:1');
+  });
+
+  // The field counts bot hits, not requests - the name has to survive a reader who
+  // sees it next to reqs= and assumes it is per-site traffic.
+  it('leaves bot_sites empty for a busy minute with no bot hits', () => {
+    const h = harness();
+    open = h.summary;
+
+    for (let i = 0; i < 12; i++) h.summary.recordRequest(200, 3);
+    h.summary.flush();
+
+    const line = h.lines[0];
+    expect(field(line, 'reqs')).toBe('12');
+    expect(field(line, 'bot_sites')).toBe('-');
+    expect(line).not.toMatch(/(?:^|\s)sites=/);
   });
 
   it('collapses the tail of a long site list', () => {
@@ -136,7 +151,7 @@ describe('createCollectSummary', () => {
       h.summary.recordBot({ siteId: site, reason: 'ua-signature', action: 'dropped' });
     h.summary.flush();
 
-    expect(field(h.lines[0], 'sites')).toBe('site_a:2,site_b:1,+2');
+    expect(field(h.lines[0], 'bot_sites')).toBe('site_a:2,site_b:1,+2');
   });
 
   // siteId comes from the request body, so a caller rotating it could otherwise mint
@@ -152,7 +167,7 @@ describe('createCollectSummary', () => {
     const line = h.lines[0];
     expect(field(line, 'bot_dropped')).toBe('500');
     // The cap must not make the line read as "only 3 sites were hit".
-    expect(field(line, 'sites')).toBe('site_0:1,site_1:1,site_2:1,untracked:497');
+    expect(field(line, 'bot_sites')).toBe('site_0:1,site_1:1,site_2:1,untracked:497');
   });
 
   it('caps detail lines per minute and reports the suppressed count', () => {
