@@ -15,6 +15,8 @@ export class Transport {
   private batchSize: number;
   private flushInterval: number;
   private debug: boolean;
+  private destroyed = false;
+  private unloadCleanups: (() => void)[] = [];
 
   constructor(options: TransportOptions) {
     this.endpoint = options.endpoint;
@@ -27,6 +29,10 @@ export class Transport {
   }
 
   send(event: ClientEvent): void {
+    // A send whose visitor id was still resolving when destroy() ran must not
+    // reach the network: the tracker is torn down, and the caller (an unmounted
+    // provider, a withdrawn consent) is no longer expecting traffic.
+    if (this.destroyed) return;
     this.queue.push(event);
     if (this.queue.length >= this.batchSize) {
       this.flush();
@@ -34,17 +40,22 @@ export class Transport {
   }
 
   flush(): void {
-    if (this.queue.length === 0) return;
+    if (this.destroyed || this.queue.length === 0) return;
     const events = this.queue.splice(0);
     this._dispatch(events);
   }
 
   destroy(): void {
+    if (this.destroyed) return;
     if (this.timer) {
       clearInterval(this.timer);
       this.timer = null;
     }
+    // Deliver what is already queued, then stop accepting anything new.
     this.flush();
+    this.destroyed = true;
+    this.unloadCleanups.forEach((fn) => fn());
+    this.unloadCleanups = [];
   }
 
   private _dispatch(events: ClientEvent[]): void {
@@ -89,22 +100,30 @@ export class Transport {
     if (typeof document === 'undefined') return;
 
     const onUnload = () => {
-      if (this.queue.length === 0) return;
+      if (this.destroyed || this.queue.length === 0) return;
       const payload: CollectPayload = { events: this.queue.splice(0) };
       const body = JSON.stringify(payload);
       // sendBeacon is more reliable during page unload
       this._beacon(body);
     };
 
-    // visibilitychange + pagehide is the most reliable combo
-    document.addEventListener('visibilitychange', () => {
+    const onVisibilityChange = () => {
       if (document.visibilityState === 'hidden') {
         onUnload();
       }
-    });
+    };
+
+    // visibilitychange + pagehide is the most reliable combo. Both handlers are
+    // kept referenceable so destroy() can unregister them; otherwise every
+    // tracker instance leaks two listeners for the lifetime of the page.
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    this.unloadCleanups.push(() =>
+      document.removeEventListener('visibilitychange', onVisibilityChange),
+    );
 
     if (typeof addEventListener !== 'undefined') {
       addEventListener('pagehide', onUnload);
+      this.unloadCleanups.push(() => removeEventListener('pagehide', onUnload));
     }
   }
 }
