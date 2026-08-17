@@ -318,36 +318,35 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
           }
         }
 
-        let botFlag: 'signature' | 'heuristic' | 'rate-limit' | undefined;
-        let botReason: BotDropReason | undefined;
+        // Layer and reason are one value so they cannot drift apart: a layer without a
+        // reason would fall through the guard below and silently skip the drop.
+        let bot: { layer: 'signature' | 'heuristic' | 'rate-limit'; reason: BotDropReason } | undefined;
 
         if (mode !== 'off') {
           const signature = classifyUserAgent(userAgent);
           if (signature) {
-            botFlag = 'signature';
-            botReason = signature;
+            bot = { layer: 'signature', reason: signature };
           } else if (mode === 'strict' || mode === 'shadow') {
-            // Deliberately short-circuits: a heuristic hit must not also consume a
-            // rate-limit slot, which is what the original nested conditions did.
+            // Same short-circuit the original else-if chain already had: when the
+            // heuristic layer fires, rateLimiter.check is never reached, so a
+            // heuristic hit consumes no rate-limit slot.
             const heuristic = classifyHeuristicBot({ userAgent, acceptLanguage, referer });
             if (heuristic) {
-              botFlag = 'heuristic';
-              botReason = heuristic;
+              bot = { layer: 'heuristic', reason: heuristic };
             } else if (rateLimiter.check(ip).limited) {
-              botFlag = 'rate-limit';
-              botReason = 'rate-limit';
+              bot = { layer: 'rate-limit', reason: 'rate-limit' };
             }
           }
         }
 
-        if (botFlag && botReason) {
+        if (bot) {
           const shouldDrop =
-            mode === 'standard' ? botFlag === 'signature' :
+            mode === 'standard' ? bot.layer === 'signature' :
             mode === 'strict'   ? true :
             /* shadow / off */    false;
 
           reportBot({
-            siteId, ip, userAgent, layer: botFlag, reason: botReason,
+            siteId, ip, userAgent, layer: bot.layer, reason: bot.reason,
             action: shouldDrop ? 'dropped' : 'flagged', mode,
           });
 
@@ -357,7 +356,7 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
           }
         }
 
-        const enriched = enrichEvents(payload.events, ip, userAgent, botFlag);
+        const enriched = enrichEvents(payload.events, ip, userAgent, bot?.layer);
 
         await processIdentity(enriched);
         await db.insertEvents(enriched);
