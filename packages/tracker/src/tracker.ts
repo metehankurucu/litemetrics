@@ -86,7 +86,7 @@ export function createTracker(config: TrackerConfig): LitemetricsInstance {
   // through crypto.subtle.digest on the threadpool, and until it lands a send
   // sits pending - which is time an event can be lost to destroy(). Doing it at
   // construction narrows that window to the moments right after page load.
-  void session.getVisitorId();
+  void session.getVisitorId().catch(() => {});
   const transport = new Transport({
     endpoint,
     batchSize: config.batchSize,

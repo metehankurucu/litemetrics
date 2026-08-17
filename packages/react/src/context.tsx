@@ -31,39 +31,53 @@ export function LitemetricsProvider({
   ...config
 }: LitemetricsProviderProps) {
   const trackerRef = useRef<LitemetricsInstance | null>(null);
-  const configRef = useRef<TrackerConfig>(null!);
-  configRef.current = {
-    ...config,
-    // Disable built-in auto tracking; we'll handle it via hooks for SPA
-    autoTrack: autoPageView && !config.autoSpa,
-    autoSpa: false, // We handle SPA tracking via usePageView hook
-  };
+  const configRef = useRef<TrackerConfig | null>(null);
+  if (configRef.current === null) {
+    configRef.current = {
+      ...config,
+      // Disable built-in auto tracking; we'll handle it via hooks for SPA
+      autoTrack: autoPageView && !config.autoSpa,
+      autoSpa: false, // We handle SPA tracking via usePageView hook
+    };
+  }
 
-  // True between an unmount and a remount. StrictMode unmounts and remounts the
-  // same component in development, so "the cleanup ran" alone cannot mean "stop
-  // tracking forever" - only a cleanup with no effect after it does, and the
-  // effect below is what tells those two apart.
-  const unmountedRef = useRef(false);
+  // Set once the provider is really gone, so a handle held past unmount cannot
+  // start tracking again. It is NOT set in the cleanup: see the effect below.
+  const stoppedRef = useRef(false);
+  const teardownRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Resolved on every access instead of captured once. This provider destroys
-  // its tracker on unmount and a destroyed tracker is inert, but the ref outlives
-  // the instance across a StrictMode remount - so a captured instance would leave
-  // every consumer holding a dead tracker for the rest of the session, silently.
+  // Resolved on every access instead of captured once. This provider tears its
+  // tracker down when it goes away, and a torn-down tracker is inert, but the ref
+  // outlives the instance across a StrictMode remount - so a captured instance
+  // would leave every consumer holding a dead tracker, silently.
   const resolveTracker = useCallback((): LitemetricsInstance => {
-    if (unmountedRef.current) return NOOP_TRACKER;
+    if (stoppedRef.current) return NOOP_TRACKER;
     if (!trackerRef.current) {
-      trackerRef.current = createTracker(configRef.current);
+      trackerRef.current = createTracker(configRef.current!);
     }
     return trackerRef.current;
   }, []);
 
   useEffect(() => {
-    unmountedRef.current = false;
+    if (teardownRef.current) {
+      clearTimeout(teardownRef.current);
+      teardownRef.current = null;
+    }
+    stoppedRef.current = false;
     resolveTracker();
     return () => {
-      unmountedRef.current = true;
-      trackerRef.current?.destroy();
-      trackerRef.current = null;
+      // Teardown is deferred by a task on purpose. StrictMode's simulated unmount
+      // is followed by a remount in the same task, and a child's effect runs
+      // BEFORE its parent's - so a child tracking on mount (which is what both of
+      // this package's hooks do) would otherwise land in the window after this
+      // cleanup and before the provider is back, and be discarded. A real unmount
+      // has no effect after it, so nothing cancels this and teardown happens.
+      teardownRef.current = setTimeout(() => {
+        teardownRef.current = null;
+        stoppedRef.current = true;
+        trackerRef.current?.destroy();
+        trackerRef.current = null;
+      }, 0);
     };
   }, [resolveTracker]);
 
@@ -80,6 +94,8 @@ export function LitemetricsProvider({
         opt_out: () => resolveTracker().opt_out(),
         opt_in: () => resolveTracker().opt_in(),
         destroy: () => {
+          // Stop for good, rather than letting the next call rebuild a tracker.
+          stoppedRef.current = true;
           trackerRef.current?.destroy();
           trackerRef.current = null;
         },

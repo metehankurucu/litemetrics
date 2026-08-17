@@ -11,12 +11,25 @@ import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { StrictMode, act, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { LitemetricsProvider } from './context';
-import { useLitemetrics } from './hooks';
+import { useLitemetrics, usePageView, useTrackEvent } from './hooks';
 
 let captured: ReturnType<typeof useLitemetrics> | null = null;
 
 function Consumer() {
   captured = useLitemetrics();
+  return null;
+}
+
+// The shape that matters most: a child that tracks from its own mount effect.
+// Child effects run before the parent's, so this is the case a provider that
+// gates on its own lifecycle is most likely to get wrong.
+function TrackOnMount() {
+  useTrackEvent('mount_event');
+  return null;
+}
+
+function PageOnMount() {
+  usePageView('/tracked-path');
   return null;
 }
 
@@ -96,10 +109,9 @@ describe('LitemetricsProvider tracker lifetime', () => {
     expect(fetchSpy).toHaveBeenCalled();
   });
 
-  // StrictMode runs the mount effect twice, so the provider builds two trackers.
-  // The auto pageview must still be reported once: the first tracker's pageview
-  // is still resolving its visitor id when the simulated unmount destroys it, and
-  // a destroyed tracker sends nothing, so only the surviving tracker reports.
+  // StrictMode runs the mount effect twice, but the remount cancels the deferred
+  // teardown, so exactly one tracker is ever built and its auto pageview is
+  // reported once. Pinned because a change on either side could double it.
   it('does not duplicate the auto pageview under StrictMode', async () => {
     const fetchSpy = vi
       .spyOn(globalThis, 'fetch')
@@ -122,6 +134,38 @@ describe('LitemetricsProvider tracker lifetime', () => {
     expect(pageviews).toHaveLength(1);
   });
 
+  // Both hooks this package ships track from a mount effect, and a child's effect
+  // runs before its parent's. A provider that decides "we are gone" in its own
+  // cleanup therefore sees the child's second-pass effect land in the window
+  // between that cleanup and its own remount.
+  it('delivers events that useTrackEvent fires from a child mount effect under StrictMode', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response(null, { status: 204 }));
+
+    await mount(<TrackOnMount />, true);
+    await settle();
+
+    const events = fetchSpy.mock.calls
+      .flatMap((call) => JSON.parse((call[1] as RequestInit).body as string).events)
+      .filter((e: { name?: string }) => e.name === 'mount_event');
+    expect(events.length).toBeGreaterThan(0);
+  });
+
+  it('delivers pageviews that usePageView fires from a child mount effect under StrictMode', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response(null, { status: 204 }));
+
+    await mount(<PageOnMount />, true);
+    await settle();
+
+    const events = fetchSpy.mock.calls
+      .flatMap((call) => JSON.parse((call[1] as RequestInit).body as string).events)
+      .filter((e: { type: string }) => e.type === 'pageview');
+    expect(events.length).toBeGreaterThan(0);
+  });
+
   it('stops sending once the provider unmounts for real', async () => {
     const fetchSpy = vi
       .spyOn(globalThis, 'fetch')
@@ -132,6 +176,13 @@ describe('LitemetricsProvider tracker lifetime', () => {
     const handle = captured!;
     await act(async () => root.unmount());
     root = createRoot(container); // afterEach unmounts again; keep it valid
+
+    // Teardown is deferred by a task so a StrictMode remount can cancel it, so
+    // the guarantee is "once teardown has settled", not "in the same tick as the
+    // unmount". A handle deliberately held across unmount and fired within that
+    // one task can still send; losing every mount-effect event in every
+    // StrictMode session is the far worse trade.
+    await settle();
     fetchSpy.mockClear();
     beaconSpy.mockClear();
 
