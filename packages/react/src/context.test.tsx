@@ -96,6 +96,32 @@ describe('LitemetricsProvider tracker lifetime', () => {
     expect(fetchSpy).toHaveBeenCalled();
   });
 
+  // StrictMode runs the mount effect twice, so the provider builds two trackers.
+  // The auto pageview must still be reported once: the first tracker's pageview
+  // is still resolving its visitor id when the simulated unmount destroys it, and
+  // a destroyed tracker sends nothing, so only the surviving tracker reports.
+  it('does not duplicate the auto pageview under StrictMode', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response(null, { status: 204 }));
+
+    await act(async () =>
+      root.render(
+        <StrictMode>
+          <LitemetricsProvider siteId="site_test" endpoint="https://x.test/collect" batchSize={1} autoPageView>
+            <div />
+          </LitemetricsProvider>
+        </StrictMode>,
+      ),
+    );
+    await settle();
+
+    const pageviews = fetchSpy.mock.calls
+      .flatMap((call) => JSON.parse((call[1] as RequestInit).body as string).events)
+      .filter((e: { type: string }) => e.type === 'pageview');
+    expect(pageviews).toHaveLength(1);
+  });
+
   it('stops sending once the provider unmounts for real', async () => {
     const fetchSpy = vi
       .spyOn(globalThis, 'fetch')
