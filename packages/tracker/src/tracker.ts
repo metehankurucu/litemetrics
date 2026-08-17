@@ -82,6 +82,11 @@ export function createTracker(config: TrackerConfig): LitemetricsInstance {
   } = config;
 
   const session = new SessionManager();
+  // Warm the visitor id now rather than on the first track(). Resolving it goes
+  // through crypto.subtle.digest on the threadpool, and until it lands a send
+  // sits pending - which is time an event can be lost to destroy(). Doing it at
+  // construction narrows that window to the moments right after page load.
+  void session.getVisitorId();
   const transport = new Transport({
     endpoint,
     batchSize: config.batchSize,

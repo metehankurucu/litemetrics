@@ -37,7 +37,8 @@
     "build": "tsup",
     "dev": "tsup --watch",
     "typecheck": "tsc --noEmit",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "test": "vitest run"
   },
   "dependencies": {
     "@litemetrics/tracker": "^0.4.0"
@@ -47,7 +48,10 @@
   },
   "devDependencies": {
     "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "jsdom": "^29.1.1",
     "react": "^19",
+    "react-dom": "^19",
     "tsup": "^8",
     "typescript": "^5.7"
   }

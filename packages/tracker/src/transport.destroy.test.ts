@@ -12,7 +12,7 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { Transport } from './transport';
 import { destroyOpenTrackers, makeTracker } from './test-utils';
-import type { ClientEvent } from '@litemetrics/core';
+import { STORAGE_KEY_VISITOR, type ClientEvent } from '@litemetrics/core';
 
 // jsdom does not implement sendBeacon; define a stub so vi.spyOn can attach.
 if (typeof navigator !== 'undefined' && !('sendBeacon' in navigator)) {
@@ -193,6 +193,40 @@ describe('createTracker teardown (issue #13)', () => {
 
     expect(net.fetch).not.toHaveBeenCalled();
     expect(net.beacon).not.toHaveBeenCalled();
+  });
+
+  // The drop window above is bounded by how long the visitor id takes to resolve,
+  // so the tracker warms it at construction. Once warm, a track() needs no digest
+  // and lands within a single macrotask.
+  it('resolves the visitor id at construction, so a later track does not wait on the hash', async () => {
+    Object.defineProperty(navigator, 'webdriver', { value: undefined, configurable: true });
+    const net = spyOnNetwork();
+
+    makeTracker({
+      siteId: 'site_test',
+      endpoint: 'https://x.test/collect',
+      autoTrack: false,
+      autoSpa: false,
+      batchSize: 1,
+    });
+
+    // The warm-up is the only thing that can persist a visitor id here: autoTrack
+    // is off, so nothing has been tracked yet.
+    await vi.waitFor(() => expect(localStorage.getItem(STORAGE_KEY_VISITOR)).toBeTruthy());
+
+    const digestSpy = vi.spyOn((globalThis.crypto as Crypto).subtle, 'digest');
+    const warmTracker = makeTracker({
+      siteId: 'site_test',
+      endpoint: 'https://x.test/collect',
+      autoTrack: false,
+      autoSpa: false,
+      batchSize: 1,
+    });
+    warmTracker.track('after_warmup');
+    await tick();
+
+    expect(net.fetch).toHaveBeenCalled();
+    expect(digestSpy).not.toHaveBeenCalled();
   });
 
   // R5 in miniature: a live tracker must still deliver, however slow the digest is.
