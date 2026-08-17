@@ -10,6 +10,14 @@
 
 **Listener cleanup.** `destroy()` unregisters the `visibilitychange` and `pagehide` handlers it registered. Before this, every `createTracker` leaked two listeners for the lifetime of the page, so an SPA that mounts a provider per route grew listeners without bound.
 
+**Visitor id resolved at construction.** Previously it was computed on the first `track()`, and until that hash landed a send sat pending, which is precisely the window `destroy()` now drops. Doing it up front narrows the window to the moments right after page load.
+
+### `@litemetrics/react`
+
+**Fixes a silent provider under React StrictMode.** `LitemetricsProvider` destroys its tracker on unmount but kept the instance in a ref, and StrictMode remounts the same component in development, so the remounted provider handed every consumer a destroyed tracker. Combined with the hard stop above, that meant the app reported its first pageview and then went silent, with no error anywhere.
+
+The context now carries a stable facade that resolves the tracker on each call rather than capturing one, so a remount rebuilds it. A genuine unmount is tracked separately, so a stale `useLitemetrics()` handle cannot revive tracking after the provider is gone. `useLitemetrics()` still returns a usable object on the first render: this is not a breaking change.
+
 ## 0.7.1 - fix: cli ↔ core version alignment
 
 ### `@litemetrics/cli` (0.6.0 -> 0.6.1)
