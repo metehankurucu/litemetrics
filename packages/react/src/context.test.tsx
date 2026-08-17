@@ -10,7 +10,7 @@
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { StrictMode, act, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { LitemetricsProvider } from './context';
+import { LitemetricsProvider, useLitemetricsContext } from './context';
 import { useLitemetrics, usePageView, useTrackEvent } from './hooks';
 
 let captured: ReturnType<typeof useLitemetrics> | null = null;
@@ -33,6 +33,13 @@ function PageOnMount() {
   return null;
 }
 
+let capturedContext: ReturnType<typeof useLitemetricsContext> | null = null;
+
+function ContextConsumer() {
+  capturedContext = useLitemetricsContext();
+  return null;
+}
+
 // jsdom does not implement sendBeacon; define a stub so vi.spyOn can attach.
 if (typeof navigator !== 'undefined' && !('sendBeacon' in navigator)) {
   Object.defineProperty(navigator, 'sendBeacon', {
@@ -51,6 +58,7 @@ beforeEach(() => {
   Object.defineProperty(navigator, 'webdriver', { value: undefined, configurable: true });
   try { localStorage.clear(); } catch { /* ignore */ }
   captured = null;
+  capturedContext = null;
   container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
@@ -164,6 +172,24 @@ describe('LitemetricsProvider tracker lifetime', () => {
       .flatMap((call) => JSON.parse((call[1] as RequestInit).body as string).events)
       .filter((e: { type: string }) => e.type === 'pageview');
     expect(events.length).toBeGreaterThan(0);
+  });
+
+  // destroy() on the context tracker has to stop for good. Resolving lazily means
+  // the obvious implementation would just build a replacement on the next call.
+  it('stays stopped after the context tracker is destroyed directly', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response(null, { status: 204 }));
+
+    await mount(<ContextConsumer />, false);
+    await settle();
+    fetchSpy.mockClear();
+
+    capturedContext!.tracker.destroy();
+    capturedContext!.tracker.track('after_context_destroy');
+    await settle();
+
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 
   it('stops sending once the provider unmounts for real', async () => {
