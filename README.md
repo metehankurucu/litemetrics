@@ -208,6 +208,7 @@ docker run -p 3002:3002 \
 | `BOT_FILTER_MODE` | Server-wide bot filter default: `off` / `standard` / `strict` / `shadow` | `standard` |
 | `BOT_RATE_WINDOW_MS` | Sliding-window size for the per-IP rate limiter (ms) | `60000` |
 | `BOT_RATE_MAX` | Max events per window per IP before rate-limit fires | `60` |
+| `BOT_LOG_MAX_PER_MIN` | Detail `[bot-filter]` log lines allowed per minute; the overflow is counted as `suppressed=` on the `[collect]` summary | `20` |
 
 > `DATABASE_URL` and `LITEMETRICS_ADMIN_SECRET` also work as aliases.
 
@@ -298,10 +299,48 @@ Modes are configured server-wide via `BOT_FILTER_MODE` and overridable per-site:
 Each detection emits a structured audit log line:
 
 ```
-[bot-filter] dropped layer=signature mode=standard site=site_abc ip=203.0.113.4
+[bot-filter] dropped layer=signature reason=ua-signature mode=standard site=site_abc ip=203.0.113.4 ua="okhttp/4.12.0"
 ```
 
+`layer` says which of the three layers fired; `reason` says why, which is what makes a drop diagnosable from the log line alone:
+
+| `reason` | Layer | Meaning |
+|------|-------|---------|
+| `empty-ua` | signature / heuristic | No `User-Agent` header at all. Usually a misconfigured SDK, not a crawler |
+| `ua-signature` | signature | The UA matched the `isbot` list. Usually a real crawler — but also catches HTTP client defaults like `okhttp/*` |
+| `no-browser-signals` | heuristic | Browser, engine, `Accept-Language` and `Referer` were all absent |
+| `rate-limit` | rate-limit | The per-IP sliding window overflowed |
+
+`ua` is the raw User-Agent, sanitized to a single line and capped at 200 characters. Detail lines are capped at `BOT_LOG_MAX_PER_MIN` per minute so a bot storm cannot flush the rest of your log window; the overflow is counted as `suppressed=` on the summary line below.
+
 Pass `?includeBots=true` to `/api/stats`, `/api/events`, or `/api/users` to see flagged traffic. The dashboard exposes the same toggle on the Analytics page, and per-site bot mode lives on the Settings page.
+
+<br/>
+
+## Request Logs
+
+`/api/collect` is the only high-volume route, so it is **not** logged per request — one line per request would fill a fixed-size platform log window in hours. Instead each wall-clock minute that saw traffic emits a single summary:
+
+```
+[collect] minute=2026-08-16T11:13 reqs=17 ok=14 3xx=0 4xx=3 5xx=0 dur_p50=3 dur_p95=155 dur_max=155 bot_dropped=9 bot_flagged=0 reasons=ua-signature:8,empty-ua:1 bot_sites=site_e2e:9 suppressed=6
+```
+
+| Field | Meaning |
+|-------|---------|
+| `reqs` / `ok` / `3xx` / `4xx` / `5xx` | Requests in the minute, split by response status class |
+| `dur_p50` / `dur_p95` / `dur_max` | Response time in ms (`-` when the minute saw no requests) |
+| `bot_dropped` / `bot_flagged` | Bot-filter outcomes; these totals survive even after the individual detail lines age out of the window |
+| `reasons` | Drop reasons for the minute, by count (see the table above) |
+| `bot_sites` | Sites by **bot hit** count — not request volume, which is `reqs` |
+| `suppressed` | Detail bot-filter lines withheld by `BOT_LOG_MAX_PER_MIN` |
+
+A minute with no traffic emits nothing, and the open minute is flushed on `SIGTERM` / `SIGINT` so a redeploy does not lose it. Every other route keeps a per-request line with status and duration:
+
+```
+14:59:31 GET /api/stats?siteId=site_x 200 42ms [secret]
+```
+
+User-Agent, IP, site id and URL all come from the request, so each is sanitized to a single line before it reaches a log entry — otherwise one newline in a header would let a request forge its own log records.
 
 <br/>
 
