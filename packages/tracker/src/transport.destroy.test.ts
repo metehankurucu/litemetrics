@@ -136,6 +136,19 @@ describe('Transport.destroy', () => {
     expect(body.events.map((e: ClientEvent & { name: string }) => e.name)).toEqual(['once']);
   });
 
+  // The other half of the retry guard: a LIVE transport must still fall back to
+  // sendBeacon, since that is the SDK's only delivery-failure recovery.
+  it('still retries through sendBeacon when fetch rejects while alive', async () => {
+    const beacon = vi.spyOn(navigator, 'sendBeacon').mockReturnValue(true);
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('network down'));
+
+    const transport = new Transport({ endpoint: 'https://x.test/collect', batchSize: 1 });
+    transport.send(event('alive'));
+    await vi.waitFor(() => expect(beacon).toHaveBeenCalledTimes(1));
+
+    transport.destroy();
+  });
+
   // R1, the retry path. A fetch dispatched while alive keeps a live .catch();
   // if it rejects after teardown the beacon fallback must not fire.
   it('does not beacon when an in-flight fetch rejects after destroy', async () => {

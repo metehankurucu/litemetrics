@@ -54,11 +54,18 @@ export class Transport {
     // Deliver what is already queued, then stop accepting anything new.
     this.flush();
     this.destroyed = true;
-    // Detach the list first: a cleanup that throws must not strand the rest,
-    // since the guard above makes a second destroy() a no-op.
+    // Detach the list, then run each cleanup in isolation. The guard above makes
+    // a second destroy() a no-op, so one throwing handler would otherwise strand
+    // every listener after it, permanently.
     const cleanups = this.unloadCleanups;
     this.unloadCleanups = [];
-    cleanups.forEach((fn) => fn());
+    for (const cleanup of cleanups) {
+      try {
+        cleanup();
+      } catch {
+        // ignore
+      }
+    }
   }
 
   private _dispatch(events: ClientEvent[]): void {
