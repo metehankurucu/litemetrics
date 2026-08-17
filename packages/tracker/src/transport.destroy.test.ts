@@ -11,7 +11,7 @@
  */
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { Transport } from './transport';
-import { createTracker } from './tracker';
+import { destroyOpenTrackers, makeTracker } from './test-utils';
 import type { ClientEvent } from '@litemetrics/core';
 
 // jsdom does not implement sendBeacon; define a stub so vi.spyOn can attach.
@@ -44,6 +44,9 @@ function spyOnNetwork() {
 }
 
 afterEach(() => {
+  // Same discipline as tracker.test.ts: tear trackers down while the spies they
+  // must not trip are still installed.
+  destroyOpenTrackers();
   Object.defineProperty(navigator, 'webdriver', { value: false, configurable: true });
   Object.defineProperty(navigator, 'doNotTrack', { value: null, configurable: true });
   try { localStorage.clear(); } catch { /* ignore */ }
@@ -83,43 +86,74 @@ describe('Transport.destroy', () => {
     ]);
   });
 
-  // R3
-  it('unregisters the unload listeners it added', () => {
-    const added: [string, unknown][] = [];
-    const removed: [string, unknown][] = [];
+  // R3. The target is part of the identity on purpose: removing "pagehide" from
+  // document instead of the window would leave the real listener attached, and a
+  // [type, handler] pair alone cannot tell those two apart.
+  it('unregisters the unload listeners it added, on the target it added them to', () => {
+    const added: [EventTarget, string, unknown][] = [];
+    const removed: [EventTarget, string, unknown][] = [];
     for (const target of [document, globalThis] as EventTarget[]) {
       vi.spyOn(target, 'addEventListener').mockImplementation((type, handler) => {
-        added.push([type, handler]);
+        added.push([target, type, handler]);
       });
       vi.spyOn(target, 'removeEventListener').mockImplementation((type, handler) => {
-        removed.push([type, handler]);
+        removed.push([target, type, handler]);
       });
     }
 
     const transport = new Transport({ endpoint: 'https://x.test/collect' });
-    expect(added.map(([type]) => type)).toEqual(
+    expect(added.map(([, type]) => type)).toEqual(
       expect.arrayContaining(['visibilitychange', 'pagehide']),
     );
 
     transport.destroy();
 
-    for (const [type, handler] of added) {
-      expect(removed, `listener for "${type}" was never removed`).toContainEqual([type, handler]);
+    for (const entry of added) {
+      expect(removed, `listener for "${entry[1]}" was not removed from its own target`)
+        .toContainEqual(entry);
     }
   });
 
-  // R4
+  // R4. Idempotency is observable in three places: no throw, no second dispatch,
+  // and no second round of listener removals.
   it('is idempotent', () => {
     const net = spyOnNetwork();
+    const removeSpy = vi.spyOn(document, 'removeEventListener');
     const transport = new Transport({ endpoint: 'https://x.test/collect', batchSize: 10 });
     transport.send(event('once'));
 
-    expect(() => {
-      transport.destroy();
-      transport.destroy();
-    }).not.toThrow();
+    transport.destroy();
+    const removalsAfterFirstDestroy = removeSpy.mock.calls.length;
+    expect(removalsAfterFirstDestroy).toBeGreaterThan(0);
+
+    // Anything arriving between the two calls must not ride out on the second.
+    transport.send(event('between_destroys'));
+    expect(() => transport.destroy()).not.toThrow();
 
     expect(net.fetch).toHaveBeenCalledTimes(1);
+    expect(removeSpy.mock.calls.length).toBe(removalsAfterFirstDestroy);
+    const body = JSON.parse((net.fetch.mock.calls[0][1] as RequestInit).body as string);
+    expect(body.events.map((e: ClientEvent & { name: string }) => e.name)).toEqual(['once']);
+  });
+
+  // R1, the retry path. A fetch dispatched while alive keeps a live .catch();
+  // if it rejects after teardown the beacon fallback must not fire.
+  it('does not beacon when an in-flight fetch rejects after destroy', async () => {
+    let rejectFetch: (reason?: unknown) => void = () => {};
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockReturnValue(new Promise((_, reject) => { rejectFetch = reject; }) as Promise<Response>);
+    const beacon = vi.spyOn(navigator, 'sendBeacon').mockReturnValue(true);
+
+    const transport = new Transport({ endpoint: 'https://x.test/collect', batchSize: 1 });
+    transport.send(event('in_flight'));
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+
+    transport.destroy();
+    rejectFetch(new Error('network down'));
+    for (let i = 0; i < 5; i++) await tick();
+
+    expect(beacon).not.toHaveBeenCalled();
   });
 });
 
@@ -129,7 +163,7 @@ describe('createTracker teardown (issue #13)', () => {
     Object.defineProperty(navigator, 'webdriver', { value: undefined, configurable: true });
     const net = spyOnNetwork();
 
-    const tracker = createTracker({
+    const tracker = makeTracker({
       siteId: 'site_test',
       endpoint: 'https://x.test/collect',
       autoTrack: false,
@@ -159,7 +193,7 @@ describe('createTracker teardown (issue #13)', () => {
     });
     const net = spyOnNetwork();
 
-    const tracker = createTracker({
+    const tracker = makeTracker({
       siteId: 'site_test',
       endpoint: 'https://x.test/collect',
       autoTrack: false,

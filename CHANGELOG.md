@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### `@litemetrics/tracker`
+
+**`destroy()` is now a hard stop.** It still flushes whatever is already queued, then refuses everything afterwards: `send()` and `flush()` become no-ops, and a `fetch` that rejects after teardown no longer retries through `sendBeacon`. Previously `destroy()` only cleared the flush interval, so a send whose visitor id was still resolving fired a request *after* teardown, for example after `@litemetrics/react` unmounts its provider.
+
+**Trade-off:** an event tracked in the moments before `destroy()`, whose visitor id has not resolved yet, is now dropped rather than delivered late. For an analytics SDK a request escaping a torn-down instance is worse than a lost data point, and `destroy()` stays synchronous.
+
+**Listener cleanup.** `destroy()` unregisters the `visibilitychange` and `pagehide` handlers it registered. Before this, every `createTracker` leaked two listeners for the lifetime of the page, so an SPA that mounts a provider per route grew listeners without bound.
+
 ## 0.7.1 - fix: cli ↔ core version alignment
 
 ### `@litemetrics/cli` (0.6.0 -> 0.6.1)

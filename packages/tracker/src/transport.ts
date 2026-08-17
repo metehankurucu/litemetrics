@@ -31,7 +31,7 @@ export class Transport {
   send(event: ClientEvent): void {
     // A send whose visitor id was still resolving when destroy() ran must not
     // reach the network: the tracker is torn down, and the caller (an unmounted
-    // provider, a withdrawn consent) is no longer expecting traffic.
+    // provider, a host app tearing the SDK down) is no longer expecting traffic.
     if (this.destroyed) return;
     this.queue.push(event);
     if (this.queue.length >= this.batchSize) {
@@ -54,8 +54,11 @@ export class Transport {
     // Deliver what is already queued, then stop accepting anything new.
     this.flush();
     this.destroyed = true;
-    this.unloadCleanups.forEach((fn) => fn());
+    // Detach the list first: a cleanup that throws must not strand the rest,
+    // since the guard above makes a second destroy() a no-op.
+    const cleanups = this.unloadCleanups;
     this.unloadCleanups = [];
+    cleanups.forEach((fn) => fn());
   }
 
   private _dispatch(events: ClientEvent[]): void {
@@ -75,7 +78,11 @@ export class Transport {
         keepalive: true,
         credentials: 'omit',
       }).catch(() => {
-        // Retry once with sendBeacon
+        // Retry once with sendBeacon, unless we were torn down while the request
+        // was in flight: a destroyed transport emits nothing, and a rejection can
+        // arrive long after destroy(). The cost is that a failed teardown flush
+        // is not retried; an escaped request is the worse of the two.
+        if (this.destroyed) return;
         this._beacon(body);
       });
     } else {
