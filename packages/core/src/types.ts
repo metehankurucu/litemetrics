@@ -189,8 +189,9 @@ export interface BotFilterConfig {
   onBotDetected?: (info: BotDetectedInfo) => void;
   /**
    * Fired once per site when app-SDK events arrive at a site that is not typed as
-   * `app`. Such a site is filtered as browser traffic, which silently drops its
-   * Android events. Reporting only - the request is filtered exactly as before.
+   * `app`. Unless its bot-filter mode is `off`, such a site is filtered as browser
+   * traffic, which silently drops its Android events; either way the dashboard shows
+   * it as a web site. Reporting only - the request is filtered exactly as before.
    */
   onSiteTypeMismatch?: (info: SiteTypeMismatchInfo) => void;
 }
@@ -201,6 +202,8 @@ export interface SiteTypeMismatchInfo {
   siteType: SiteType | undefined;
   /** The platform the SDK declared in the event payload. */
   platform: string;
+  /** The bot-filter mode the request was processed under. `off` means nothing was filtered. */
+  mode: BotFilterMode;
 }
 
 export interface BotDetectedInfo {

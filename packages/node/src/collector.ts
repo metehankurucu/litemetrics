@@ -82,13 +82,13 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
   // body cannot grow it.
   const reportedTypeMismatches = new Set<string>();
 
-  function reportSiteTypeMismatch(site: Site, events: ClientEvent[]): void {
+  function reportSiteTypeMismatch(site: Site, events: ClientEvent[], mode: BotFilterMode): void {
     if (!botCfg.onSiteTypeMismatch) return;
     if (reportedTypeMismatches.has(site.siteId)) return;
     const platform = events.find((event) => event.mobile?.platform)?.mobile?.platform;
     if (!platform) return;
     reportedTypeMismatches.add(site.siteId);
-    botCfg.onSiteTypeMismatch({ siteId: site.siteId, siteType: site.type, platform });
+    botCfg.onSiteTypeMismatch({ siteId: site.siteId, siteType: site.type, platform, mode });
   }
 
   // ─── Auth helpers ──────────────────────────────────────
@@ -341,7 +341,7 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
         // site both layers only ever misfire. Rate limiting still applies: abuse of
         // an app site id is a volume problem, not a User-Agent one.
         const isAppSite = site?.type === 'app';
-        if (site && !isAppSite) reportSiteTypeMismatch(site, payload.events);
+        if (site && !isAppSite) reportSiteTypeMismatch(site, payload.events, mode);
 
         const rateLimited = mode === 'strict' || mode === 'shadow';
 

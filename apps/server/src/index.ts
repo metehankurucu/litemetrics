@@ -83,11 +83,15 @@ const collector = await createCollector({
       console.log(`[bot-filter] ${info.action} layer=${info.layer} mode=${info.mode} site=${info.siteId} ip=${info.ip}`);
     },
     onSiteTypeMismatch: (info) => {
-      // This site sends app SDK events but is not typed as an app, so it is still
-      // filtered as browser traffic and will keep losing its Android events. Fix is
-      // one call: PUT /api/sites/<id> {"type":"app"}.
+      // This site sends app SDK events but is not typed as an app. Unless its mode is
+      // `off` it is still filtered as browser traffic and keeps losing its Android
+      // events; either way the dashboard shows it as a web site. Fix is one call:
+      // PUT /api/sites/<id> {"type":"app"}.
+      const consequence = info.mode === 'off'
+        ? 'not filtered (mode=off) but shown as a web site'
+        : 'app SDK events on a non-app site are still filtered as browser traffic';
       console.warn(
-        `[site-type-mismatch] site=${info.siteId} type=${info.siteType ?? 'unset'} platform=${info.platform} - app SDK events on a non-app site are still filtered as browser traffic`,
+        `[site-type-mismatch] site=${info.siteId} type=${info.siteType ?? 'unset'} platform=${info.platform} mode=${info.mode} - ${consequence}`,
       );
     },
   },

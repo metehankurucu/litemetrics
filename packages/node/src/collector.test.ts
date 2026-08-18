@@ -674,10 +674,27 @@ describe('collector bot filter - app payload on a non-app site', () => {
     });
     await collector.handler()(makeMobileReq('okhttp/4.12.0'), makeRes());
     expect(onSiteTypeMismatch).toHaveBeenCalledWith(
-      expect.objectContaining({ siteId: 'site_test', siteType: 'web', platform: 'android' }),
+      expect.objectContaining({ siteId: 'site_test', siteType: 'web', platform: 'android', mode: 'standard' }),
     );
     // Reported, not bypassed.
     expect(insertEvents).not.toHaveBeenCalled();
+  });
+
+  // With the filter off nothing is dropped, but the site is still shown as web in the
+  // dashboard, so the mismatch is still worth one line - carrying the mode so the log
+  // does not claim a drop that is not happening.
+  it('still reports under mode=off, carrying the mode', async () => {
+    getSite.mockImplementation(async () => ({
+      siteId: 'site_test', name: 'Test', secretKey: 'k', type: 'web', botFilterMode: 'off',
+    }));
+    const onSiteTypeMismatch = vi.fn();
+    const collector = await createCollector({
+      db: { adapter: 'clickhouse', url: 'http://x' },
+      botFilter: { defaultMode: 'standard', onSiteTypeMismatch },
+    });
+    await collector.handler()(makeMobileReq('okhttp/4.12.0'), makeRes());
+    expect(onSiteTypeMismatch).toHaveBeenCalledWith(expect.objectContaining({ mode: 'off' }));
+    expect(insertEvents).toHaveBeenCalledOnce();
   });
 
   it('reports each site only once so a busy site cannot flood the log', async () => {
