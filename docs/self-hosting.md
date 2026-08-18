@@ -102,12 +102,13 @@ To include flagged traffic in queries, pass `?includeBots=true` on `/api/stats`,
 `/api/collect` is not logged per request — at production volume that alone fills a fixed-size platform log window in hours. Each wall-clock minute with traffic emits one summary line instead:
 
 ```
-[collect] minute=2026-08-16T11:13 reqs=17 ok=14 3xx=0 4xx=3 5xx=0 dur_p50=3 dur_p95=155 dur_max=155 bot_dropped=9 bot_flagged=0 reasons=ua-signature:8,empty-ua:1 bot_sites=site_e2e:9 suppressed=6
+[collect] minute=2026-08-18T17:35 reqs=11 ok=8 3xx=0 4xx=0 5xx=0 aborted=3 dur_p50=302 dur_p95=712 dur_max=712 bot_dropped=5 bot_flagged=0 reasons=ua-signature:4,empty-ua:1 bot_sites=site_e2e:5 suppressed=2
 ```
 
 | Field | Meaning |
 |-------|---------|
 | `reqs` / `ok` / `3xx` / `4xx` / `5xx` | Requests in the minute, by response status class |
+| `aborted` | Requests the client gave up on — body never finished arriving, or hung up before the answer went out. Its own class: `reqs = ok + 3xx + 4xx + 5xx + aborted` |
 | `dur_p50` / `dur_p95` / `dur_max` | Response time in ms; `-` when the minute saw no requests |
 | `bot_dropped` / `bot_flagged` | Bot-filter outcomes. These totals survive after the individual detail lines age out |
 | `reasons` | Drop reasons for the minute, by count |
@@ -118,8 +119,8 @@ Notes for operators:
 
 - A minute with no traffic emits no line at all.
 - The open minute is flushed on `SIGTERM` / `SIGINT`, so a redeploy does not lose the window a deploy-triggered problem would appear in.
-- The logger runs before CORS and the body parser, so a request whose body never finishes arriving is still counted rather than vanishing.
-- Every other route keeps a per-request line: `14:59:31 GET /api/stats?siteId=site_x 200 42ms [secret]`.
+- The logger runs before CORS and the body parser and records on the first of the handler's `res.end`, `res 'close'`, or a cut-off request body, so a request whose body never finishes arriving — or whose client hangs up before the answer — is counted as `aborted` rather than vanishing. This holds under both Node and Bun (the Docker image runs Bun: its `node` is a bun symlink, and Bun's `http` emits no `res 'close'` for an aborted request).
+- Every other route keeps a per-request line: `14:59:31 GET /api/stats?siteId=site_x 200 42ms [secret]`, with a trailing `aborted` marker when the client left before the answer went out.
 
 User-Agent, IP, site id and URL all come from the request and are therefore attacker-controlled. Each is sanitized to a single line before entering a log entry — without that, one newline in a User-Agent would let a request forge its own log records.
 

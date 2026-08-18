@@ -40,8 +40,13 @@ export interface BotHit {
 }
 
 export interface CollectSummary {
-  /** Record a finished /api/collect request. */
-  recordRequest(statusCode: number, durationMs: number): void;
+  /**
+   * Record a finished /api/collect request. `aborted` marks a request the client gave
+   * up on - body never finished arriving, or hung up before the answer went out. It
+   * counts toward reqs= and aborted=, not toward a status class: the status code at
+   * that point is whatever the pipeline had reached, not something that was delivered.
+   */
+  recordRequest(statusCode: number, durationMs: number, aborted?: boolean): void;
   /**
    * Record a bot-filter hit. Returns whether the caller should also print the detail
    * line, which is capped per minute so a bot storm cannot flood the log budget.
@@ -62,6 +67,7 @@ interface Bucket {
   s3xx: number;
   s4xx: number;
   s5xx: number;
+  aborted: number;
   durations: number[];
   durationsSeen: number;
   durationMax: number;
@@ -86,6 +92,7 @@ function newBucket(key: string): Bucket {
     s3xx: 0,
     s4xx: 0,
     s5xx: 0,
+    aborted: 0,
     durations: [],
     durationsSeen: 0,
     durationMax: 0,
@@ -148,6 +155,11 @@ export function createCollectSummary(config: CollectSummaryConfig = {}): Collect
         `3xx=${b.s3xx}`,
         `4xx=${b.s4xx}`,
         `5xx=${b.s5xx}`,
+        // Requests the client gave up on: body never completed, or hung up before the
+        // answer. A lost batch is the one thing this line exists to make countable, so
+        // it is its own outcome class - reqs = ok + 3xx + 4xx + 5xx + aborted - rather
+        // than hiding inside whichever status class the pipeline had reached.
+        `aborted=${b.aborted}`,
         `dur_p50=${p50}`,
         `dur_p95=${p95}`,
         `dur_max=${max}`,
@@ -188,10 +200,11 @@ export function createCollectSummary(config: CollectSummaryConfig = {}): Collect
   timer.unref?.();
 
   return {
-    recordRequest(statusCode: number, durationMs: number): void {
+    recordRequest(statusCode: number, durationMs: number, aborted = false): void {
       const b = current();
       b.reqs++;
-      if (statusCode >= 500) b.s5xx++;
+      if (aborted) b.aborted++;
+      else if (statusCode >= 500) b.s5xx++;
       else if (statusCode >= 400) b.s4xx++;
       else if (statusCode >= 300) b.s3xx++;
       else b.ok++;

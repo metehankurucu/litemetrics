@@ -162,6 +162,32 @@ describe('formatAccessLine', () => {
     expect(line).toContain(' 500 0ms');
   });
 
+  it('marks a request the client abandoned before the answer went out', () => {
+    const line = formatAccessLine({
+      timestamp: Date.parse('2026-08-16T07:30:41.000Z'),
+      method: 'GET',
+      url: '/api/stats?siteId=site_x',
+      statusCode: 200,
+      durationMs: 190,
+      auth: '[secret]',
+      aborted: true,
+    });
+    expect(line).toBe('07:30:41 GET /api/stats?siteId=site_x 200 190ms [secret] aborted');
+  });
+
+  it('adds no marker when aborted is omitted or false', () => {
+    const base = {
+      timestamp: Date.parse('2026-08-16T07:30:41.000Z'),
+      method: 'GET',
+      url: '/health',
+      statusCode: 200,
+      durationMs: 1,
+      auth: '',
+    };
+    expect(formatAccessLine(base)).toBe('07:30:41 GET /health 200 1ms');
+    expect(formatAccessLine({ ...base, aborted: false })).toBe('07:30:41 GET /health 200 1ms');
+  });
+
   it('marks a truncated URL so it cannot be read as a real path', () => {
     const line = formatAccessLine({
       timestamp: Date.parse('2026-08-16T07:30:41.000Z'),

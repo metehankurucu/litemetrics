@@ -85,6 +85,39 @@ describe('createCollectSummary', () => {
     expect(field(line, '5xx')).toBe('1');
   });
 
+  // A client that gives up - body never completed, or hung up before the answer - is
+  // the lost-batch case the summary exists for. It is its own outcome class: counted
+  // in reqs= and aborted=, and kept out of the status classes, because the status code
+  // at that point (express's own 400, or the default 200) was never delivered.
+  it('counts an aborted request in reqs and aborted, not in a status class', () => {
+    const h = harness();
+    open = h.summary;
+
+    h.summary.recordRequest(200, 3);
+    h.summary.recordRequest(200, 190, true); // client left mid-handler, default 200
+    h.summary.recordRequest(400, 300, true); // body never completed, express set 400
+    h.summary.flush();
+
+    const line = h.lines[0];
+    expect(field(line, 'reqs')).toBe('3');
+    expect(field(line, 'ok')).toBe('1');
+    expect(field(line, '4xx')).toBe('0');
+    expect(field(line, 'aborted')).toBe('2');
+  });
+
+  it('reports aborted=0 for a minute where every request was answered', () => {
+    const h = harness();
+    open = h.summary;
+
+    h.summary.recordRequest(200, 3);
+    h.summary.recordRequest(500, 3, false);
+    h.summary.flush();
+
+    const line = h.lines[0];
+    expect(field(line, 'aborted')).toBe('0');
+    expect(field(line, '5xx')).toBe('1');
+  });
+
   it('reports p50, p95 and max duration', () => {
     const h = harness();
     open = h.summary;

@@ -62,19 +62,33 @@ const collectSummary = createCollectSummary({ maxBotLinesPerMinute: BOT_LOG_MAX_
 
 app.use((req, res, next) => {
   const startedAt = process.hrtime.bigint();
-  const isCollect = req.path === COLLECT_PATH;
-  // Captured up front: a router can rewrite req.url before 'finish' fires.
+  // POST only: a CORS preflight OPTIONS or a scanner's GET is not a batch, and folding
+  // them into reqs= would make the summary read as more batches than arrived. They
+  // keep their per-request line below instead.
+  const isCollect = req.method === 'POST' && req.path === COLLECT_PATH;
+  // Captured up front: a router can rewrite req.url before the response completes.
   const url = req.originalUrl || req.url;
   const method = req.method;
 
-  // 'close' rather than 'finish': 'finish' never fires for a request the client hung
-  // up on, and a dropped collect batch is lost data. Those land here as the 4xx that
-  // express answered them with, which is what a real abort was measured to produce.
-  res.on('close', () => {
+  // Three hooks, one record. The runtime image runs Bun (`node` there is a symlink to
+  // bun), and Bun's http shim signals less than Node's does, so each hook covers a case
+  // the others miss - measured against the built artifact under both runtimes:
+  //   res.end      - the handler answering; first to fire for every served request on
+  //                  both runtimes. Under Bun it is also the *only* signal for a client
+  //                  that left after its body arrived but before the answer: no event
+  //                  fires at all, and headersSent stays false through end().
+  //   res 'close'  - every completed response on both runtimes; under Node also every
+  //                  abort, including one the handler never answered.
+  //   req 'close'  - fires at body end, so it says nothing about the response; only
+  //                  consulted when the body itself was cut off.
+  let recorded = false;
+  const record = (aborted: boolean) => {
+    if (recorded) return;
+    recorded = true;
     const durationMs = Number(process.hrtime.bigint() - startedAt) / 1e6;
 
     if (isCollect) {
-      collectSummary.recordRequest(res.statusCode, durationMs);
+      collectSummary.recordRequest(res.statusCode, durationMs, aborted);
       return;
     }
 
@@ -91,9 +105,26 @@ app.use((req, res, next) => {
         statusCode: res.statusCode,
         durationMs,
         auth,
+        aborted,
       }),
     );
+  };
+  // Aborted = the client gave up: its body never finished arriving (readableAborted,
+  // which stays true even after express has answered the abort with its own 400) or it
+  // hung up before an answer went out (headersSent stays false). Not req.complete: that
+  // is still false inside a synchronous handler's end(), and stays false on Node for a
+  // body nobody read, so it would mark served requests as aborted.
+  const wasAborted = () => req.readableAborted || !res.headersSent;
+  res.on('close', () => record(wasAborted()));
+  req.on('close', () => {
+    if (req.readableAborted) record(true);
   });
+  const originalEnd = res.end;
+  res.end = ((...args: unknown[]) => {
+    const ret = (originalEnd as (...a: unknown[]) => typeof res).apply(res, args);
+    record(wasAborted());
+    return ret;
+  }) as typeof res.end;
 
   next();
 });

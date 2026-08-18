@@ -58,6 +58,12 @@ export interface AccessLogInput {
   durationMs: number;
   /** Pre-computed auth marker, e.g. "[admin]". Empty when unauthenticated. */
   auth: string;
+  /**
+   * True when the client gave up before the answer went out. The status code on such
+   * a line is what the pipeline had set, not what was delivered, so the line is marked
+   * rather than left to read as a served request.
+   */
+  aborted?: boolean;
 }
 
 /** Per-request access line for everything except /api/collect. */
@@ -73,5 +79,6 @@ export function formatAccessLine(input: AccessLogInput): string {
     `${Math.round(input.durationMs)}ms`,
   ];
   if (input.auth) parts.push(input.auth);
+  if (input.aborted) parts.push('aborted');
   return parts.join(' ');
 }
