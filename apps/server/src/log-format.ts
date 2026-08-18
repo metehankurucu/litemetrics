@@ -1,4 +1,4 @@
-import type { BotDetectedInfo } from '@litemetrics/node';
+import type { BotDetectedInfo, SiteTypeMismatchInfo } from '@litemetrics/node';
 
 // Everything formatted here comes from the request: the User-Agent header, the
 // X-Forwarded-For chain, the siteId inside the JSON body, the URL. A newline in any
@@ -47,6 +47,27 @@ export function formatBotFilterLine(info: BotDetectedInfo): string {
     `site=${sanitizeToken(info.siteId)}`,
     `ip=${sanitizeToken(info.ip, 45)}`,
     `ua="${sanitizeUserAgent(info.userAgent)}"`,
+  ].join(' ');
+}
+
+/**
+ * One-per-site warning that app SDK events are landing on a site not typed `app`.
+ * `platform` is whatever the request body declared, so it goes through the token
+ * sanitizer like every other request-derived field; the mode decides what the line
+ * can honestly claim (under `off` nothing is being filtered).
+ */
+export function formatSiteTypeMismatchLine(info: SiteTypeMismatchInfo): string {
+  const consequence = info.mode === 'off'
+    ? 'not filtered (mode=off) but shown as a web site'
+    : 'app SDK events on a non-app site are still filtered as browser traffic';
+  return [
+    '[site-type-mismatch]',
+    `site=${sanitizeToken(info.siteId)}`,
+    `type=${info.siteType ?? 'unset'}`,
+    `platform=${sanitizeToken(info.platform, 32)}`,
+    `mode=${info.mode}`,
+    '-',
+    consequence,
   ].join(' ');
 }
 

@@ -34,4 +34,5 @@ export type {
   BotFilterConfig,
   BotDetectedInfo,
   BotDropReason,
+  SiteTypeMismatchInfo,
 } from '@litemetrics/core';

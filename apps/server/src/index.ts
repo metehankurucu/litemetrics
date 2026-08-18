@@ -5,7 +5,7 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { existsSync } from 'fs';
 import { createCollectSummary } from './collect-summary';
-import { formatAccessLine, formatBotFilterLine } from './log-format';
+import { formatAccessLine, formatBotFilterLine, formatSiteTypeMismatchLine } from './log-format';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -166,12 +166,7 @@ const collector = await createCollector({
       // `off` it is still filtered as browser traffic and keeps losing its Android
       // events; either way the dashboard shows it as a web site. Fix is one call:
       // PUT /api/sites/<id> {"type":"app"}.
-      const consequence = info.mode === 'off'
-        ? 'not filtered (mode=off) but shown as a web site'
-        : 'app SDK events on a non-app site are still filtered as browser traffic';
-      console.warn(
-        `[site-type-mismatch] site=${info.siteId} type=${info.siteType ?? 'unset'} platform=${info.platform} mode=${info.mode} - ${consequence}`,
-      );
+      console.warn(formatSiteTypeMismatchLine(info));
     },
   },
 });

@@ -3,6 +3,7 @@ import {
   sanitizeUserAgent,
   sanitizeToken,
   formatBotFilterLine,
+  formatSiteTypeMismatchLine,
   formatAccessLine,
 } from './log-format';
 
@@ -122,6 +123,48 @@ describe('formatBotFilterLine', () => {
       userAgent: 'ua\nfake',
     });
     expect(line.split('\n')).toHaveLength(1);
+  });
+});
+
+describe('formatSiteTypeMismatchLine', () => {
+  it('names the site, its type, the declared platform and the mode', () => {
+    const line = formatSiteTypeMismatchLine({
+      siteId: 'site_5dv1pv4y3714',
+      siteType: 'web',
+      platform: 'android',
+      mode: 'standard',
+    });
+    expect(line).toBe(
+      '[site-type-mismatch] site=site_5dv1pv4y3714 type=web platform=android mode=standard - app SDK events on a non-app site are still filtered as browser traffic',
+    );
+  });
+
+  it('shows a never-set type as unset', () => {
+    const line = formatSiteTypeMismatchLine({
+      siteId: 'site_x', siteType: undefined, platform: 'ios', mode: 'strict',
+    });
+    expect(line).toContain('type=unset');
+  });
+
+  it('does not claim a drop when the mode is off', () => {
+    const line = formatSiteTypeMismatchLine({
+      siteId: 'site_x', siteType: 'web', platform: 'android', mode: 'off',
+    });
+    expect(line).toContain('mode=off');
+    expect(line).not.toContain('still filtered');
+  });
+
+  // `platform` is a field the request body declares, so it is attacker-controlled
+  // just like the User-Agent: a newline in it must not become a second log entry.
+  it('stays a single line and caps a hostile platform value', () => {
+    const line = formatSiteTypeMismatchLine({
+      siteId: 'site_x',
+      siteType: 'web',
+      platform: 'android\n[bot-filter] dropped ' + 'x'.repeat(200),
+      mode: 'standard',
+    });
+    expect(line.split('\n')).toHaveLength(1);
+    expect(line).toMatch(/platform=android\[bot-filter\]droppedx{0,32} mode=standard/);
   });
 });
 

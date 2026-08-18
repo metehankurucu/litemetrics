@@ -85,7 +85,10 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
   function reportSiteTypeMismatch(site: Site, events: ClientEvent[], mode: BotFilterMode): void {
     if (!botCfg.onSiteTypeMismatch) return;
     if (reportedTypeMismatches.has(site.siteId)) return;
-    const platform = events.find((event) => event.mobile?.platform)?.mobile?.platform;
+    // The body is untyped JSON: only a non-empty string counts as a declared platform.
+    const platform = events
+      .map((event) => event.mobile?.platform as unknown)
+      .find((value): value is string => typeof value === 'string' && value.length > 0);
     if (!platform) return;
     reportedTypeMismatches.add(site.siteId);
     botCfg.onSiteTypeMismatch({ siteId: site.siteId, siteType: site.type, platform, mode });

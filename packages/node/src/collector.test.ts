@@ -815,6 +815,22 @@ describe('collector bot filter - app payload on a non-app site', () => {
     expect(onSiteTypeMismatch).not.toHaveBeenCalled();
   });
 
+  // `mobile.platform` is untyped JSON on the wire; a non-string value is not a platform.
+  it('ignores a non-string platform value', async () => {
+    getSite.mockImplementation(async () => ({
+      siteId: 'site_test', name: 'Test', secretKey: 'k', type: 'web',
+    }));
+    const onSiteTypeMismatch = vi.fn();
+    const collector = await createCollector({
+      db: { adapter: 'clickhouse', url: 'http://x' },
+      botFilter: { defaultMode: 'standard', onSiteTypeMismatch },
+    });
+    const req = makeMobileReq('okhttp/4.12.0') as any;
+    req.body.events[0].mobile = { platform: { $ne: null } };
+    await collector.handler()(req, makeRes());
+    expect(onSiteTypeMismatch).not.toHaveBeenCalled();
+  });
+
   // An unknown siteId is attacker-supplied, so it must not become a map key.
   it('stays quiet for a siteId that does not exist', async () => {
     getSite.mockImplementation(async () => null);
