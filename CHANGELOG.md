@@ -1,20 +1,20 @@
 # Changelog
 
-## Unreleased
+## 0.8.0 - App traffic unfiltered, collect observability, tracker hard stop
 
 **App traffic is no longer filtered as browser traffic.** Android events from React Native apps were never stored: RN's `fetch` sends OkHttp's default `okhttp/<version>` User-Agent on Android, `isbot` matches any bare `name/version` token, and the signature layer dropped every batch in `standard` mode. Measured across four app sites: 6053 events in 90 days, zero Android.
 
-### `@litemetrics/node` (0.7.0 -> next)
+### `@litemetrics/node` (0.7.0 -> 0.8.0)
 
 - **App sites run the rate-limit layer only.** On a site with `type: 'app'` the signature and heuristic layers no longer run — both are browser heuristics, and an app SDK sends no browser User-Agent, `Accept-Language` or `Referer`, so on an app site they only ever misfired (the heuristic layer would have flagged 100% of app traffic the moment `strict` was enabled). `standard` therefore drops nothing on an app site; `strict` / `shadow` apply the per-IP rate limit only. Deliberate trade-off: an app site no longer rejects a self-declared crawler User-Agent. Web sites are unchanged.
 - **`onSiteTypeMismatch` callback** (`botFilter` config): fired once per site when app SDK payloads (`mobile.platform` set) arrive at a site whose type is not `app`, with `{ siteId, siteType, platform, mode }`. Reporting only — the payload never bypasses the filter, and unknown site ids never enter the once-per-site set. `apps/server` logs it as `[site-type-mismatch] ...`.
 - **Operators: a site that receives app SDK traffic must be typed `app`** (`PUT /api/sites/:id {"type":"app"}`), otherwise it is still filtered as browser traffic and keeps losing Android events.
 
-### `@litemetrics/core` (0.6.1 -> next)
+### `@litemetrics/core` (0.6.1 -> 0.6.2)
 
 - Added `BotFilterConfig.onSiteTypeMismatch` and `SiteTypeMismatchInfo`.
 
-### `@litemetrics/react-native` (0.4.0 -> next)
+### `@litemetrics/react-native` (0.4.0 -> 0.5.0)
 
 - **Sends its own User-Agent** — `litemetrics-react-native/<version> (<platform>)` — on every collect request, so the traffic is identifiable on any Litemetrics server, not only one running the node fix above. The parenthetical is load-bearing: `isbot` flags any bare `name/version` token, and a test pins that the header is not bot-shaped on either platform.
 - **Android `osVersion` is now the release, not the API level.** `Platform.Version` is the marketing version on iOS (`"17.4"`) but the API level on Android (`34`), so `top_os_versions` was listing `Android 34` next to `iOS 17.4`. Android now reports `Platform.constants.Release` (`"14"`); if that is missing, the API level is sent labelled (`API 34`) rather than bare. **Data note:** events stored before this release keep the API-level values, so `top_os_versions` shows both scales for an Android site until the old rows age out of the query window.
@@ -24,7 +24,7 @@
 
 - Bot Filtering mode hints in site settings describe what each mode actually does on an `app` site (rate limit only).
 
-### `@litemetrics/tracker`
+### `@litemetrics/tracker` (0.4.0 -> 0.5.0)
 
 **`destroy()` is now a hard stop.** It still flushes whatever is already queued, then refuses everything afterwards: `send()` and `flush()` become no-ops, and a `fetch` that rejects after teardown no longer retries through `sendBeacon`. Previously `destroy()` only cleared the flush interval, so a send whose visitor id was still resolving fired a request *after* teardown, for example after `@litemetrics/react` unmounts its provider.
 
@@ -34,7 +34,7 @@
 
 **Visitor id resolved at construction.** Previously it was computed on the first `track()`, and until that hash landed a send sat pending, which is precisely the window `destroy()` now drops. Doing it up front narrows the window to the moments right after page load.
 
-### `@litemetrics/react`
+### `@litemetrics/react` (0.4.0 -> 0.5.0)
 
 **Fixes a silent provider under React StrictMode.** `LitemetricsProvider` destroys its tracker on unmount but kept the instance in a ref, and StrictMode remounts the same component in development, so the remounted provider handed every consumer a destroyed tracker. Combined with the hard stop above, that meant the app reported its first pageview and then went silent, with no error anywhere.
 
