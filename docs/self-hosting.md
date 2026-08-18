@@ -63,6 +63,7 @@ Open `http://localhost:3002` for the dashboard.
 | `BOT_FILTER_MODE` | Server-wide bot filter default: `off`, `standard`, `strict`, or `shadow` | `standard` |
 | `BOT_RATE_WINDOW_MS` | Sliding-window size for the per-IP rate limiter (ms) | `60000` |
 | `BOT_RATE_MAX` | Max events per window per IP before the rate-limit layer fires | `60` |
+| `BOT_LOG_MAX_PER_MIN` | Detail `[bot-filter]` log lines allowed per minute; the overflow is counted as `suppressed=` on the `[collect]` summary | `20` |
 
 `DATABASE_URL` and `LITEMETRICS_ADMIN_SECRET` also work as aliases.
 
@@ -70,18 +71,60 @@ Open `http://localhost:3002` for the dashboard.
 
 Bot filtering runs in three server-side layers (signature via `isbot`, heuristic for scrubbed UAs, per-IP rate limit) plus a tracker-side `navigator.webdriver` short-circuit. It is enabled by default in `standard` mode.
 
-- `BOT_FILTER_MODE=standard` (default): Layer 1 drops, Layers 2 + 3 flag (events stored with `bot_flag`, hidden from queries).
-- `BOT_FILTER_MODE=strict`: every layer drops.
-- `BOT_FILTER_MODE=shadow`: every layer flags only — useful for tuning thresholds without affecting data.
+Sites typed `app` run the rate-limit layer only: the signature and heuristic layers are browser heuristics and an app SDK sends no browser User-Agent (React Native on Android goes out as `okhttp/<version>`, which `isbot` matches). A site that receives app SDK traffic must be created with `type: 'app'`, or it is filtered as browser traffic and its Android events are dropped. The server logs `[site-type-mismatch] site=<id> type=<type> platform=<platform> mode=<mode>` once per site when it sees app SDK payloads on a non-app site.
+
+- `BOT_FILTER_MODE=standard` (default): Layer 1 drops, Layers 2 + 3 flag (events stored with `bot_flag`, hidden from queries). On `app` sites nothing runs.
+- `BOT_FILTER_MODE=strict`: every layer drops (`app` sites: rate limit only).
+- `BOT_FILTER_MODE=shadow`: every layer flags only — useful for tuning thresholds without affecting data (`app` sites: rate limit only).
 - `BOT_FILTER_MODE=off`: disabled.
 
 Per-site overrides live on the site record (`botFilterMode` field) and are configurable from the dashboard Settings page. Each detection emits a grep-friendly audit line:
 
 ```
-[bot-filter] <action> layer=<layer> mode=<mode> site=<siteId> ip=<ip>
+[bot-filter] <action> layer=<layer> reason=<reason> mode=<mode> site=<siteId> ip=<ip> ua="<user-agent>"
 ```
 
+`layer` is which of the three layers fired; `reason` is why. The distinction matters in practice: the signature layer fires both for a missing User-Agent and for an `isbot` list match, and those call for opposite responses.
+
+| `reason` | Layer | Meaning |
+|------|-------|---------|
+| `empty-ua` | signature / heuristic | No `User-Agent` header at all — usually a misconfigured SDK rather than a crawler |
+| `ua-signature` | signature | Matched the `isbot` list. Real crawlers, but also HTTP client defaults such as `okhttp/*` — the Android default, which React Native's `fetch` sends when the caller sets no User-Agent |
+| `no-browser-signals` | heuristic | Browser, engine, `Accept-Language` and `Referer` were all absent |
+| `rate-limit` | rate-limit | The per-IP sliding window overflowed |
+
+If mobile SDK traffic is missing from your data, grep for `reason=ua-signature` and check the `ua` field — a native HTTP client that sends no explicit User-Agent gets a library default that `isbot` matches.
+
+`ua` is sanitized to a single line and capped at 200 characters. Detail lines are limited to `BOT_LOG_MAX_PER_MIN` per minute; the overflow is counted as `suppressed=` on the `[collect]` summary line.
+
 To include flagged traffic in queries, pass `?includeBots=true` on `/api/stats`, `/api/events`, or `/api/users`.
+
+## Request logs
+
+`/api/collect` is not logged per request — at production volume that alone fills a fixed-size platform log window in hours. Each wall-clock minute with traffic emits one summary line instead:
+
+```
+[collect] minute=2026-08-18T17:35 reqs=11 ok=8 3xx=0 4xx=0 5xx=0 aborted=3 dur_p50=302 dur_p95=712 dur_max=712 bot_dropped=5 bot_flagged=0 reasons=ua-signature:4,empty-ua:1 bot_sites=site_e2e:5 suppressed=2
+```
+
+| Field | Meaning |
+|-------|---------|
+| `reqs` / `ok` / `3xx` / `4xx` / `5xx` | Requests in the minute, by response status class |
+| `aborted` | Requests the client gave up on — body never finished arriving, or hung up before the answer went out. Its own class: `reqs = ok + 3xx + 4xx + 5xx + aborted` |
+| `dur_p50` / `dur_p95` / `dur_max` | Response time in ms; `-` when the minute saw no requests |
+| `bot_dropped` / `bot_flagged` | Bot-filter outcomes. These totals survive after the individual detail lines age out |
+| `reasons` | Drop reasons for the minute, by count |
+| `bot_sites` | Sites by **bot hit** count — not request volume, which is `reqs` |
+| `suppressed` | Detail `[bot-filter]` lines withheld by `BOT_LOG_MAX_PER_MIN` |
+
+Notes for operators:
+
+- A minute with no traffic emits no line at all.
+- The open minute is flushed on `SIGTERM` / `SIGINT`, so a redeploy does not lose the window a deploy-triggered problem would appear in.
+- The logger runs before CORS and the body parser and records on the first of the handler's `res.end`, `res 'close'`, or a cut-off request body, so a request whose body never finishes arriving — or whose client hangs up before the answer — is counted as `aborted` rather than vanishing. This holds under both Node and Bun (the Docker image runs Bun: its `node` is a bun symlink, and Bun's `http` emits no `res 'close'` for an aborted request).
+- Every other route keeps a per-request line: `14:59:31 GET /api/stats?siteId=site_x 200 42ms [secret]`, with a trailing `aborted` marker when the client left before the answer went out.
+
+User-Agent, IP, site id and URL all come from the request and are therefore attacker-controlled. Each is sanitized to a single line before entering a log entry — without that, one newline in a User-Agent would let a request forge its own log records.
 
 ## Schema migrations
 

@@ -21,9 +21,6 @@ export interface RNTrackerInstance {
   destroy(): void;
 }
 
-const SDK_NAME = 'litemetrics-react-native';
-const SDK_VERSION = '0.2.2';
-
 let sessionId: string | null = null;
 let visitorId: string | null = null;
 let userId: string | null = null;
@@ -38,6 +35,8 @@ function generateId(): string {
 }
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { SDK_NAME, SDK_VERSION, buildUserAgent } from './user-agent';
+import { resolveOsVersion } from './os-version';
 
 const VISITOR_KEY = '@litemetrics_vid';
 
@@ -73,17 +72,22 @@ export function createRNTracker(config: RNTrackerConfig): RNTrackerInstance {
   function getContext(): ClientContext {
     const screen = Dimensions.get('screen');
     const platform = Platform.OS as 'ios' | 'android';
-    const osVersion = String(Platform.Version);
 
     let deviceModel: string | undefined;
     let deviceBrand: string | undefined;
+    let release: unknown;
     if (Platform.OS === 'android') {
       const constants = Platform.constants as any;
       deviceModel = constants?.Model;
       deviceBrand = constants?.Brand;
+      release = constants?.Release;
     } else {
       deviceBrand = 'Apple';
     }
+
+    // Platform.Version is the API level on Android and the marketing version on
+    // iOS, so it cannot be reported as-is. See ./os-version.ts.
+    const osVersion = resolveOsVersion({ platform, version: Platform.Version, release });
 
     let language: string | undefined;
     let timezone: string | undefined;
@@ -149,7 +153,12 @@ export function createRNTracker(config: RNTrackerConfig): RNTrackerInstance {
 
     fetch(endpoint, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        // Without this, Android sends OkHttp's default okhttp/<version> and the
+        // server's bot filter drops the batch. See ./user-agent.ts.
+        'User-Agent': buildUserAgent(Platform.OS),
+      },
       body: JSON.stringify({ events }),
     }).catch((err) => {
       if (debug) console.warn('[litemetrics:rn] send failed', err);

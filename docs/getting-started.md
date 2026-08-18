@@ -98,6 +98,8 @@ function App() {
 bun add @litemetrics/react-native
 ```
 
+> Create the site with `type: 'app'` (`litemetrics sites create -n "My App" --type app`, or `POST /api/sites` with `{"type":"app"}`). On a `web` site the bot filter treats the SDK's traffic as browser traffic and drops Android's default `okhttp/<version>` User-Agent, so every Android event is lost. See [Self-Hosting → Bot Filtering](./self-hosting.md#bot-filtering).
+
 ```tsx
 import { LitemetricsProvider } from '@litemetrics/react-native';
 

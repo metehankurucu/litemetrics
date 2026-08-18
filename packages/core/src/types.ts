@@ -187,13 +187,46 @@ export interface BotFilterConfig {
   rateLimitMaxEvents?: number;
   /** Optional callback fired whenever an event is flagged or dropped (analytics/audit). */
   onBotDetected?: (info: BotDetectedInfo) => void;
+  /**
+   * Fired once per site when app-SDK events arrive at a site that is not typed as
+   * `app`. Unless its bot-filter mode is `off`, such a site is filtered as browser
+   * traffic, which silently drops its Android events; either way the dashboard shows
+   * it as a web site. Reporting only - the request is filtered exactly as before.
+   */
+  onSiteTypeMismatch?: (info: SiteTypeMismatchInfo) => void;
 }
+
+export interface SiteTypeMismatchInfo {
+  siteId: string;
+  /** The site's configured type, or undefined when it was never set. */
+  siteType: SiteType | undefined;
+  /** The platform the SDK declared in the event payload. */
+  platform: string;
+  /** The bot-filter mode the request was processed under. `off` means nothing was filtered. */
+  mode: BotFilterMode;
+}
+
+/**
+ * Why a request tripped the bot filter. Finer-grained than `layer`: the signature
+ * layer fires both for a missing User-Agent and for an isbot list match, and telling
+ * those two apart is what makes a drop diagnosable from a log line alone.
+ */
+export type BotDropReason =
+  /** No User-Agent header at all (or an empty one). */
+  | 'empty-ua'
+  /** The User-Agent matched the maintained isbot signature list. */
+  | 'ua-signature'
+  /** Heuristic layer: browser, engine, Accept-Language and Referer were all absent. */
+  | 'no-browser-signals'
+  /** The per-IP sliding window overflowed. */
+  | 'rate-limit';
 
 export interface BotDetectedInfo {
   siteId: string;
   ip: string;
   userAgent: string;
   layer: 'signature' | 'heuristic' | 'rate-limit';
+  reason: BotDropReason;
   action: 'dropped' | 'flagged';
   mode: BotFilterMode;
 }

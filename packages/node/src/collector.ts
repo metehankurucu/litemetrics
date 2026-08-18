@@ -23,10 +23,10 @@ import { PostgresAdapter } from './adapters/postgres';
 import { resolvePeriod } from './adapters/utils';
 import { initGeoIP, resolveGeo } from './geoip';
 import { parseUserAgent } from './useragent';
-import { isBot } from './botfilter';
-import { isHeuristicBot } from './heuristic-bot';
+import { classifyUserAgent } from './botfilter';
+import { classifyHeuristicBot } from './heuristic-bot';
 import { createRateLimiter } from './rate-limit';
-import type { BotFilterMode, BotDetectedInfo } from '@litemetrics/core';
+import type { BotFilterMode, BotDetectedInfo, BotDropReason } from '@litemetrics/core';
 import { resolveTimestampSanity, sanitizeEventTimestamp } from './timestamp-sanity';
 import { normalizeReferrer } from './normalize-referrer';
 
@@ -76,6 +76,22 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
 
   function resolveBotMode(site: { botFilterMode?: BotFilterMode | null } | null | undefined): BotFilterMode {
     return site?.botFilterMode ?? defaultBotMode;
+  }
+
+  // Only ever holds ids of sites that exist, so an unknown siteId from a request
+  // body cannot grow it.
+  const reportedTypeMismatches = new Set<string>();
+
+  function reportSiteTypeMismatch(site: Site, events: ClientEvent[], mode: BotFilterMode): void {
+    if (!botCfg.onSiteTypeMismatch) return;
+    if (reportedTypeMismatches.has(site.siteId)) return;
+    // The body is untyped JSON: only a non-empty string counts as a declared platform.
+    const platform = events
+      .map((event) => event.mobile?.platform as unknown)
+      .find((value): value is string => typeof value === 'string' && value.length > 0);
+    if (!platform) return;
+    reportedTypeMismatches.add(site.siteId);
+    botCfg.onSiteTypeMismatch({ siteId: site.siteId, siteType: site.type, platform, mode });
   }
 
   // ─── Auth helpers ──────────────────────────────────────
@@ -318,27 +334,51 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
           }
         }
 
-        let botFlag: 'signature' | 'heuristic' | 'rate-limit' | undefined;
+        // Layer and reason are one value so they cannot drift apart: a layer without a
+        // reason would fall through the guard below and silently skip the drop.
+        let bot: { layer: 'signature' | 'heuristic' | 'rate-limit'; reason: BotDropReason } | undefined;
+
+        // The signature and heuristic layers are browser heuristics: one matches a
+        // User-Agent against a crawler list, the other flags a request with no
+        // browser, engine, Accept-Language or Referer. An app SDK has none of those
+        // by construction - on Android, React Native's fetch goes out through OkHttp
+        // with `User-Agent: okhttp/<version>`, which isbot matches - so on an app
+        // site both layers only ever misfire. Rate limiting still applies: abuse of
+        // an app site id is a volume problem, not a User-Agent one.
+        const isAppSite = site?.type === 'app';
+        if (site && !isAppSite) reportSiteTypeMismatch(site, payload.events, mode);
 
         if (mode !== 'off') {
-          if (isBot(userAgent)) botFlag = 'signature';
-          else if ((mode === 'strict' || mode === 'shadow') &&
-                   isHeuristicBot({ userAgent, acceptLanguage, referer })) {
-            botFlag = 'heuristic';
-          } else if ((mode === 'strict' || mode === 'shadow') &&
-                     rateLimiter.check(ip).limited) {
-            botFlag = 'rate-limit';
+          if (isAppSite) {
+            if ((mode === 'strict' || mode === 'shadow') && rateLimiter.check(ip).limited) {
+              bot = { layer: 'rate-limit', reason: 'rate-limit' };
+            }
+          } else {
+            const signature = classifyUserAgent(userAgent);
+            if (signature) {
+              bot = { layer: 'signature', reason: signature };
+            } else if (mode === 'strict' || mode === 'shadow') {
+              // Same short-circuit the original else-if chain already had: when the
+              // heuristic layer fires, rateLimiter.check is never reached, so a
+              // heuristic hit consumes no rate-limit slot.
+              const heuristic = classifyHeuristicBot({ userAgent, acceptLanguage, referer });
+              if (heuristic) {
+                bot = { layer: 'heuristic', reason: heuristic };
+              } else if (rateLimiter.check(ip).limited) {
+                bot = { layer: 'rate-limit', reason: 'rate-limit' };
+              }
+            }
           }
         }
 
-        if (botFlag) {
+        if (bot) {
           const shouldDrop =
-            mode === 'standard' ? botFlag === 'signature' :
+            mode === 'standard' ? bot.layer === 'signature' :
             mode === 'strict'   ? true :
             /* shadow / off */    false;
 
           reportBot({
-            siteId, ip, userAgent, layer: botFlag,
+            siteId, ip, userAgent, layer: bot.layer, reason: bot.reason,
             action: shouldDrop ? 'dropped' : 'flagged', mode,
           });
 
@@ -348,7 +388,7 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
           }
         }
 
-        const enriched = enrichEvents(payload.events, ip, userAgent, botFlag);
+        const enriched = enrichEvents(payload.events, ip, userAgent, bot?.layer);
 
         await processIdentity(enriched);
         await db.insertEvents(enriched);

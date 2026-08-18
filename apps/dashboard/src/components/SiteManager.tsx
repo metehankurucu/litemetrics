@@ -294,6 +294,7 @@ export function SiteManager({ site }: { site: Site | null }) {
           {/* Bot Filtering */}
           <BotFilterModeSetting
             mode={site.botFilterMode}
+            siteType={site.type}
             onUpdate={(mode) => updateMutation.mutate({ siteId: site.siteId, data: { botFilterMode: mode } })}
             saving={updateMutation.isPending}
           />
@@ -432,18 +433,30 @@ function ConversionEvents({ events, onUpdate, saving }: {
   );
 }
 
-function BotFilterModeSetting({ mode, onUpdate, saving }: {
+function BotFilterModeSetting({ mode, siteType, onUpdate, saving }: {
   mode: 'off' | 'standard' | 'strict' | 'shadow' | null | undefined;
+  siteType: 'web' | 'app' | undefined;
   onUpdate: (mode: 'off' | 'standard' | 'strict' | 'shadow' | null) => void;
   saving: boolean;
 }) {
   const current = mode ?? 'standard';
-  const options: Array<{ value: 'off' | 'standard' | 'strict' | 'shadow'; label: string; hint: string }> = [
-    { value: 'off',      label: 'Off',      hint: 'No bot filtering. Useful for testing.' },
-    { value: 'standard', label: 'Standard', hint: 'Drop known bots (isbot signatures). Default.' },
-    { value: 'strict',   label: 'Strict',   hint: 'Drop known bots + scrubbed-UA + rate-limit hits.' },
-    { value: 'shadow',   label: 'Shadow',   hint: 'Flag everything but drop nothing - for analysis.' },
-  ];
+  // App SDK traffic carries no browser User-Agent, so the signature and heuristic
+  // layers never run on an app site - only the per-IP rate limit does. The hints
+  // must say what each mode actually does for *this* site.
+  const isApp = siteType === 'app';
+  const options: Array<{ value: 'off' | 'standard' | 'strict' | 'shadow'; label: string; hint: string }> = isApp
+    ? [
+        { value: 'off',      label: 'Off',      hint: 'No bot filtering. Useful for testing.' },
+        { value: 'standard', label: 'Standard', hint: 'No filtering on app sites (signature/heuristic layers are browser-only). Default.' },
+        { value: 'strict',   label: 'Strict',   hint: 'Drop per-IP rate-limit hits. The only layer that applies to app traffic.' },
+        { value: 'shadow',   label: 'Shadow',   hint: 'Flag rate-limit hits but drop nothing - for analysis.' },
+      ]
+    : [
+        { value: 'off',      label: 'Off',      hint: 'No bot filtering. Useful for testing.' },
+        { value: 'standard', label: 'Standard', hint: 'Drop known bots (isbot signatures). Default.' },
+        { value: 'strict',   label: 'Strict',   hint: 'Drop known bots + scrubbed-UA + rate-limit hits.' },
+        { value: 'shadow',   label: 'Shadow',   hint: 'Flag everything but drop nothing - for analysis.' },
+      ];
 
   return (
     <div className="space-y-3">
