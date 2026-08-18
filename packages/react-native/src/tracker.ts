@@ -21,8 +21,6 @@ export interface RNTrackerInstance {
   destroy(): void;
 }
 
-
-
 let sessionId: string | null = null;
 let visitorId: string | null = null;
 let userId: string | null = null;

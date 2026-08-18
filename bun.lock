@@ -160,7 +160,7 @@
     },
     "packages/cli": {
       "name": "@litemetrics/cli",
-      "version": "0.4.0",
+      "version": "0.6.1",
       "bin": {
         "litemetrics": "./dist/index.js",
       },
@@ -188,7 +188,7 @@
     },
     "packages/core": {
       "name": "@litemetrics/core",
-      "version": "0.6.0",
+      "version": "0.6.1",
       "devDependencies": {
         "tsup": "^8",
         "typescript": "^5.7",
@@ -196,7 +196,7 @@
     },
     "packages/node": {
       "name": "@litemetrics/node",
-      "version": "0.6.0",
+      "version": "0.7.0",
       "dependencies": {
         "@clickhouse/client": "^1.17.0",
         "@litemetrics/core": "^0.6.0",
@@ -238,6 +238,7 @@
       "devDependencies": {
         "@react-native-async-storage/async-storage": "^2",
         "@types/react": "^19",
+        "isbot": "^5.1.40",
         "react": "^19",
         "tsup": "^8",
         "typescript": "^5.7",

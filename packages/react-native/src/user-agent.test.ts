@@ -29,9 +29,9 @@ describe('buildUserAgent', () => {
 
 describe('SDK_VERSION', () => {
   // It read 0.2.2 while the package was at 0.4.0, so every event carried a wrong
-  // sdkVersion. Now that the User-Agent is built from it too, a drift would also put
-  // a wrong version in the server logs.
-  it('matches the published package version', () => {
+  // sdkVersion. It is now read from package.json; this pins that wiring so nobody
+  // reintroduces a hand-kept constant.
+  it('is the package.json version', () => {
     expect(SDK_VERSION).toBe(pkg.version);
   });
 });

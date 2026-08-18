@@ -1,5 +1,10 @@
+import { version as SDK_VERSION } from '../package.json';
+
 export const SDK_NAME = 'litemetrics-react-native';
-export const SDK_VERSION = '0.4.0';
+// Read from package.json so a version bump cannot leave the User-Agent and the
+// sdkVersion field behind - CI runs typecheck + build only, so a hand-kept constant
+// would drift again the first time nobody ran the tests before publishing.
+export { SDK_VERSION };
 
 /**
  * The User-Agent the SDK sends on every collect request.
