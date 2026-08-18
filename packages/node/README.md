@@ -122,7 +122,10 @@ arrive at a non-app site the collector fires `onSiteTypeMismatch` once per site
 
 Modes: `off`, `standard` (default — Layer 1 drops, Layers 2 & 3 flag; on an app
 site nothing runs), `strict` (every layer drops; app site: rate limit only),
-`shadow` (every layer flags only). Pass per-collector via `botFilter`:
+`shadow` (every layer flags only). Every detection reports both the `layer` that
+fired and a finer `reason` — the signature layer fires for a missing User-Agent
+(`empty-ua`) and for an `isbot` list match (`ua-signature`), and those call for
+different responses from an operator. Pass per-collector via `botFilter`:
 
 ```ts
 const collector = await createCollector({
@@ -132,8 +135,9 @@ const collector = await createCollector({
     rateLimitWindowMs: 60_000,   // sliding window for Layer 3
     rateLimitMaxEvents: 60,      // max events / window / IP
     onBotDetected: (info) => {
-      // info: { siteId, ip, userAgent, layer, action, mode }
-      console.log(`[bot-filter] ${info.action} layer=${info.layer} mode=${info.mode} site=${info.siteId} ip=${info.ip}`);
+      // info: { siteId, ip, userAgent, layer, reason, action, mode }
+      // reason: 'empty-ua' | 'ua-signature' | 'no-browser-signals' | 'rate-limit'
+      console.log(`[bot-filter] ${info.action} layer=${info.layer} reason=${info.reason} mode=${info.mode} site=${info.siteId} ip=${info.ip} ua="${info.userAgent}"`);
     },
     onSiteTypeMismatch: (info) => {
       // info: { siteId, siteType, platform, mode } — fired once per site when app SDK
@@ -149,6 +153,7 @@ Server wrapper env vars (`apps/server`):
 - `BOT_FILTER_MODE` (default `standard`): one of `off` / `standard` / `strict` / `shadow`. Controls server-wide bot filtering for sites that don't override per-site.
 - `BOT_RATE_WINDOW_MS` (default `60000`): sliding-window size for the per-IP rate limiter (ms).
 - `BOT_RATE_MAX` (default `60`): max events per window per IP before the rate-limit layer fires.
+- `BOT_LOG_MAX_PER_MIN` (default `20`): detail `[bot-filter]` log lines allowed per minute; the overflow is counted as `suppressed=` on the `[collect]` summary line.
 
 Read endpoints (`/api/stats`, `/api/events`, `/api/users`) exclude flagged
 events by default. Pass `?includeBots=true` to include them.

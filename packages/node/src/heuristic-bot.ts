@@ -20,7 +20,18 @@ export interface HeuristicBotInput {
  * scrubbed-UA bots observed on production landing pages (May 2026).
  */
 export function isHeuristicBot(input: HeuristicBotInput): boolean {
-  if (!input.userAgent) return true;
+  return classifyHeuristicBot(input) !== null;
+}
+
+/** Sub-causes the heuristic layer can report. */
+export type HeuristicBotReason = 'empty-ua' | 'no-browser-signals';
+
+/**
+ * Same rule as {@link isHeuristicBot}, but reports which of the two shapes fired: a
+ * missing UA, or the four-empty-signals combination described above.
+ */
+export function classifyHeuristicBot(input: HeuristicBotInput): HeuristicBotReason | null {
+  if (!input.userAgent) return 'empty-ua';
 
   const result = new UAParser(input.userAgent).getResult();
   const hasBrowser = Boolean(result.browser?.name);
@@ -28,5 +39,5 @@ export function isHeuristicBot(input: HeuristicBotInput): boolean {
   const hasLang = Boolean(input.acceptLanguage && input.acceptLanguage.trim());
   const hasReferer = Boolean(input.referer && input.referer.trim());
 
-  return !hasBrowser && !hasEngine && !hasLang && !hasReferer;
+  return !hasBrowser && !hasEngine && !hasLang && !hasReferer ? 'no-browser-signals' : null;
 }

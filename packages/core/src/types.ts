@@ -206,11 +206,27 @@ export interface SiteTypeMismatchInfo {
   mode: BotFilterMode;
 }
 
+/**
+ * Why a request tripped the bot filter. Finer-grained than `layer`: the signature
+ * layer fires both for a missing User-Agent and for an isbot list match, and telling
+ * those two apart is what makes a drop diagnosable from a log line alone.
+ */
+export type BotDropReason =
+  /** No User-Agent header at all (or an empty one). */
+  | 'empty-ua'
+  /** The User-Agent matched the maintained isbot signature list. */
+  | 'ua-signature'
+  /** Heuristic layer: browser, engine, Accept-Language and Referer were all absent. */
+  | 'no-browser-signals'
+  /** The per-IP sliding window overflowed. */
+  | 'rate-limit';
+
 export interface BotDetectedInfo {
   siteId: string;
   ip: string;
   userAgent: string;
   layer: 'signature' | 'heuristic' | 'rate-limit';
+  reason: BotDropReason;
   action: 'dropped' | 'flagged';
   mode: BotFilterMode;
 }

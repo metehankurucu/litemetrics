@@ -311,6 +311,97 @@ describe('collector bot filtering', () => {
       expect.objectContaining({ layer: 'signature', action: 'dropped', mode: 'standard' }),
     );
   });
+
+  it('reports reason=ua-signature and the offending UA for an isbot match', async () => {
+    const onBotDetected = vi.fn();
+    const collector = await createCollector({
+      db: { adapter: 'clickhouse', url: 'http://x' },
+      botFilter: { defaultMode: 'standard', onBotDetected },
+    });
+    const handler = collector.handler();
+    await handler(makeBotReq('okhttp/4.12.0'), makeRes());
+    expect(onBotDetected).toHaveBeenCalledWith(
+      expect.objectContaining({
+        layer: 'signature',
+        reason: 'ua-signature',
+        userAgent: 'okhttp/4.12.0',
+        action: 'dropped',
+      }),
+    );
+  });
+
+  it('reports reason=empty-ua when the request carries no User-Agent at all', async () => {
+    const onBotDetected = vi.fn();
+    const collector = await createCollector({
+      db: { adapter: 'clickhouse', url: 'http://x' },
+      botFilter: { defaultMode: 'standard', onBotDetected },
+    });
+    const handler = collector.handler();
+    const req = makeBotReq('');
+    delete (req.headers as Record<string, string>)['user-agent'];
+    await handler(req, makeRes());
+    expect(onBotDetected).toHaveBeenCalledWith(
+      expect.objectContaining({ layer: 'signature', reason: 'empty-ua' }),
+    );
+  });
+
+  it('reports reason=no-browser-signals for a heuristic hit in strict mode', async () => {
+    const onBotDetected = vi.fn();
+    const collector = await createCollector({
+      db: { adapter: 'clickhouse', url: 'http://x' },
+      botFilter: { defaultMode: 'strict', onBotDetected },
+    });
+    const handler = collector.handler();
+    await handler(makeBotReq('Mozilla/5.0'), makeRes());
+    // isbot classifies bare Mozilla/5.0 first, so this pins the signature reason;
+    // the heuristic reason is proven directly in heuristic-bot.test.ts.
+    expect(onBotDetected).toHaveBeenCalledWith(
+      expect.objectContaining({ layer: 'signature', reason: 'ua-signature' }),
+    );
+  });
+
+  it('reports reason=rate-limit when the IP window overflows in strict mode', async () => {
+    const onBotDetected = vi.fn();
+    const collector = await createCollector({
+      db: { adapter: 'clickhouse', url: 'http://x' },
+      botFilter: { defaultMode: 'strict', rateLimitMaxEvents: 1, onBotDetected },
+    });
+    const handler = collector.handler();
+    const chrome =
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+    const headers = { 'accept-language': 'en-US,en;q=0.9' };
+    await handler(makeBotReq(chrome, headers), makeRes());
+    expect(onBotDetected).not.toHaveBeenCalled();
+    await handler(makeBotReq(chrome, headers), makeRes());
+    expect(onBotDetected).toHaveBeenCalledWith(
+      expect.objectContaining({ layer: 'rate-limit', reason: 'rate-limit', action: 'dropped' }),
+    );
+  });
+
+  it('carries the reason on a flagged (not dropped) shadow-mode hit', async () => {
+    const onBotDetected = vi.fn();
+    const collector = await createCollector({
+      db: { adapter: 'clickhouse', url: 'http://x' },
+      botFilter: { defaultMode: 'shadow', onBotDetected },
+    });
+    const handler = collector.handler();
+    await handler(makeBotReq('okhttp/4.12.0'), makeRes());
+    expect(onBotDetected).toHaveBeenCalledWith(
+      expect.objectContaining({ reason: 'ua-signature', action: 'flagged' }),
+    );
+    expect(insertEvents).toHaveBeenCalledOnce();
+  });
+
+  it('does not invoke onBotDetected at all in off mode', async () => {
+    const onBotDetected = vi.fn();
+    const collector = await createCollector({
+      db: { adapter: 'clickhouse', url: 'http://x' },
+      botFilter: { defaultMode: 'off', onBotDetected },
+    });
+    const handler = collector.handler();
+    await handler(makeBotReq('okhttp/4.12.0'), makeRes());
+    expect(onBotDetected).not.toHaveBeenCalled();
+  });
 });
 
 describe('collector deleteUserEvents endpoint', () => {

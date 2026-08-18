@@ -4,6 +4,8 @@ import { createCollector } from '@litemetrics/node';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { existsSync } from 'fs';
+import { createCollectSummary } from './collect-summary';
+import { formatAccessLine, formatBotFilterLine } from './log-format';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -44,6 +46,88 @@ const TRUST_PROXY = process.env.TRUST_PROXY !== 'false';
 const BOT_FILTER_MODE = (process.env.BOT_FILTER_MODE || 'standard') as 'off' | 'standard' | 'strict' | 'shadow';
 const BOT_RATE_WINDOW_MS = intEnv('BOT_RATE_WINDOW_MS', 60_000);
 const BOT_RATE_MAX = intEnv('BOT_RATE_MAX', 60);
+const BOT_LOG_MAX_PER_MIN = intEnv('BOT_LOG_MAX_PER_MIN', 20);
+
+const COLLECT_PATH = '/api/collect';
+
+// ─── Request logger ──────────────────────────────────────
+// /api/collect is aggregated into one line per minute; everything else keeps a
+// per-request line, now with the response status and how long it took.
+//
+// Registered before CORS and the body parser on purpose. Behind those, a request
+// whose body never finishes arriving is rejected by express.json() before this
+// middleware ever runs, so the aborted collect batch is invisible - and a lost batch
+// is lost data, the one thing this summary exists to make countable.
+const collectSummary = createCollectSummary({ maxBotLinesPerMinute: BOT_LOG_MAX_PER_MIN });
+
+app.use((req, res, next) => {
+  const startedAt = process.hrtime.bigint();
+  // POST only: a CORS preflight OPTIONS or a scanner's GET is not a batch, and folding
+  // them into reqs= would make the summary read as more batches than arrived. They
+  // keep their per-request line below instead.
+  const isCollect = req.method === 'POST' && req.path === COLLECT_PATH;
+  // Captured up front: a router can rewrite req.url before the response completes.
+  const url = req.originalUrl || req.url;
+  const method = req.method;
+
+  // Three hooks, one record. The runtime image runs Bun (`node` there is a symlink to
+  // bun), and Bun's http shim signals less than Node's does, so each hook covers a case
+  // the others miss - measured against the built artifact under both runtimes:
+  //   res.end      - the handler answering; first to fire for every served request on
+  //                  both runtimes. Under Bun it is also the *only* signal for a client
+  //                  that left after its body arrived but before the answer: no event
+  //                  fires at all, and headersSent stays false through end().
+  //   res 'close'  - every completed response on both runtimes; under Node also every
+  //                  abort, including one the handler never answered.
+  //   req 'close'  - fires at body end, so it says nothing about the response; only
+  //                  consulted when the body itself was cut off.
+  let recorded = false;
+  const record = (aborted: boolean) => {
+    if (recorded) return;
+    recorded = true;
+    const durationMs = Number(process.hrtime.bigint() - startedAt) / 1e6;
+
+    if (isCollect) {
+      collectSummary.recordRequest(res.statusCode, durationMs, aborted);
+      return;
+    }
+
+    const auth = req.headers['x-litemetrics-admin-secret']
+      ? '[admin]'
+      : req.headers['x-litemetrics-secret']
+      ? '[secret]'
+      : '';
+    console.log(
+      formatAccessLine({
+        timestamp: Date.now(),
+        method,
+        url,
+        statusCode: res.statusCode,
+        durationMs,
+        auth,
+        aborted,
+      }),
+    );
+  };
+  // Aborted = the client gave up: its body never finished arriving (readableAborted,
+  // which stays true even after express has answered the abort with its own 400) or it
+  // hung up before an answer went out (headersSent stays false). Not req.complete: that
+  // is still false inside a synchronous handler's end(), and stays false on Node for a
+  // body nobody read, so it would mark served requests as aborted.
+  const wasAborted = () => req.readableAborted || !res.headersSent;
+  res.on('close', () => record(wasAborted()));
+  req.on('close', () => {
+    if (req.readableAborted) record(true);
+  });
+  const originalEnd = res.end;
+  res.end = ((...args: unknown[]) => {
+    const ret = (originalEnd as (...a: unknown[]) => typeof res).apply(res, args);
+    record(wasAborted());
+    return ret;
+  }) as typeof res.end;
+
+  next();
+});
 
 // ─── CORS ────────────────────────────────────────────────
 const corsOptions = cors({
@@ -55,18 +139,6 @@ const corsOptions = cors({
 app.options('/{*path}', corsOptions);
 app.use(corsOptions);
 app.use(express.json());
-
-// ─── Request logger ──────────────────────────────────────
-app.use((req, _res, next) => {
-  const ts = new Date().toISOString().slice(11, 19);
-  const auth = req.headers['x-litemetrics-admin-secret']
-    ? '[admin]'
-    : req.headers['x-litemetrics-secret']
-    ? '[secret]'
-    : '';
-  console.log(`${ts} ${req.method} ${req.url} ${auth}`);
-  next();
-});
 
 // ─── Initialize collector ────────────────────────────────
 const collector = await createCollector({
@@ -80,7 +152,14 @@ const collector = await createCollector({
     rateLimitMaxEvents: BOT_RATE_MAX,
     onBotDetected: (info) => {
       // Lightweight audit log - kept structured so it's grep-friendly in Railway logs.
-      console.log(`[bot-filter] ${info.action} layer=${info.layer} mode=${info.mode} site=${info.siteId} ip=${info.ip}`);
+      // The counters always land in the minute summary; the detail line is capped so a
+      // bot storm cannot push everything else out of the retained log window.
+      const shouldLogDetail = collectSummary.recordBot({
+        siteId: info.siteId,
+        reason: info.reason,
+        action: info.action,
+      });
+      if (shouldLogDetail) console.log(formatBotFilterLine(info));
     },
     onSiteTypeMismatch: (info) => {
       // This site sends app SDK events but is not typed as an app. Unless its mode is
@@ -167,6 +246,17 @@ if (dashboardDir) {
       return;
     }
     res.sendFile(join(dashboardDir!, 'index.html'));
+  });
+}
+
+// ─── Shutdown ────────────────────────────────────────────
+// Railway sends SIGTERM on every redeploy. Without this the open minute is lost, and
+// that is exactly the window a deploy-triggered problem would show up in.
+process.on('beforeExit', () => { collectSummary.flush(); });
+for (const signal of ['SIGTERM', 'SIGINT'] as const) {
+  process.once(signal, () => {
+    collectSummary.flush();
+    process.exit(0);
   });
 }
 
