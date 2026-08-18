@@ -70,9 +70,11 @@ Open `http://localhost:3002` for the dashboard.
 
 Bot filtering runs in three server-side layers (signature via `isbot`, heuristic for scrubbed UAs, per-IP rate limit) plus a tracker-side `navigator.webdriver` short-circuit. It is enabled by default in `standard` mode.
 
-- `BOT_FILTER_MODE=standard` (default): Layer 1 drops, Layers 2 + 3 flag (events stored with `bot_flag`, hidden from queries).
-- `BOT_FILTER_MODE=strict`: every layer drops.
-- `BOT_FILTER_MODE=shadow`: every layer flags only — useful for tuning thresholds without affecting data.
+Sites typed `app` run the rate-limit layer only: the signature and heuristic layers are browser heuristics and an app SDK sends no browser User-Agent (React Native on Android goes out as `okhttp/<version>`, which `isbot` matches). A site that receives app SDK traffic must be created with `type: 'app'`, or it is filtered as browser traffic and its Android events are dropped. The server logs `[site-type-mismatch] site=<id> type=<type> platform=<platform> mode=<mode>` once per site when it sees app SDK payloads on a non-app site.
+
+- `BOT_FILTER_MODE=standard` (default): Layer 1 drops, Layers 2 + 3 flag (events stored with `bot_flag`, hidden from queries). On `app` sites nothing runs.
+- `BOT_FILTER_MODE=strict`: every layer drops (`app` sites: rate limit only).
+- `BOT_FILTER_MODE=shadow`: every layer flags only — useful for tuning thresholds without affecting data (`app` sites: rate limit only).
 - `BOT_FILTER_MODE=off`: disabled.
 
 Per-site overrides live on the site record (`botFilterMode` field) and are configurable from the dashboard Settings page. Each detection emits a grep-friendly audit line:

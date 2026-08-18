@@ -103,17 +103,26 @@ The optional `onOutOfWindow(info)` callback fires whenever the sanitizer rejects
 
 ## Bot Filtering
 
-Multi-layer filtering runs on every collected event. Defaults are conservative
-(legitimate traffic is never dropped on a false-positive heuristic) and tunable
-per-site via the `botFilterMode` site field.
+Multi-layer filtering runs on every collected event of a `web` site. Defaults are
+conservative (legitimate traffic is never dropped on a false-positive heuristic) and
+tunable per-site via the `botFilterMode` site field.
 
 - **Layer 1 (signature)** — UA matched against the [`isbot`](https://github.com/omrilotan/isbot) list.
 - **Layer 2 (heuristic)** — scrubbed / empty UAs (no UA, bare `Mozilla/5.0`, missing platform tokens).
 - **Layer 3 (rate limit)** — sliding-window per-IP cap.
 
-Modes: `off`, `standard` (default — Layer 1 drops, Layers 2 & 3 flag), `strict`
-(every layer drops), `shadow` (every layer flags only). Pass per-collector via
-`botFilter`:
+**Sites with `type: 'app'` run Layer 3 only.** Layers 1 and 2 reason about browser
+User-Agents, which an app SDK does not send (React Native on Android goes out as
+`okhttp/<version>`, which `isbot` matches), so on an app site they would only
+misfire. A site receiving app SDK traffic must therefore be typed `app`
+(`POST` / `PUT /api/sites` with `{"type":"app"}`); otherwise it keeps being
+filtered as browser traffic and loses its Android events. When app SDK payloads
+arrive at a non-app site the collector fires `onSiteTypeMismatch` once per site
+(reporting only — the payload never bypasses the filter).
+
+Modes: `off`, `standard` (default — Layer 1 drops, Layers 2 & 3 flag; on an app
+site nothing runs), `strict` (every layer drops; app site: rate limit only),
+`shadow` (every layer flags only). Pass per-collector via `botFilter`:
 
 ```ts
 const collector = await createCollector({
@@ -125,6 +134,11 @@ const collector = await createCollector({
     onBotDetected: (info) => {
       // info: { siteId, ip, userAgent, layer, action, mode }
       console.log(`[bot-filter] ${info.action} layer=${info.layer} mode=${info.mode} site=${info.siteId} ip=${info.ip}`);
+    },
+    onSiteTypeMismatch: (info) => {
+      // info: { siteId, siteType, platform, mode } — fired once per site when app SDK
+      // events arrive at a site whose type is not 'app'. Fix: PUT /api/sites/:id {"type":"app"}
+      console.warn(`[site-type-mismatch] site=${info.siteId} type=${info.siteType ?? 'unset'} platform=${info.platform} mode=${info.mode}`);
     },
   },
 });

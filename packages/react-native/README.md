@@ -10,6 +10,8 @@ npm install @litemetrics/react-native
 
 ## Quick Start
 
+> **The site must be typed `app`.** Create it with `litemetrics sites create -n "My App" --type app` or `POST /api/sites` `{"type":"app"}` (existing site: `PUT /api/sites/:siteId {"type":"app"}`). The server's bot filter treats a `web` site's traffic as browser traffic; React Native on Android sends OkHttp's default `okhttp/<version>` User-Agent, which that filter drops, so on a `web` site every Android event is silently lost. The SDK also sends its own `User-Agent: litemetrics-react-native/<version> (<platform>)` on every request.
+
 ```tsx
 import { LitemetricsProvider } from '@litemetrics/react-native';
 

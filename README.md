@@ -286,7 +286,9 @@ Litemetrics ships with multi-layer bot filtering enabled by default. Bot traffic
 - **Layer 2 (heuristic)** — catches scrubbed or empty user agents (no UA, bare `Mozilla/5.0`, missing platform tokens, etc).
 - **Layer 3 (rate limit)** — sliding-window per-IP cap (`BOT_RATE_WINDOW_MS` / `BOT_RATE_MAX`) for traffic that escapes the first two layers.
 
-Modes are configured server-wide via `BOT_FILTER_MODE` and overridable per-site:
+**App sites (`type: 'app'`) run Layer 3 only.** Layers 1 and 2 are browser heuristics — a native app SDK sends no browser User-Agent, no `Accept-Language` and no `Referer`, so on an app site they only ever misfire (on Android, React Native's `fetch` goes out as `okhttp/<version>`, which `isbot` matches, and every Android event was being dropped). On an app site `standard` therefore drops nothing and `strict` / `shadow` apply the per-IP rate limit only. This makes the site type load-bearing: **a site that receives app SDK traffic must be created with `type: 'app'`** (`litemetrics sites create --type app`, or `POST` / `PUT /api/sites` with `{"type":"app"}`), otherwise it is still filtered as browser traffic and its Android events are lost. The server logs `[site-type-mismatch] site=<id> type=<type> platform=<platform> mode=<mode>` once per site when it sees app SDK payloads on a non-app site; the payload alone never bypasses the filter.
+
+Modes are configured server-wide via `BOT_FILTER_MODE` and overridable per-site (on `app` sites only Layer 3 applies, see above):
 
 | Mode | Behavior |
 |------|----------|
