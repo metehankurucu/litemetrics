@@ -271,7 +271,10 @@ The tracker handles session management, visitor IDs, batching, and SPA detection
 
 ## Auto Events & Insights
 
-- Auto events are tagged with `event_source=auto` and a subtype (`scroll_depth`, `button_click`, `link_click`, `outbound_click`).
+- Auto events are tagged with `event_source=auto` and a subtype: `link_click`, `outbound_click`, `file_download`, `button_click`, `scroll_depth`, `rage_click`.
+- Link, outbound and download rows carry `element_text` and `element_selector`. Outbound rows store the destination as `host + path + query`, so a `wa.me/1555...` or `api.whatsapp.com/send?phone=...` click stays recoverable instead of collapsing to a bare path.
+- A click on an element carrying `data-litemetrics-event` is recorded **only** as that declared event (`event_source=manual`, `event_subtype=attribute`); the auto click row is suppressed, so a labelled element is never double-counted.
+- Ad click IDs (`gclid`, `gbraid`, `wbraid`, `fbclid`) are captured at landing and kept for 90 days, so a conversion fired days later still carries the click that paid for it. Meta's `_fbp` cookie is read (never set) and forwarded only alongside a captured click ID.
 - Manual `track()` events default to `event_source=manual` and `event_subtype=custom`.
 - All metrics and time series support segmentation filters (geo, device, UTM, referrer, event metadata).
 - The dashboard **Insights** view surfaces exit pages, transitions, scroll-heavy pages, and click hotspots.

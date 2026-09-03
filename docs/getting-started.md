@@ -168,6 +168,8 @@ Track clicks without writing JavaScript. Add `data-litemetrics-event` to any ele
 
 Clicking this tracks a `Signup` event with `{ plan: "pro" }` as properties.
 
+**Precedence:** a click on a labelled element, or anywhere inside one, is recorded **only** as the declared event - the auto `Link Click` / `Outbound Link` / `File Download` / `Button Click` events are suppressed for it, so a labelled element is never double-counted. An empty label (`data-litemetrics-event=""`) counts as unlabelled and keeps auto capture.
+
 ## Multi-Tenant Usage
 
 Each customer gets their own site. All data is isolated by `siteId` in a single database:

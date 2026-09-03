@@ -1,6 +1,6 @@
 {
   "name": "@litemetrics/tracker",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Lightweight browser analytics tracker (<3KB gzipped)",
   "license": "MIT",
   "author": "Metehan Kurucu",
@@ -42,7 +42,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@litemetrics/core": "^0.6.0"
+    "@litemetrics/core": "^0.6.3"
   },
   "devDependencies": {
     "jsdom": "^29.1.1",

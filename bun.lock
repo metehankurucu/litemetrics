@@ -166,7 +166,7 @@
       },
       "dependencies": {
         "@litemetrics/client": "^0.4.0",
-        "@litemetrics/core": "^0.6.0",
+        "@litemetrics/core": "^0.6.1",
         "commander": "^12",
       },
       "devDependencies": {
@@ -188,7 +188,7 @@
     },
     "packages/core": {
       "name": "@litemetrics/core",
-      "version": "0.6.1",
+      "version": "0.6.3",
       "devDependencies": {
         "tsup": "^8",
         "typescript": "^5.7",
@@ -196,10 +196,10 @@
     },
     "packages/node": {
       "name": "@litemetrics/node",
-      "version": "0.7.0",
+      "version": "0.9.0",
       "dependencies": {
         "@clickhouse/client": "^1.17.0",
-        "@litemetrics/core": "^0.6.0",
+        "@litemetrics/core": "^0.6.3",
         "isbot": "^5.1.40",
         "maxmind": "^4.3",
         "mongodb": "^6",
@@ -215,9 +215,9 @@
     },
     "packages/react": {
       "name": "@litemetrics/react",
-      "version": "0.4.0",
+      "version": "0.6.0",
       "dependencies": {
-        "@litemetrics/tracker": "^0.4.0",
+        "@litemetrics/tracker": "^0.6.0",
       },
       "devDependencies": {
         "@types/react": "^19",
@@ -234,7 +234,7 @@
     },
     "packages/react-native": {
       "name": "@litemetrics/react-native",
-      "version": "0.4.0",
+      "version": "0.5.0",
       "dependencies": {
         "@litemetrics/core": "^0.6.0",
       },
@@ -254,9 +254,9 @@
     },
     "packages/tracker": {
       "name": "@litemetrics/tracker",
-      "version": "0.4.0",
+      "version": "0.6.0",
       "dependencies": {
-        "@litemetrics/core": "^0.6.0",
+        "@litemetrics/core": "^0.6.3",
       },
       "devDependencies": {
         "jsdom": "^29.1.1",

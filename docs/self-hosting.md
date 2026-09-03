@@ -128,7 +128,7 @@ User-Agent, IP, site id and URL all come from the request and are therefore atta
 
 ## Schema migrations
 
-Schema changes from 0.6.x are applied lazily on adapter init and are idempotent — restarting the server is enough to upgrade. The Postgres adapter runs `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` for new bot-filter columns; ClickHouse and MongoDB equivalents are also no-ops on re-run. No manual SQL is required.
+Schema changes from 0.6.x are applied lazily on adapter init and are idempotent — restarting the server is enough to upgrade. The Postgres adapter runs `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`, first for the bot-filter columns (0.6.0) and then for the ad click ID columns `gclid` / `gbraid` / `wbraid` / `fbclid` / `fbp` (0.9.0); the ClickHouse equivalents are also no-ops on re-run, and MongoDB is schemaless. No manual SQL and no backfill is required — rows written before an upgrade simply keep `NULL` in the new columns.
 
 ## Using Postgres Instead
 

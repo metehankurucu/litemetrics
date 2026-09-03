@@ -30,6 +30,8 @@ Track clicks without code. Add `data-litemetrics-event` to any element:
 
 All `data-litemetrics-event-*` attributes are collected as event properties.
 
+**Precedence:** a click on a labelled element, or anywhere inside one, is recorded **only** as the declared event - the auto `Link Click` / `Outbound Link` / `File Download` / `Button Click` events are suppressed for it, so a labelled element is never double-counted. An empty label (`data-litemetrics-event=""`) counts as unlabelled and keeps auto capture.
+
 ### React
 
 ```bash

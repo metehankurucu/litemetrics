@@ -1,11 +1,31 @@
 # Changelog
 
-## Unreleased
+## 0.9.0 - Ad click IDs, link click identity, one event per labelled click
 
-### `@litemetrics/tracker`
+**Ad click IDs are captured at landing and stored as first-class columns.** A click ID (`gclid`, `gbraid`, `wbraid`, `fbclid`) not recorded at click time cannot be backfilled later; server-side conversion upload APIs key on them and do not accept UTM values as a substitute.
 
+### `@litemetrics/core` (0.6.2 -> 0.6.3)
+
+- New `AdsParams` type on `ClientContext.ads`; new `STORAGE_KEY_ADS` and `CLICK_ID_TTL` constants.
+
+### `@litemetrics/tracker` (0.5.0 -> 0.6.0)
+
+- Ad click IDs are parsed from the landing URL, merged across landings (a retargeting click carrying one platform's ID does not erase the other's), and kept for **90 days** (`CLICK_ID_TTL`) so conversion events on later pages — and later sessions — still carry them. `reset()` drops them.
+- Meta's `_fbp` cookie is **read (never set) and forwarded only when a click ID was captured** — a visitor who never clicked an ad sends no cookie value, and the daily visitor-ID rotation stays unbridged for everyone else.
+- **One click on a labelled element now produces one event.** A click on (or inside) an element carrying a non-empty `data-litemetrics-event` is recorded only as the declared event; the auto `Link Click` / `Outbound Link` / `File Download` / `Button Click` rows are suppressed for it. Previously both fired, double-counting exactly the elements site authors had labelled — and the pair shared no key, so the duplication was unrepairable server-side. **Upgrading integrators will see auto click rows disappear for labelled elements** (they were duplicates); an *empty* label (`data-litemetrics-event=""`) counts as unlabelled and keeps today's auto capture. Rage-click and scroll events are unaffected.
 - **Auto-captured link clicks now carry element identity.** `Link Click`, `Outbound Link` and `File Download` events include `elementSelector` and `elementText` (same helpers, on the anchor element, that button clicks already used). An anchor with no visible text (icon links) keeps `elementText` absent. A button wrapped in an anchor is attributed to the link branch with the anchor's identity.
 - **Outbound link rows now carry the full destination.** For `Outbound Link` events, `targetUrlPath` is `host + path + query` instead of the bare pathname — previously `wa.me/1555…` stored only `/1555…` and `api.whatsapp.com/send?phone=…` stored only `/send`, discarding exactly what identifies the destination. Internal links (including `tel:` / `mailto:`, which already carry their payload in the path) are unchanged. **Data note:** `top_link_targets` keys for outbound clicks become host-qualified from this release; older rows keep the bare-path shape.
+
+### `@litemetrics/node` (0.8.0 -> 0.9.0)
+
+- New nullable event columns `gclid`, `gbraid`, `wbraid`, `fbclid`, `fbp` in all three adapters.
+- **Operators:** existing ClickHouse/Postgres deployments migrate automatically at collector startup (idempotent `ADD COLUMN IF NOT EXISTS` in `init()`); no manual SQL.
+- `scripts/migrate-clickhouse-to-postgres.ts` and `scripts/backup-clickhouse.ts` now `DESCRIBE` the source table and project `NULL` for columns it does not have yet, instead of failing with `UNKNOWN_IDENTIFIER` against a pre-upgrade ClickHouse source. The backup's column list is now built from `EVENT_BASE_COLUMNS` (it had drifted and was silently omitting `bot_flag`).
+- **Data note:** Postgres INSERT batches are now 1300 rows (48 columns/row under the 65,535 bind-parameter cap).
+
+### `@litemetrics/react` (0.5.0 -> 0.6.0)
+
+- No source change. Requires `@litemetrics/tracker@^0.6.0` so the provider ships with the link-click identity fields and the labelled-click dedupe; `^0.5.0` cannot resolve `tracker@0.6.0`.
 
 ## 0.8.0 - App traffic unfiltered, collect observability, tracker hard stop
 
@@ -77,6 +97,55 @@ Hardens the CLI as an AI-agent query surface: strict input validation, hard outp
 - **Timeseries budget:** `queryTimeSeries` rejects any range x granularity exceeding 2000 buckets with a `QueryValidationError` (HTTP 400) before hitting the database, suggesting a coarser granularity.
 - **Error mapping:** null-safe `statusCode` read in the collector's query error path, so a thrown non-object no longer hangs the request.
 
+## 0.6.0 - Layered bot filter, command palette, event deletion
+
+**Bot traffic is filtered in three layers and excluded from every query by default.** The previous filter was a hardcoded list of user-agent substrings: it missed everything that did not self-identify, and it had no way to report what it had caught.
+
+### `@litemetrics/node` (0.5.0 -> 0.6.0)
+
+- **Three-layer bot filtering.** Layer 1 matches the maintained [`isbot`](https://github.com/omrilotan/isbot) list of known crawlers, replacing the hardcoded patterns. Layer 2 (`isHeuristicBot`) catches scrubbed or empty user agents. Layer 3 is a per-IP sliding-window rate limiter with O(1) LRU eviction that stops growing a client's timestamp array once it is already over the limit. The mode is overridable per site.
+- **`botFlag` is persisted** across the ClickHouse, MongoDB and Postgres adapters (a new column and index in each), alongside per-site `botFilterMode` — so filtered traffic can be reported instead of silently discarded. New `queryBotStats()` backs the dashboard's view of it.
+- **`DELETE /api/users/:id/events`**, admin-secret gated, backed by a new `deleteUserEvents()` method on all three adapters.
+- The hostname allowlist now runs **before** the bot pipeline. A deployment receiving bot floods on disallowed origins was draining the per-IP rate limit and starting to flag legitimate users behind a shared NAT.
+- A malformed percent-encoded visitor id returns 400 instead of 500; the heuristic layer builds its `UAParser` per call rather than sharing a module-level singleton; `BOT_RATE_MAX`, `BOT_RATE_WINDOW_MS` and `PORT` fall back to their defaults with a warning when set to nonsense.
+
+### `@litemetrics/core` (0.5.0 -> 0.6.0)
+
+- New `BotFilterMode` (`off` / `standard` / `strict` / `shadow`), `BotFilterConfig` and `BotDetectedInfo` types; `CollectorConfig.botFilter`; `EnrichedEvent.botFlag`; `Site.botFilterMode`; `includeBots?` on every query-params type; `deleteUserEvents()` and `queryBotStats()` on the `DBAdapter` contract.
+
+### `@litemetrics/tracker` (0.3.1 -> 0.4.0)
+
+- Short-circuits to a no-op tracker when `navigator.webdriver === true`, so Selenium / Puppeteer / Playwright never reach the collector.
+
+### `@litemetrics/client` (0.3.1 -> 0.4.0)
+
+- `includeBots` option on stats, retention, events, time-series and users requests, so a consumer can opt into seeing bot-flagged events rather than always having them excluded.
+- New `getBotStats()`, returning `{ total, bySignature, byHeuristic, byRateLimit }`.
+
+### `@litemetrics/cli`, `@litemetrics/react`, `@litemetrics/react-native`, `@litemetrics/ui` (0.3.1 -> 0.4.0)
+
+- Dependency-only releases, tracking the core / client / tracker bumps above.
+
+### Dashboard
+
+- Cmd+K command palette for switching and creating sites, replacing the sidebar site dropdown; the sidebar's "Sites" entry became "Settings". Per-site bot filter mode toggle, an "include bots" query toggle, a bot-stats card on the overview, and a delete-all-events action on the user detail page.
+
+### Landing
+
+- Rewritten as SSG (`vite-react-ssg`) with nine pre-rendered SEO pages, per-page JSON-LD, and a build-time guard that fails the build when a route is missing from the sitemap. Motivated by 90 days of data showing 54 pageviews and zero Google referrals: the pre-React HTML was an empty div.
+
+## 0.5.0 - Postgres adapter, referrer normalization
+
+### `@litemetrics/node` (0.4.0 -> 0.5.0)
+
+- **Postgres adapter with full ClickHouse parity.** A complete `DBAdapter` implementation - every metric type, retention cohorts, channel classification, timezone-aware time series, `jsonb` properties and traits, BRIN + BTREE indexes - so a deployment can run on cheap managed Postgres (Railway, RDS) instead of ClickHouse Cloud. Covered by an integration suite and a ClickHouse-to-Postgres parity suite.
+- **Migration and backup tooling:** `scripts/migrate-clickhouse-to-postgres.ts` (idempotent, keyset-paginated, configurable `--overlap-minutes`, UTC-safe datetime parsing) and `scripts/backup-clickhouse.ts` (streaming JSONL dump).
+- **Referrer normalization.** `top_referrers` used to split one source across rows that differed only by scheme, `www.`, `m.` or a trailing slash: `https://www.tiktok.com/` and `https://www.tiktok.com` were two separate rows. Referrers are normalized to a bare hostname at ingest, and the same expression is applied inside the ClickHouse and MongoDB adapters so existing rows collapse without a backfill. The referrer filter uses that expression too, so a drilldown matches old and new rows alike.
+
+### `@litemetrics/core` (0.4.0 -> 0.5.0)
+
+- `DBConfig.adapter` widened to include `'postgres'`.
+
 ## 0.4.0 — Timestamp Sanitization
 
 ### `@litemetrics/node`
@@ -99,6 +168,10 @@ Hardens the CLI as an AI-agent query surface: strict input validation, hard outp
 
 - New exported types: `TimestampSanityConfig`, `TimestampOutOfWindowInfo`, `TimestampOutOfWindowReason`.
 - `CollectorConfig.timestampSanity?: TimestampSanityConfig` field added (optional, non-breaking).
+
+## 0.3.1 - fix: publish-safe dependency ranges
+
+Every package declared its `@litemetrics/*` dependencies as `workspace:*` - a Bun/pnpm workspace protocol that an npm consumer installing the published tarball cannot resolve. The packages published as `0.3.0` therefore could not install their own siblings outside the monorepo. Replaced with real caret ranges and republished. No behavior change; this is the same class of publish bug as `0.7.1`.
 
 ## 0.3.0 — CLI
 
@@ -175,3 +248,7 @@ None. This release is fully backward compatible.
 ### No changes
 
 `@litemetrics/tracker`, `@litemetrics/react`, `@litemetrics/ui`
+
+## 0.1.3 - Initial tagged release
+
+Predates this changelog. Covers the first published packages: the tracker, the collector with its ClickHouse adapter, the query API, the dashboard UI, and Mixpanel-style identity merging across visitor sessions. Written up retroactively so the tag list and this file line up.

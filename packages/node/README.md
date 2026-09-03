@@ -73,6 +73,19 @@ const collector = await createCollector({
 });
 ```
 
+### Ad Click IDs
+
+Every adapter stores five nullable ad-attribution columns alongside the UTM ones:
+`gclid`, `gbraid`, `wbraid`, `fbclid` and `fbp`. The tracker captures the four click IDs
+from the landing URL and keeps them for 90 days, so a conversion event fired days later
+still carries the click that paid for it - which is what Google Ads and Meta conversion
+upload APIs key on. UTM values are not an accepted substitute there.
+
+Existing deployments upgrade themselves: ClickHouse and Postgres run an idempotent
+`ADD COLUMN IF NOT EXISTS` on `init()`, and MongoDB is schemaless. Restarting the collector
+is enough - there is no manual SQL and no backfill. Rows written before the upgrade keep
+`NULL` in all five columns.
+
 ## Timestamp Sanitization
 
 The collector validates client-supplied event timestamps against server time. Events with timestamps outside the allowed window are dropped by default, preventing data corruption from clients with incorrect system clocks and timestamp-spoofing analytics poisoning.

@@ -107,7 +107,7 @@ The `cors` package with `origin: true` handles this.
 ```ts
 interface CollectorConfig {
   db: {
-    adapter?: 'clickhouse' | 'mongodb';  // default: 'clickhouse'
+    adapter?: 'clickhouse' | 'postgres' | 'mongodb';  // default: 'clickhouse'
     url: string;
   };
   adminSecret?: string;    // Required for site management endpoints

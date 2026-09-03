@@ -46,7 +46,10 @@ When `autoTrack` is enabled (default), the tracker automatically captures:
 
 - **Pageviews** - Initial page load
 - **SPA Navigation** - Route changes via History API
-- **Data Attributes** - Clicks on `data-litemetrics-event="EventName"` elements
+- **Data Attributes** - Clicks on `data-litemetrics-event="EventName"` elements.
+  A click on such an element, or anywhere inside one, is recorded **only** as the
+  declared event: the auto link/button click events below are suppressed for it.
+  An empty label (`data-litemetrics-event=""`) counts as unlabelled and keeps auto capture.
 - **Link Clicks** - Internal link clicks (path + link target path + text + selector)
 - **Outbound Links** - Clicks on external links (destination host + path + query, text + selector)
 - **File Downloads** - Clicks on links to `.pdf`, `.zip`, `.doc`, `.csv`, etc. (text + selector)
@@ -54,8 +57,8 @@ When `autoTrack` is enabled (default), the tracker automatically captures:
 - **Scroll Depth** - Milestones at 25%, 50%, 75%, 90%
 - **Rage Clicks** - 3+ rapid clicks in the same area
 
-Auto events are tagged with `eventSource=auto` and an `eventSubtype` (e.g. `scroll_depth`, `button_click`). This makes them easy to filter in the dashboard and API.
-Manual `track()` events default to `eventSource=manual` and `eventSubtype=custom`. Older events collected before this change may have `eventSource` set to `null`.
+Auto events are tagged with `eventSource=auto` and an `eventSubtype` - one of `link_click`, `outbound_click`, `file_download`, `button_click`, `scroll_depth`, `rage_click`. This makes them easy to filter in the dashboard and API.
+Manual `track()` events default to `eventSource=manual` and `eventSubtype=custom`; data-attribute clicks are also `eventSource=manual`, with `eventSubtype=attribute`. Older events collected before this change may have `eventSource` set to `null`.
 
 ## Configuration
 

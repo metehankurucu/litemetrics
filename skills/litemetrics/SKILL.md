@@ -103,7 +103,7 @@ Read the appropriate reference file based on the integration target:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `DB_ADAPTER` | `clickhouse` or `mongodb` | `clickhouse` |
+| `DB_ADAPTER` | `clickhouse`, `postgres`, or `mongodb` | `clickhouse` |
 | `CLICKHOUSE_URL` | ClickHouse URL | `http://localhost:8123` |
 | `MONGODB_URL` | MongoDB URL (when adapter=mongodb) | `mongodb://localhost:27017/litemetrics` |
 | `ADMIN_SECRET` | Admin auth for site management | — |
@@ -126,9 +126,9 @@ docker run -p 3002:3002 \
 
 - **Smart client, dumb server**: Session management, visitor IDs, batching all happen client-side in the tracker
 - **Multi-tenant**: Single database with `site_id` isolation
-- **ClickHouse default**: Columnar storage optimized for analytics queries. MongoDB also supported.
+- **ClickHouse default**: Columnar storage optimized for analytics queries. Postgres and MongoDB are also supported, with full feature parity.
 - **~3KB tracker**: The browser tracker is ~3KB gzipped with all auto-tracking features
-- Auto events are tagged with `event_source=auto` and a subtype (e.g. `scroll_depth`, `button_click`, `link_click`)
+- Auto events are tagged with `event_source=auto` and a subtype: `link_click`, `outbound_click`, `file_download`, `button_click`, `scroll_depth`, `rage_click`. Data-attribute clicks are `event_source=manual` with `event_subtype=attribute`, and they suppress the auto click row for the same element.
 - Manual `track()` events default to `event_source=manual` and `event_subtype=custom`. Older data may have `event_source` as null.
 - Available metrics: `pageviews`, `visitors`, `sessions`, `events`, `conversions`, `top_pages`, `top_exit_pages`, `top_transitions`, `top_scroll_pages`, `top_referrers`, `top_channels`, `top_utm_sources`, `top_utm_mediums`, `top_utm_campaigns`, `top_utm_terms`, `top_utm_contents`, `top_countries`, `top_cities`, `top_devices`, `top_browsers`, `top_os`, `top_os_versions`, `top_device_models`, `top_app_versions`, `top_events`, `top_conversions`, `top_button_clicks`, `top_link_targets`, plus `timeseries`, `retention`, and `botStats`. The CLI's `metrics` / `filters` commands print the authoritative catalog — see [references/querying.md](references/querying.md).
 

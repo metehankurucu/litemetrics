@@ -42,7 +42,9 @@ createTracker({
   autoTrack: true,                // Pageviews on load
   autoSpa: true,                  // SPA route changes (History API)
   autoOutbound: true,             // Outbound link clicks
+  autoLinkClicks: true,           // Internal link clicks
   autoFileDownloads: true,        // File downloads (.pdf, .zip, etc.)
+  autoButtonClicks: true,         // Button / [role="button"] clicks
   autoScrollDepth: true,          // Scroll milestones (25%, 50%, 75%, 90%)
   autoRageClicks: true,           // 3+ rapid clicks in same area
 
@@ -77,6 +79,8 @@ Track custom events via HTML attributes without JavaScript:
 <a href="/pricing" data-litemetrics-event="pricing_viewed">Pricing</a>
 ```
 
+**Precedence:** a click on a labelled element, or anywhere inside one, is recorded **only** as the declared event - the auto `Link Click` / `Outbound Link` / `File Download` / `Button Click` events are suppressed for it, so a labelled element is never double-counted. An empty label (`data-litemetrics-event=""`) counts as unlabelled and keeps auto capture.
+
 ## Manual API
 
 ```ts
@@ -89,10 +93,10 @@ tracker.track('purchase', { amount: 99, currency: 'USD' });
 tracker.identify('user-123', { name: 'John', plan: 'pro' });
 
 // Manual pageview (if autoTrack: false)
-tracker.trackPageview();
+tracker.page();
 
-// Flush pending events immediately
-tracker.flush();
+// Clear the stored visitor / session identity (e.g. on logout)
+tracker.reset();
 
 // Destroy tracker (cleanup)
 tracker.destroy();
