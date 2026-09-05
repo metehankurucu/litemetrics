@@ -30,6 +30,7 @@ import { createRateLimiter } from './rate-limit';
 import type { BotFilterMode, BotDetectedInfo, BotDropReason } from '@litemetrics/core';
 import { resolveTimestampSanity, sanitizeEventTimestamp } from './timestamp-sanity';
 import { normalizeReferrer } from './normalize-referrer';
+import { redactUrlCredentials } from './redact';
 
 /** Cap on the message carried out of a collect failure (log-line budget). */
 const MAX_COLLECT_ERROR_MESSAGE = 160;
@@ -100,13 +101,19 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
         : typeof code === 'number'
         ? String(code)
         : source?.constructor?.name ?? 'Error';
-    const message = typeof source?.message === 'string' ? source.message : String(err);
+    const raw = typeof source?.message === 'string' ? source.message : String(err);
+    // Redact first, truncate second: cutting at the budget can drop the `@` that ends
+    // a DSN's credentials, and what is left still carries the password.
+    const message = redactUrlCredentials(raw);
     const events = payload?.events;
     try {
       config.onCollectError({
         stage,
         errorClass,
-        message: message.slice(0, MAX_COLLECT_ERROR_MESSAGE),
+        message:
+          message.length > MAX_COLLECT_ERROR_MESSAGE
+            ? `${message.slice(0, MAX_COLLECT_ERROR_MESSAGE - 3)}...`
+            : message,
         siteId,
         eventCount: Array.isArray(events) ? events.length : undefined,
       });

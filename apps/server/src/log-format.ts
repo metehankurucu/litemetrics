@@ -1,3 +1,4 @@
+import { redactUrlCredentials } from '@litemetrics/node';
 import type { BotDetectedInfo, CollectErrorInfo, SiteTypeMismatchInfo } from '@litemetrics/node';
 
 // Everything formatted here comes from the request: the User-Agent header, the
@@ -72,12 +73,6 @@ export function formatSiteTypeMismatchLine(info: SiteTypeMismatchInfo): string {
 }
 
 /**
- * A driver error message can quote the connection string back, and the connection
- * string carries the password. Strip the userinfo before anything else looks at it.
- */
-const URL_CREDENTIALS = /([a-z][a-z0-9+.-]*:\/\/)[^/\s@]+@/gi;
-
-/**
  * Detail line for a /api/collect 500. The counters live in the minute summary; this
  * says which stage failed and with what, which is the part that decides whether an
  * operator is looking at a database outage or at one broken caller. Everything except
@@ -86,7 +81,9 @@ const URL_CREDENTIALS = /([a-z][a-z0-9+.-]*:\/\/)[^/\s@]+@/gi;
  * characters and quotes neutralized, length capped).
  */
 export function formatCollectErrorLine(info: CollectErrorInfo): string {
-  const redacted = (info.message ?? '').replace(URL_CREDENTIALS, '$1***@');
+  // The collector redacts before it truncates; this repeats it for any other caller
+  // (redaction is idempotent, so the wired path pays nothing for it).
+  const redacted = redactUrlCredentials(info.message ?? '');
   return [
     '[collect-error]',
     `stage=${sanitizeToken(info.stage, 16)}`,

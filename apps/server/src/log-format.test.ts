@@ -328,3 +328,21 @@ describe('formatCollectErrorLine', () => {
     expect(line.split('\n')).toHaveLength(1);
   });
 });
+
+describe('formatCollectErrorLine on the wired path', () => {
+  // The collector caps the message at 160 and marks the cut, so the formatter must
+  // pass that through: a second truncation here would eat the marker and make a cut
+  // message read as a complete one.
+  it('keeps a message the collector already capped and marked', () => {
+    const capped = `${'y'.repeat(157)}...`;
+    const line = formatCollectErrorLine({
+      stage: 'insert',
+      errorClass: 'ECONNRESET',
+      message: capped,
+      siteId: 'site_abc',
+      eventCount: 1,
+    });
+    expect(line.endsWith('..."')).toBe(true);
+    expect(line).toContain(`msg="${capped}"`);
+  });
+});

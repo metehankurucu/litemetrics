@@ -1437,6 +1437,37 @@ describe('collector collect error context', () => {
     expect(errors[0].message).toHaveLength(160);
   });
 
+  // Truncation must not be able to hide the end of a DSN: cut at 160 first and the
+  // `@` that closes the credentials can fall off the end, leaving `user:password`
+  // looking like ordinary text to every later pass.
+  it('redacts driver credentials before the message is truncated', async () => {
+    const password = 'sup3rsecretpassword1';
+    insertEvents.mockImplementation(async () => {
+      throw new Error(`${'x'.repeat(130)}postgres://lm_user:${password}@db.internal:5432/lm`);
+    });
+    const errors: CollectErrorInfo[] = [];
+    const collector = await collectorWith((info) => errors.push(info));
+
+    await collector.handler()(makeReq([pageview()]), makeRes());
+
+    expect(errors[0].message).not.toContain(password);
+    expect(errors[0].message).not.toContain('lm_user');
+    expect(errors[0].message).toContain('postgres://***@db.internal');
+  });
+
+  it('marks a truncated message so it cannot be read as the whole error', async () => {
+    insertEvents.mockImplementation(async () => {
+      throw new Error('y'.repeat(400));
+    });
+    const errors: CollectErrorInfo[] = [];
+    const collector = await collectorWith((info) => errors.push(info));
+
+    await collector.handler()(makeReq([pageview()]), makeRes());
+
+    expect(errors[0].message).toHaveLength(160);
+    expect(errors[0].message.endsWith('...')).toBe(true);
+  });
+
   it('still answers 500 when the host callback itself throws', async () => {
     insertEvents.mockImplementation(async () => {
       throw new Error('boom');
