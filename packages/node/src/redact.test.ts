@@ -38,4 +38,23 @@ describe('redactUrlCredentials', () => {
       'Code: 999. DB::Exception: table is read only',
     );
   });
+
+  it('leaves an @ inside a URL path alone', () => {
+    expect(redactUrlCredentials('see https://example.com/users/a@b for details')).toBe(
+      'see https://example.com/users/a@b for details',
+    );
+  });
+
+  it('does not swallow a URL followed by a bare email', () => {
+    expect(
+      redactUrlCredentials('read https://docs.example.com and mail admin@example.com'),
+    ).toBe('read https://docs.example.com and mail admin@example.com');
+  });
+
+  it('stays linear on a long colon-free run (bounded quantifiers)', () => {
+    const run = 'a'.repeat(200_000);
+    const started = performance.now();
+    expect(redactUrlCredentials(run)).toBe(run);
+    expect(performance.now() - started).toBeLessThan(1_000);
+  });
 });
