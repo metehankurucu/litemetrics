@@ -10,12 +10,7 @@ export {
   type HeuristicBotReason,
 } from './heuristic-bot';
 export { createRateLimiter, type RateLimiter, type RateLimiterConfig, type RateLimitResult } from './rate-limit';
-export {
-  InvalidQueryError,
-  parseDateParam,
-  validateDateRange,
-  type DateParamName,
-} from './query-validation';
+export { validateDateRange } from './query-validation';
 
 // Re-export types from core
 export type {

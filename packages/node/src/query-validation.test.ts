@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { InvalidQueryError, parseDateParam, validateDateRange } from './query-validation';
+import { QueryValidationError, parseDateParam, validateDateRange } from './query-validation';
 
 describe('parseDateParam', () => {
   it('accepts a plain YYYY-MM-DD date', () => {
@@ -22,7 +22,7 @@ describe('parseDateParam', () => {
   // --to, and the server carried it all the way to the adapter and answered 500.
   it('rejects a flag swallowed as a value, naming the parameter', () => {
     expect(() => parseDateParam('dateTo', '--json')).toThrow(/dateTo/);
-    expect(() => parseDateParam('dateTo', '--json')).toThrow(InvalidQueryError);
+    expect(() => parseDateParam('dateTo', '--json')).toThrow(QueryValidationError);
   });
 
   it('rejects two dates crammed into one value', () => {
@@ -75,7 +75,7 @@ describe('parseDateParam', () => {
       parseDateParam('dateTo', '--json');
       throw new Error('should have thrown');
     } catch (err) {
-      expect((err as InvalidQueryError).status).toBe(400);
+      expect((err as QueryValidationError).statusCode).toBe(400);
     }
   });
 });

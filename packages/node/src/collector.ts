@@ -538,10 +538,6 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
         }
         sendJson(res, 200, result);
       } catch (err) {
-        if (err instanceof InvalidQueryError) {
-          sendJson(res, 400, { ok: false, error: err.message });
-          return;
-        }
         const code = err instanceof Error ? (err as { statusCode?: unknown }).statusCode : undefined;
         const status = typeof code === 'number' ? code : 500;
         sendJson(res, status, { ok: false, error: err instanceof Error ? err.message : 'Internal error' });
@@ -682,11 +678,9 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
         const result = await db.listEvents(params);
         sendJson(res, 200, result);
       } catch (err) {
-        if (err instanceof InvalidQueryError) {
-          sendJson(res, 400, { ok: false, error: err.message });
-          return;
-        }
-        sendJson(res, 500, { ok: false, error: err instanceof Error ? err.message : 'Internal error' });
+        const code = err instanceof Error ? (err as { statusCode?: unknown }).statusCode : undefined;
+        const status = typeof code === 'number' ? code : 500;
+        sendJson(res, status, { ok: false, error: err instanceof Error ? err.message : 'Internal error' });
       }
     };
   }
@@ -805,11 +799,9 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
         const result = await db.listUsers(params);
         sendJson(res, 200, result);
       } catch (err) {
-        if (err instanceof InvalidQueryError) {
-          sendJson(res, 400, { ok: false, error: err.message });
-          return;
-        }
-        sendJson(res, 500, { ok: false, error: err instanceof Error ? err.message : 'Internal error' });
+        const code = err instanceof Error ? (err as { statusCode?: unknown }).statusCode : undefined;
+        const status = typeof code === 'number' ? code : 500;
+        sendJson(res, status, { ok: false, error: err instanceof Error ? err.message : 'Internal error' });
       }
     };
   }
@@ -907,7 +899,7 @@ async function parseBody(req: any): Promise<unknown> {
 
 // Extracted to query-helpers.ts for testability
 import { extractQueryParams } from './query-helpers.js';
-import { InvalidQueryError, validateDateRange } from './query-validation.js';
+import { validateDateRange } from './query-validation.js';
 
 function sendJson(res: any, status: number, body: unknown): void {
   if (typeof res.status === 'function' && typeof res.json === 'function') {
