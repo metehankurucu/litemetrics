@@ -256,7 +256,7 @@ export interface BotDetectedInfo {
  * Where a /api/collect request was when it failed. A 5xx counter alone cannot tell a
  * database outage from a malformed body, and those two want opposite responses.
  */
-export type CollectErrorStage = 'parse' | 'validate' | 'site' | 'identity' | 'insert' | 'unknown';
+export type CollectErrorStage = 'parse' | 'validate' | 'site' | 'identity' | 'insert';
 
 export interface CollectErrorInfo {
   stage: CollectErrorStage;

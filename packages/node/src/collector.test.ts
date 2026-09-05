@@ -11,6 +11,7 @@ const {
   listUsers,
   getUserEvents,
   deleteUserEvents,
+  getUserIdForVisitor,
 } = vi.hoisted(() => ({
   insertEvents: vi.fn<(events: EnrichedEvent[]) => Promise<void>>(async () => {}),
   getSite: vi.fn<(siteId: string) => Promise<any>>(async () => null),
@@ -24,6 +25,9 @@ const {
   ),
   deleteUserEvents: vi.fn<(siteId: string, identifier: string) => Promise<{ deleted: number }>>(
     async () => ({ deleted: 3 }),
+  ),
+  getUserIdForVisitor: vi.fn<(siteId: string, visitorId: string) => Promise<string | null>>(
+    async () => null,
   ),
 }));
 
@@ -42,7 +46,7 @@ vi.mock('./adapters/clickhouse', () => {
     getUserEvents = getUserEvents;
     upsertIdentity = async () => {};
     getVisitorIdsForUser = async () => [];
-    getUserIdForVisitor = async () => null;
+    getUserIdForVisitor = getUserIdForVisitor;
     createSite = async () => ({});
     getSite = getSite;
     getSiteBySecret = getSiteBySecret;
@@ -114,6 +118,8 @@ function resetAdapterMocks() {
   getUserEvents.mockImplementation(async () => ({}));
   deleteUserEvents.mockClear();
   deleteUserEvents.mockImplementation(async () => ({ deleted: 3 }));
+  getUserIdForVisitor.mockClear();
+  getUserIdForVisitor.mockImplementation(async () => null);
 }
 
 describe('collector timestamp sanitization', () => {
@@ -1351,6 +1357,31 @@ describe('collector collect error context', () => {
 
     expect(res.statusCode).toBe(500);
     expect(errors[0]).toMatchObject({ stage: 'site', errorClass: 'ETIMEDOUT', eventCount: 1 });
+    expect(insertEvents).not.toHaveBeenCalled();
+  });
+
+  // Every member of CollectErrorStage has to be reachable, otherwise the union is
+  // lying about what a reader can expect to see. identity is the last one.
+  it('separates an identity-resolution failure from the insert that follows it', async () => {
+    getUserIdForVisitor.mockImplementation(async () => {
+      throw Object.assign(new Error('identity read failed'), { code: 'ECONNRESET' });
+    });
+    const errors: CollectErrorInfo[] = [];
+    const collector = await collectorWith((info) => errors.push(info));
+    const res = makeRes();
+
+    await collector.handler()(
+      makeReq([{ ...pageview(), visitorId: `vis-identity-${Date.now()}` }]),
+      res,
+    );
+
+    expect(res.statusCode).toBe(500);
+    expect(errors[0]).toMatchObject({
+      stage: 'identity',
+      errorClass: 'ECONNRESET',
+      siteId: 'site_test',
+      eventCount: 1,
+    });
     expect(insertEvents).not.toHaveBeenCalled();
   });
 
