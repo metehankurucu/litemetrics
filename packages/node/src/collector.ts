@@ -1,4 +1,5 @@
 import type {
+  CollectErrorStage,
   CollectorConfig,
   DBAdapter,
   EnrichedEvent,
@@ -29,6 +30,9 @@ import { createRateLimiter } from './rate-limit';
 import type { BotFilterMode, BotDetectedInfo, BotDropReason } from '@litemetrics/core';
 import { resolveTimestampSanity, sanitizeEventTimestamp } from './timestamp-sanity';
 import { normalizeReferrer } from './normalize-referrer';
+
+/** Cap on the message carried out of a collect failure (log-line budget). */
+const MAX_COLLECT_ERROR_MESSAGE = 160;
 
 export interface Collector {
   handler(): (req: any, res: any) => void | Promise<void>;
@@ -72,6 +76,43 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
 
   function reportBot(info: BotDetectedInfo): void {
     botCfg.onBotDetected?.(info);
+  }
+
+  /**
+   * Hand the host what is behind a collect 500: which stage the request reached, the
+   * error class (`err.code` when the runtime supplied one, otherwise the constructor
+   * name), a capped message, and the batch's site and size when the body had already
+   * parsed. The callback is best-effort - a host logger that throws must not turn a
+   * failed insert into a crashed request.
+   */
+  function reportCollectError(
+    err: unknown,
+    stage: CollectErrorStage,
+    siteId: string | undefined,
+    payload: CollectPayload | undefined,
+  ): void {
+    if (!config.onCollectError) return;
+    const source = err as { code?: unknown; message?: unknown; constructor?: { name?: string } };
+    const code = source?.code;
+    const errorClass =
+      typeof code === 'string' && code !== ''
+        ? code
+        : typeof code === 'number'
+        ? String(code)
+        : source?.constructor?.name ?? 'Error';
+    const message = typeof source?.message === 'string' ? source.message : String(err);
+    const events = payload?.events;
+    try {
+      config.onCollectError({
+        stage,
+        errorClass,
+        message: message.slice(0, MAX_COLLECT_ERROR_MESSAGE),
+        siteId,
+        eventCount: Array.isArray(events) ? events.length : undefined,
+      });
+    } catch {
+      // Reporting is a side channel; the response below is the contract.
+    }
   }
 
   function resolveBotMode(site: { botFilterMode?: BotFilterMode | null } | null | undefined): BotFilterMode {
@@ -285,9 +326,16 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
         return;
       }
 
+      // Tracked outside the try so the catch can say where the request was. A 500 with
+      // no stage is what made the 03 Sep 2026 run of collect failures undiagnosable.
+      let stage: CollectErrorStage = 'parse';
+      let payload: CollectPayload | undefined;
+      let batchSiteId: string | undefined;
+
       try {
         const body = await parseBody(req);
-        const payload = body as CollectPayload;
+        payload = body as CollectPayload;
+        stage = 'validate';
 
         if (!payload?.events || !Array.isArray(payload.events) || payload.events.length === 0) {
           sendJson(res, 400, { ok: false, error: 'No events provided' });
@@ -304,6 +352,7 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
           return;
         }
         const siteId = Array.from(siteIds)[0] as string;
+        batchSiteId = siteId;
 
         const userAgent = req.headers?.['user-agent'] || '';
         const acceptLanguage =
@@ -316,6 +365,7 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
         const ip = extractIp(req);
 
         // Resolve site early - needed for per-site bot mode override
+        stage = 'site';
         const site = await db.getSite(siteId);
         const mode = resolveBotMode(site);
 
@@ -388,12 +438,15 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
           }
         }
 
+        stage = 'identity';
         const enriched = enrichEvents(payload.events, ip, userAgent, bot?.layer);
 
         await processIdentity(enriched);
+        stage = 'insert';
         await db.insertEvents(enriched);
         sendJson(res, 200, { ok: true });
       } catch (err) {
+        reportCollectError(err, stage, batchSiteId, payload);
         sendJson(res, 500, { ok: false, error: err instanceof Error ? err.message : 'Internal error' });
       }
     };

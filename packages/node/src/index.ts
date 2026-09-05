@@ -41,4 +41,6 @@ export type {
   BotDetectedInfo,
   BotDropReason,
   SiteTypeMismatchInfo,
+  CollectErrorInfo,
+  CollectErrorStage,
 } from '@litemetrics/core';

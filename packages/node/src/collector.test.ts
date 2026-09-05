@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { EnrichedEvent } from '@litemetrics/core';
+import type { CollectErrorInfo, EnrichedEvent } from '@litemetrics/core';
 
 const {
   insertEvents,
@@ -1288,5 +1288,174 @@ describe('collector date-range validation', () => {
       dateFrom: '2026-08-11',
       dateTo: '2026-08-16',
     });
+  });
+});
+
+// ─── O1: what was behind a collect 5xx ────────────────
+// The catch used to answer 500 and say nothing, so a run of collect failures was
+// countable (5xx=N in the minute summary) but not diagnosable. onCollectError hands
+// the host the stage, the error class, the site and the batch size.
+describe('collector collect error context', () => {
+  beforeEach(() => {
+    resetAdapterMocks();
+  });
+
+  function pageview(siteId = 'site_test') {
+    return {
+      type: 'pageview',
+      siteId,
+      timestamp: Date.now(),
+      sessionId: 'sess-1',
+      visitorId: 'vis-1',
+      url: 'https://example.com/pricing',
+    };
+  }
+
+  async function collectorWith(onCollectError?: (info: CollectErrorInfo) => void) {
+    return createCollector({
+      db: { adapter: 'clickhouse', url: 'http://x' },
+      onCollectError,
+    });
+  }
+
+  it('reports stage, error class, site and event count when the insert fails', async () => {
+    insertEvents.mockImplementation(async () => {
+      throw Object.assign(new Error('boom'), { code: 'ECONNRESET' });
+    });
+    const errors: CollectErrorInfo[] = [];
+    const collector = await collectorWith((info) => errors.push(info));
+    const res = makeRes();
+
+    await collector.handler()(makeReq([pageview()]), res);
+
+    expect(res.statusCode).toBe(500);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatchObject({
+      stage: 'insert',
+      errorClass: 'ECONNRESET',
+      siteId: 'site_test',
+      eventCount: 1,
+    });
+    expect(errors[0].message).toBe('boom');
+  });
+
+  it('separates a site-lookup failure from an insert failure', async () => {
+    getSite.mockImplementation(async () => {
+      throw Object.assign(new Error('site read failed'), { code: 'ETIMEDOUT' });
+    });
+    const errors: CollectErrorInfo[] = [];
+    const collector = await collectorWith((info) => errors.push(info));
+    const res = makeRes();
+
+    await collector.handler()(makeReq([pageview()]), res);
+
+    expect(res.statusCode).toBe(500);
+    expect(errors[0]).toMatchObject({ stage: 'site', errorClass: 'ETIMEDOUT', eventCount: 1 });
+    expect(insertEvents).not.toHaveBeenCalled();
+  });
+
+  it('reports a body that never parsed as the parse stage, with no site to name', async () => {
+    const errors: CollectErrorInfo[] = [];
+    const collector = await collectorWith((info) => errors.push(info));
+    const res = makeRes();
+
+    await collector.handler()(
+      { method: 'POST', headers: {}, body: '{"events": [', socket: { remoteAddress: '1.2.3.4' } },
+      res,
+    );
+
+    expect(res.statusCode).toBe(500);
+    expect(errors[0]).toMatchObject({ stage: 'parse', errorClass: 'SyntaxError' });
+    expect(errors[0].siteId).toBeUndefined();
+    expect(errors[0].eventCount).toBeUndefined();
+  });
+
+  it('reports a malformed event inside a parsed body as the validate stage', async () => {
+    const errors: CollectErrorInfo[] = [];
+    const collector = await collectorWith((info) => errors.push(info));
+    const res = makeRes();
+
+    await collector.handler()(makeReq([null]), res);
+
+    expect(res.statusCode).toBe(500);
+    expect(errors[0]).toMatchObject({ stage: 'validate', errorClass: 'TypeError', eventCount: 1 });
+    expect(errors[0].siteId).toBeUndefined();
+  });
+
+  it('falls back to the error constructor name when there is no code', async () => {
+    insertEvents.mockImplementation(async () => {
+      throw new TypeError('events.map is not a function');
+    });
+    const errors: CollectErrorInfo[] = [];
+    const collector = await collectorWith((info) => errors.push(info));
+
+    await collector.handler()(makeReq([pageview()]), makeRes());
+
+    expect(errors[0].errorClass).toBe('TypeError');
+  });
+
+  it('truncates the message so one error cannot own the log line', async () => {
+    insertEvents.mockImplementation(async () => {
+      throw new Error('x'.repeat(400));
+    });
+    const errors: CollectErrorInfo[] = [];
+    const collector = await collectorWith((info) => errors.push(info));
+
+    await collector.handler()(makeReq([pageview()]), makeRes());
+
+    expect(errors[0].message).toHaveLength(160);
+  });
+
+  it('still answers 500 when the host callback itself throws', async () => {
+    insertEvents.mockImplementation(async () => {
+      throw new Error('boom');
+    });
+    const collector = await collectorWith(() => {
+      throw new Error('logger exploded');
+    });
+    const res = makeRes();
+
+    await expect(collector.handler()(makeReq([pageview()]), res)).resolves.toBeUndefined();
+    expect(res.statusCode).toBe(500);
+    expect(res.body).toMatchObject({ ok: false });
+  });
+
+  it('still answers 500 when no callback is configured', async () => {
+    insertEvents.mockImplementation(async () => {
+      throw new Error('boom');
+    });
+    const collector = await collectorWith(undefined);
+    const res = makeRes();
+
+    await collector.handler()(makeReq([pageview()]), res);
+
+    expect(res.statusCode).toBe(500);
+  });
+
+  it('says nothing when the batch is accepted', async () => {
+    const errors: CollectErrorInfo[] = [];
+    const collector = await collectorWith((info) => errors.push(info));
+    const res = makeRes();
+
+    await collector.handler()(makeReq([pageview()]), res);
+
+    expect(res.statusCode).toBe(200);
+    expect(errors).toHaveLength(0);
+  });
+
+  it('carries the real batch size, not one per event', async () => {
+    insertEvents.mockImplementation(async () => {
+      throw Object.assign(new Error('boom'), { code: 'ECONNRESET' });
+    });
+    const errors: CollectErrorInfo[] = [];
+    const collector = await collectorWith((info) => errors.push(info));
+
+    await collector.handler()(
+      makeReq([pageview(), pageview(), pageview()]),
+      makeRes(),
+    );
+
+    expect(errors).toHaveLength(1);
+    expect(errors[0].eventCount).toBe(3);
   });
 });

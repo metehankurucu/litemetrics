@@ -288,3 +288,138 @@ describe('createCollectSummary', () => {
     expect(field(h.lines[0], 'dur_max')).toBe('9999');
   });
 });
+
+// ─── O1: error classes behind the 5xx counter ─────────
+// 5xx=10 was countable but not diagnosable. err_codes= carries the stage:class of
+// every collect failure in the minute, so a database outage and a malformed body
+// stop looking identical.
+describe('createCollectSummary error tracking', () => {
+  it('counts repeats of the same stage:class into one err_codes entry', () => {
+    const h = harness();
+    open = h.summary;
+
+    h.summary.recordRequest(500, 12);
+    h.summary.recordError('insert:ECONNRESET');
+    h.summary.recordError('insert:ECONNRESET');
+    h.summary.flush();
+
+    expect(field(h.lines[0], 'err_codes')).toBe('insert:ECONNRESET:2');
+  });
+
+  it('writes a dash when the minute had no errors', () => {
+    const h = harness();
+    open = h.summary;
+
+    h.summary.recordRequest(200, 3);
+    h.summary.flush();
+
+    expect(field(h.lines[0], 'err_codes')).toBe('-');
+  });
+
+  // Monitoring parses this line by position for the fields that already existed, so
+  // the new field goes on the end and nothing before it moves.
+  it('appends err_codes at the end, after suppressed, leaving the existing order intact', () => {
+    const h = harness();
+    open = h.summary;
+
+    h.summary.recordRequest(500, 5);
+    h.summary.recordError('insert:ECONNRESET');
+    h.summary.flush();
+
+    const keys = h.lines[0].split(' ').slice(1).map((f) => f.split('=')[0]);
+    expect(keys).toEqual([
+      'minute', 'reqs', 'ok', '3xx', '4xx', '5xx', 'aborted',
+      'dur_p50', 'dur_p95', 'dur_max',
+      'bot_dropped', 'bot_flagged', 'reasons', 'bot_sites', 'suppressed', 'err_codes',
+    ]);
+  });
+
+  it('allows five detail lines per minute by default, then suppresses', () => {
+    const h = harness();
+    open = h.summary;
+
+    const allowed = [];
+    for (let i = 0; i < 7; i++) allowed.push(h.summary.recordError('insert:ECONNRESET'));
+
+    expect(allowed).toEqual([true, true, true, true, true, false, false]);
+  });
+
+  it('honours a custom per-minute detail cap', () => {
+    const h = harness({ maxErrorLinesPerMinute: 1 });
+    open = h.summary;
+
+    expect(h.summary.recordError('insert:ECONNRESET')).toBe(true);
+    expect(h.summary.recordError('site:ETIMEDOUT')).toBe(false);
+  });
+
+  it('gives the next minute a fresh detail budget', () => {
+    const h = harness({ maxErrorLinesPerMinute: 1 });
+    open = h.summary;
+
+    expect(h.summary.recordError('insert:ECONNRESET')).toBe(true);
+    expect(h.summary.recordError('insert:ECONNRESET')).toBe(false);
+    h.at(MINUTE);
+    expect(h.summary.recordError('insert:ECONNRESET')).toBe(true);
+  });
+
+  // The error class can come from a driver quoting the request back, so the key set
+  // is not bounded by anything the server controls.
+  it('caps the number of distinct keys and names the overflow', () => {
+    const h = harness({ maxTrackedErrors: 2 });
+    open = h.summary;
+
+    h.summary.recordRequest(500, 5);
+    h.summary.recordError('insert:A');
+    h.summary.recordError('insert:B');
+    h.summary.recordError('insert:C');
+    h.summary.recordError('insert:D');
+    h.summary.flush();
+
+    const codes = field(h.lines[0], 'err_codes');
+    expect(codes).toContain('insert:A:1');
+    expect(codes).toContain('insert:B:1');
+    expect(codes).toContain('untracked:2');
+    expect(codes).not.toContain('insert:C');
+  });
+
+  it('lists the ten most common keys and counts the rest', () => {
+    const h = harness();
+    open = h.summary;
+
+    h.summary.recordRequest(500, 5);
+    for (let i = 0; i < 12; i++) {
+      for (let n = 0; n <= i; n++) h.summary.recordError(`insert:E${i}`);
+    }
+    h.summary.flush();
+
+    const codes = field(h.lines[0], 'err_codes').split(',');
+    expect(codes).toHaveLength(11);
+    expect(codes[0]).toBe('insert:E11:12');
+    expect(codes[10]).toBe('+2');
+  });
+
+  it('sanitizes a key so a driver message cannot break the line', () => {
+    const h = harness();
+    open = h.summary;
+
+    h.summary.recordRequest(500, 5);
+    h.summary.recordError('insert:boom\nerr_codes=fake:1');
+    h.summary.flush();
+
+    expect(h.lines[0].split('\n')).toHaveLength(1);
+    expect(field(h.lines[0], 'err_codes')).toBe('insert:boomerr_codes=fake:1:1');
+  });
+
+  // The error is reported before the response completes, so a failure at the very end
+  // of a minute can land in a bucket whose request lands in the next one.
+  it('still emits a minute that saw only an error', () => {
+    const h = harness();
+    open = h.summary;
+
+    h.summary.recordError('insert:ECONNRESET');
+    h.summary.flush();
+
+    expect(h.lines).toHaveLength(1);
+    expect(field(h.lines[0], 'err_codes')).toBe('insert:ECONNRESET:1');
+  });
+});
