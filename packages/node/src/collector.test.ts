@@ -1128,3 +1128,165 @@ describe('collector includeBots query param plumbing', () => {
     expect(params).toMatchObject({ includeBots: true });
   });
 });
+
+// ─── D1: malformed custom date ranges are client errors, not 500s ──
+// 31 Aug 2026: `dateTo=--json` (a CLI flag swallowed as a value) travelled through
+// every handler into the adapter and came back as a 500. Nothing in the request was
+// unknowable up front, so it belongs in the 400 class - and the query must never be
+// executed at all.
+describe('collector date-range validation', () => {
+  beforeEach(() => {
+    resetAdapterMocks();
+  });
+
+  function makeAuthedGet(url: string) {
+    return {
+      method: 'GET',
+      url,
+      headers: { 'x-litemetrics-admin-secret': 'admin-secret' },
+    };
+  }
+
+  async function makeAuthedCollector() {
+    return createCollector({
+      db: { adapter: 'clickhouse', url: 'http://x' },
+      adminSecret: 'admin-secret',
+    });
+  }
+
+  it('events: a swallowed flag and a two-date value are rejected with 400 before the adapter runs', async () => {
+    const collector = await makeAuthedCollector();
+    const handler = collector.eventsHandler();
+    const res = makeRes();
+    await handler(
+      makeAuthedGet(
+        '/api/events?siteId=site_test&period=custom&dateFrom=2026-08-11+2026-08-16&dateTo=--json',
+      ),
+      res,
+    );
+    expect(res.statusCode).toBe(400);
+    expect(res.body).toMatchObject({ ok: false });
+    expect((res.body as { error: string }).error).toContain('dateFrom');
+    expect(listEvents).not.toHaveBeenCalled();
+  });
+
+  it('events: a well-formed custom range still reaches listEvents with both dates', async () => {
+    const collector = await makeAuthedCollector();
+    const handler = collector.eventsHandler();
+    const res = makeRes();
+    await handler(
+      makeAuthedGet(
+        '/api/events?siteId=site_test&period=custom&dateFrom=2026-08-11&dateTo=2026-08-16',
+      ),
+      res,
+    );
+    expect(res.statusCode).toBe(200);
+    expect(listEvents).toHaveBeenCalledOnce();
+    expect(listEvents.mock.calls[0]![0]).toMatchObject({
+      siteId: 'site_test',
+      period: 'custom',
+      dateFrom: '2026-08-11',
+      dateTo: '2026-08-16',
+    });
+  });
+
+  it('events: a reversed range is rejected with 400', async () => {
+    const collector = await makeAuthedCollector();
+    const handler = collector.eventsHandler();
+    const res = makeRes();
+    await handler(
+      makeAuthedGet(
+        '/api/events?siteId=site_test&period=custom&dateFrom=2026-08-16&dateTo=2026-08-11',
+      ),
+      res,
+    );
+    expect(res.statusCode).toBe(400);
+    expect((res.body as { error: string }).error).toMatch(/before/);
+    expect(listEvents).not.toHaveBeenCalled();
+  });
+
+  it('events: period=custom without dateTo is rejected with 400', async () => {
+    const collector = await makeAuthedCollector();
+    const handler = collector.eventsHandler();
+    const res = makeRes();
+    await handler(
+      makeAuthedGet('/api/events?siteId=site_test&period=custom&dateFrom=2026-08-11'),
+      res,
+    );
+    expect(res.statusCode).toBe(400);
+    expect((res.body as { error: string }).error).toContain('dateTo');
+    expect(listEvents).not.toHaveBeenCalled();
+  });
+
+  it('events: an adapter failure is still a 500, not a 400', async () => {
+    listEvents.mockImplementation(async () => {
+      throw new Error('connection refused');
+    });
+    const collector = await makeAuthedCollector();
+    const handler = collector.eventsHandler();
+    const res = makeRes();
+    await handler(makeAuthedGet('/api/events?siteId=site_test'), res);
+    expect(res.statusCode).toBe(500);
+  });
+
+  it('stats: dateTo=--json is rejected with 400 and db.query is never called', async () => {
+    const collector = await makeAuthedCollector();
+    const handler = collector.queryHandler();
+    const res = makeRes();
+    await handler(
+      makeAuthedGet('/api/stats?siteId=site_test&metric=pageviews&period=custom&dateFrom=2026-08-11&dateTo=--json'),
+      res,
+    );
+    expect(res.statusCode).toBe(400);
+    expect((res.body as { error: string }).error).toContain('dateTo');
+    expect(query).not.toHaveBeenCalled();
+  });
+
+  it('stats: a well-formed custom range still reaches db.query with both dates', async () => {
+    const collector = await makeAuthedCollector();
+    const handler = collector.queryHandler();
+    const res = makeRes();
+    await handler(
+      makeAuthedGet('/api/stats?siteId=site_test&metric=pageviews&period=custom&dateFrom=2026-08-11&dateTo=2026-08-16'),
+      res,
+    );
+    expect(res.statusCode).toBe(200);
+    expect(query.mock.calls[0]![0]).toMatchObject({
+      dateFrom: '2026-08-11',
+      dateTo: '2026-08-16',
+    });
+  });
+
+  it('user events: a malformed dateFrom is rejected with 400 before getUserEvents runs', async () => {
+    const collector = await makeAuthedCollector();
+    const handler = collector.usersHandler();
+    const res = makeRes();
+    await handler(
+      makeAuthedGet(
+        '/api/users/visitor-abc/events?siteId=site_test&period=custom&dateFrom=--json&dateTo=2026-08-16',
+      ),
+      res,
+    );
+    expect(res.statusCode).toBe(400);
+    expect((res.body as { error: string }).error).toContain('dateFrom');
+    expect(getUserEvents).not.toHaveBeenCalled();
+  });
+
+  it('user events: a well-formed custom range still reaches getUserEvents', async () => {
+    const collector = await makeAuthedCollector();
+    const handler = collector.usersHandler();
+    const res = makeRes();
+    await handler(
+      makeAuthedGet(
+        '/api/users/visitor-abc/events?siteId=site_test&period=custom&dateFrom=2026-08-11&dateTo=2026-08-16',
+      ),
+      res,
+    );
+    expect(res.statusCode).toBe(200);
+    expect(getUserEvents).toHaveBeenCalledOnce();
+    expect(getUserEvents.mock.calls[0]![2]).toMatchObject({
+      dateFrom: '2026-08-11',
+      dateTo: '2026-08-16',
+    });
+  });
+});
