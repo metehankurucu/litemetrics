@@ -44,9 +44,34 @@ export function errorEnvelope(
 }
 
 /**
+ * D1: a `--from` / `--to` value that is not a date is a client-side error, and the
+ * CLI can see it before a request goes out. A value starting with `-` is the common
+ * shape: commander lets the next flag be swallowed as the value (31 Aug 2026,
+ * `--to --json`), and the server then answered 500 on a date it could not parse.
+ * A no-op when the flag was not supplied.
+ */
+export function assertDateFlag(
+  flag: '--from' | '--to',
+  value: string | undefined,
+  format: Format,
+): void {
+  if (value === undefined) return;
+  if (value.startsWith('-')) {
+    errorEnvelope(
+      `${flag} received "${value}", which looks like another flag; pass an ISO date (YYYY-MM-DD).`,
+      format,
+    );
+  }
+  if (/\s/.test(value) || Number.isNaN(Date.parse(value))) {
+    errorEnvelope(`${flag} must be an ISO date (YYYY-MM-DD), got "${value}".`, format);
+  }
+}
+
+/**
  * R1: reject any `--period` outside the enum (with did-you-mean suggestions),
- * and reject `custom` unless both `--from` and `--to` are supplied. A no-op when
- * `period` is undefined (commander's per-command default has already applied).
+ * and reject `custom` unless both `--from` and `--to` are supplied. The date flags
+ * are checked first: a value that is not a date is wrong whichever period asked for
+ * it, including the per-command default that applies when `period` is undefined.
  */
 export function validatePeriod(
   period: string | undefined,
@@ -54,6 +79,8 @@ export function validatePeriod(
   to: string | undefined,
   format: Format,
 ): void {
+  assertDateFlag('--from', from, format);
+  assertDateFlag('--to', to, format);
   if (period === undefined) return;
   if (!(PERIODS as readonly string[]).includes(period)) {
     errorEnvelope(`Invalid period "${period}". Valid: ${PERIODS.join(', ')}.`, format, {
