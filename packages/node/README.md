@@ -158,6 +158,16 @@ const collector = await createCollector({
       console.warn(`[site-type-mismatch] site=${info.siteId} type=${info.siteType ?? 'unset'} platform=${info.platform} mode=${info.mode}`);
     },
   },
+  onCollectError: (info) => {
+    // info: { stage, errorClass, message, siteId?, eventCount? }
+    // stage: 'parse' | 'validate' | 'site' | 'identity' | 'insert' - how far the
+    // request got, so a database outage is distinguishable from a broken caller.
+    // errorClass is err.code when the runtime gave one, else the error class name;
+    // message is capped at 160 characters with connection-string credentials
+    // redacted. The response is a 500 either way, and a throw from this callback is
+    // swallowed so a broken logger cannot change it.
+    console.error(`[collect-error] stage=${info.stage} class=${info.errorClass} site=${info.siteId ?? '-'} events=${info.eventCount ?? '-'} msg="${info.message}"`);
+  },
 });
 ```
 
@@ -167,6 +177,7 @@ Server wrapper env vars (`apps/server`):
 - `BOT_RATE_WINDOW_MS` (default `60000`): sliding-window size for the per-IP rate limiter (ms).
 - `BOT_RATE_MAX` (default `60`): max events per window per IP before the rate-limit layer fires.
 - `BOT_LOG_MAX_PER_MIN` (default `20`): detail `[bot-filter]` log lines allowed per minute; the overflow is counted as `suppressed=` on the `[collect]` summary line.
+- `COLLECT_ERROR_LOG_MAX_PER_MIN` (default `5`): detail `[collect-error]` log lines allowed per minute. Every failure is still counted in `err_codes=<stage>:<class>:<count>` on the `[collect]` summary line; withheld lines are not part of `suppressed=` (that field is bot-filter only), so derive them by subtracting the printed lines from the `err_codes=` total.
 
 Read endpoints (`/api/stats`, `/api/events`, `/api/users`) exclude flagged
 events by default. Pass `?includeBots=true` to include them.

@@ -209,6 +209,7 @@ docker run -p 3002:3002 \
 | `BOT_RATE_WINDOW_MS` | Sliding-window size for the per-IP rate limiter (ms) | `60000` |
 | `BOT_RATE_MAX` | Max events per window per IP before rate-limit fires | `60` |
 | `BOT_LOG_MAX_PER_MIN` | Detail `[bot-filter]` log lines allowed per minute; the overflow is counted as `suppressed=` on the `[collect]` summary | `20` |
+| `COLLECT_ERROR_LOG_MAX_PER_MIN` | Detail `[collect-error]` log lines allowed per minute; every failure is still counted in `err_codes=` on the `[collect]` summary | `5` |
 
 > `DATABASE_URL` and `LITEMETRICS_ADMIN_SECRET` also work as aliases.
 
@@ -327,7 +328,7 @@ Pass `?includeBots=true` to `/api/stats`, `/api/events`, or `/api/users` to see 
 `/api/collect` is the only high-volume route, so it is **not** logged per request — one line per request would fill a fixed-size platform log window in hours. Instead each wall-clock minute that saw traffic emits a single summary:
 
 ```
-[collect] minute=2026-08-18T17:35 reqs=11 ok=8 3xx=0 4xx=0 5xx=0 aborted=3 dur_p50=302 dur_p95=712 dur_max=712 bot_dropped=5 bot_flagged=0 reasons=ua-signature:4,empty-ua:1 bot_sites=site_e2e:5 suppressed=2
+[collect] minute=2026-08-18T17:35 reqs=11 ok=8 3xx=0 4xx=0 5xx=0 aborted=3 dur_p50=302 dur_p95=712 dur_max=712 bot_dropped=5 bot_flagged=0 reasons=ua-signature:4,empty-ua:1 bot_sites=site_e2e:5 suppressed=2 err_codes=-
 ```
 
 | Field | Meaning |
@@ -339,6 +340,7 @@ Pass `?includeBots=true` to `/api/stats`, `/api/events`, or `/api/users` to see 
 | `reasons` | Drop reasons for the minute, by count (see the table above) |
 | `bot_sites` | Sites by **bot hit** count — not request volume, which is `reqs` |
 | `suppressed` | Detail bot-filter lines withheld by `BOT_LOG_MAX_PER_MIN` |
+| `err_codes` | Collect failures in the minute as `<stage>:<class>:<count>`, top 10 (`-` when there were none) |
 
 A minute with no traffic emits nothing, and the open minute is flushed on `SIGTERM` / `SIGINT` so a redeploy does not lose it. Every other route keeps a per-request line with status and duration, with a trailing `aborted` marker when the client left before the answer:
 
@@ -346,7 +348,15 @@ A minute with no traffic emits nothing, and the open minute is flushed on `SIGTE
 14:59:31 GET /api/stats?siteId=site_x 200 42ms [secret]
 ```
 
-User-Agent, IP, site id and URL all come from the request, so each is sanitized to a single line before it reaches a log entry — otherwise one newline in a header would let a request forge its own log records.
+A `/api/collect` request that ends in a 500 also writes a detail line saying where it failed and with what:
+
+```
+[collect-error] stage=insert class=ECONNRESET site=site_abc events=3 msg="connect ECONNRESET 10.0.0.4:8123"
+```
+
+`stage` is how far the request got (`parse`, `validate`, `site`, `identity`, `insert`), `class` is the driver's error code when it supplied one and the error class name otherwise, and `events` is the batch size, so a lost batch is countable. These lines are capped at `COLLECT_ERROR_LOG_MAX_PER_MIN` per minute. Withheld ones are **not** part of `suppressed=`, which counts bot-filter lines only: to see how many were withheld, subtract the printed lines from the `err_codes=` total for that minute.
+
+User-Agent, IP, site id and URL all come from the request, so each is sanitized to a single line before it reaches a log entry — otherwise one newline in a header would let a request forge its own log records. The same applies to a driver's error message: credentials in a connection string it quotes back are redacted to `scheme://***@host` before the line is written.
 
 <br/>
 
