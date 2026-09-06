@@ -131,12 +131,22 @@ function percentile(sorted: number[], p: number): number {
   return sorted[Math.max(0, index)];
 }
 
-function topN(counts: Map<string, number>, limit: number, sanitize: boolean, overflow = 0): string {
+function topN(
+  counts: Map<string, number>,
+  limit: number,
+  sanitize: boolean,
+  overflow = 0,
+  tail: 'keys' | 'occurrences' = 'keys',
+): string {
   if (counts.size === 0 && overflow === 0) return '-';
   const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1]);
   const head = sorted.slice(0, limit).map(([key, n]) => `${sanitize ? sanitizeToken(key) : key}:${n}`);
   const rest = sorted.length - head.length;
-  if (rest > 0) head.push(`+${rest}`);
+  if (rest > 0) {
+    head.push(tail === 'occurrences'
+      ? `other:${sorted.slice(head.length).reduce((total, [, n]) => total + n, 0)}`
+      : `+${rest}`);
+  }
   // Hits that arrived after the tracking cap. Named rather than folded into the
   // listed sites, so the line never reads as "only these sites were hit".
   if (overflow > 0) head.push(`untracked:${overflow}`);
@@ -163,7 +173,7 @@ export function createCollectSummary(config: CollectSummaryConfig = {}): Collect
     // R7: a minute with nothing in it costs no line. An error counts as something: it
     // is reported before the response completes, so a failure at the very end of a
     // minute can land in a bucket whose request lands in the next one.
-    if (b.reqs === 0 && b.dropped === 0 && b.flagged === 0 && b.errors.size === 0) return;
+    if (b.reqs === 0 && b.dropped === 0 && b.flagged === 0 && b.errors.size === 0 && b.errorsOverflow === 0) return;
 
     const sorted = [...b.durations].sort((x, y) => x - y);
     const p50 = sorted.length ? String(Math.round(percentile(sorted, 50))) : '-';
@@ -196,7 +206,7 @@ export function createCollectSummary(config: CollectSummaryConfig = {}): Collect
         `suppressed=${b.suppressed}`,
         // Appended last on purpose: monitoring parses the fields above, so a new one
         // goes on the end where it cannot move them.
-        `err_codes=${topN(b.errors, 10, true, b.errorsOverflow)}`,
+        `err_codes=${topN(b.errors, 10, true, b.errorsOverflow, 'occurrences')}`,
       ].join(' '),
     );
   }

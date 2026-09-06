@@ -382,7 +382,7 @@ describe('createCollectSummary error tracking', () => {
     expect(codes).not.toContain('insert:C');
   });
 
-  it('lists the ten most common keys and counts the rest', () => {
+  it('lists the ten most common keys and preserves the remaining occurrences', () => {
     const h = harness();
     open = h.summary;
 
@@ -395,7 +395,65 @@ describe('createCollectSummary error tracking', () => {
     const codes = field(h.lines[0], 'err_codes').split(',');
     expect(codes).toHaveLength(11);
     expect(codes[0]).toBe('insert:E11:12');
-    expect(codes[10]).toBe('+2');
+    expect(codes[10]).toBe('other:3');
+    expect(codes.reduce((total, code) => total + Number(code.split(':').at(-1)), 0)).toBe(78);
+  });
+
+  it('preserves named, omitted and untracked occurrences at the default tracking cap', () => {
+    const h = harness();
+    open = h.summary;
+
+    for (let i = 1; i <= 52; i++) {
+      for (let n = 0; n < i; n++) h.summary.recordError(`insert:E${i}`);
+    }
+    // A tracked key must keep counting even after new keys overflow the map.
+    h.summary.recordError('insert:E50');
+    h.summary.flush();
+
+    const codes = field(h.lines[0], 'err_codes').split(',');
+    expect(codes).toHaveLength(12);
+    expect(codes[0]).toBe('insert:E50:51');
+    expect(codes).toContain('other:820');
+    expect(codes).toContain('untracked:103');
+    expect(codes.reduce((total, code) => total + Number(code.split(':').at(-1)), 0)).toBe(1379);
+  });
+
+  it('does not add an omitted count when all ten keys fit', () => {
+    const h = harness();
+    open = h.summary;
+
+    for (let i = 0; i < 10; i++) h.summary.recordError(`insert:E${i}`);
+    h.summary.flush();
+
+    const codes = field(h.lines[0], 'err_codes');
+    expect(codes.split(',')).toHaveLength(10);
+    expect(codes).not.toContain('other:');
+    expect(codes).not.toContain('untracked:');
+  });
+
+  it('emits an error-only minute when named-key tracking is disabled', () => {
+    const h = harness({ maxTrackedErrors: 0 });
+    open = h.summary;
+
+    h.summary.recordError('insert:A');
+    h.summary.recordError('insert:B');
+    h.summary.flush();
+
+    expect(h.lines).toHaveLength(1);
+    expect(field(h.lines[0], 'err_codes')).toBe('untracked:2');
+  });
+
+  it('resets omitted and untracked totals at the minute boundary', () => {
+    const h = harness({ maxTrackedErrors: 11 });
+    open = h.summary;
+
+    for (let i = 0; i < 12; i++) h.summary.recordError(`insert:E${i}`);
+    h.at(MINUTE);
+    h.summary.recordError('insert:NEW');
+    h.summary.flush();
+
+    expect(field(h.lines[0], 'err_codes')).toContain('other:1,untracked:1');
+    expect(field(h.lines[1], 'err_codes')).toBe('insert:NEW:1');
   });
 
   it('sanitizes a key so a driver message cannot break the line', () => {

@@ -340,7 +340,7 @@ Pass `?includeBots=true` to `/api/stats`, `/api/events`, or `/api/users` to see 
 | `reasons` | Drop reasons for the minute, by count (see the table above) |
 | `bot_sites` | Sites by **bot hit** count — not request volume, which is `reqs` |
 | `suppressed` | Detail bot-filter lines withheld by `BOT_LOG_MAX_PER_MIN` |
-| `err_codes` | Collect failures in the minute as `<stage>:<class>:<count>`, top 10 (`-` when there were none) |
+| `err_codes` | Top 10 collect failure keys as `<stage>:<class>:<count>`, plus `other:N` for omitted occurrences and `untracked:N` for occurrences beyond the 50-key tracking cap (`-` when there were none) |
 
 A minute with no traffic emits nothing, and the open minute is flushed on `SIGTERM` / `SIGINT` so a redeploy does not lose it. Every other route keeps a per-request line with status and duration, with a trailing `aborted` marker when the client left before the answer:
 
@@ -354,7 +354,7 @@ A `/api/collect` request that ends in a 500 also writes a detail line saying whe
 [collect-error] stage=insert class=ECONNRESET site=site_abc events=3 msg="connect ECONNRESET 10.0.0.4:8123"
 ```
 
-`stage` is how far the request got (`parse`, `validate`, `site`, `identity`, `insert`), `class` is the driver's error code when it supplied one and the error class name otherwise, and `events` is the batch size, so a lost batch is countable. These lines are capped at `COLLECT_ERROR_LOG_MAX_PER_MIN` per minute. Withheld ones are **not** part of `suppressed=`, which counts bot-filter lines only: to see how many were withheld, subtract the printed lines from the `err_codes=` total for that minute.
+`stage` is how far the request got (`parse`, `validate`, `site`, `identity`, `insert`), `class` is the driver's error code when it supplied one and the error class name otherwise, and `events` is the batch size, so a lost batch is countable. These lines are capped at `COLLECT_ERROR_LOG_MAX_PER_MIN` per minute. Withheld ones are **not** part of `suppressed=`, which counts bot-filter lines only: to see how many were withheld, subtract the printed lines from the `err_codes=` total for that minute. Sum every named count, `other:N` and `untracked:N` to obtain that total; both tail values count failure occurrences.
 
 User-Agent, IP, site id and URL all come from the request, so each is sanitized to a single line before it reaches a log entry — otherwise one newline in a header would let a request forge its own log records. The same applies to a driver's error message: credentials in a connection string it quotes back are redacted to `scheme://***@host` before the line is written.
 

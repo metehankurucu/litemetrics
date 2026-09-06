@@ -177,7 +177,7 @@ Server wrapper env vars (`apps/server`):
 - `BOT_RATE_WINDOW_MS` (default `60000`): sliding-window size for the per-IP rate limiter (ms).
 - `BOT_RATE_MAX` (default `60`): max events per window per IP before the rate-limit layer fires.
 - `BOT_LOG_MAX_PER_MIN` (default `20`): detail `[bot-filter]` log lines allowed per minute; the overflow is counted as `suppressed=` on the `[collect]` summary line.
-- `COLLECT_ERROR_LOG_MAX_PER_MIN` (default `5`): detail `[collect-error]` log lines allowed per minute. Every failure is still counted in `err_codes=<stage>:<class>:<count>` on the `[collect]` summary line; withheld lines are not part of `suppressed=` (that field is bot-filter only), so derive them by subtracting the printed lines from the `err_codes=` total.
+- `COLLECT_ERROR_LOG_MAX_PER_MIN` (default `5`): detail `[collect-error]` log lines allowed per minute. The `[collect]` summary's `err_codes=` lists the top 10 keys as `<stage>:<class>:<count>`, `other:N` for omitted occurrences and `untracked:N` for occurrences beyond the 50-key tracking cap. Sum all these counts for the total number of failures. Withheld lines are not part of `suppressed=` (that field is bot-filter only), so derive them by subtracting the printed lines from this total.
 
 Read endpoints (`/api/stats`, `/api/events`, `/api/users`) exclude flagged
 events by default. Pass `?includeBots=true` to include them.

@@ -117,7 +117,7 @@ To include flagged traffic in queries, pass `?includeBots=true` on `/api/stats`,
 | `reasons` | Drop reasons for the minute, by count |
 | `bot_sites` | Sites by **bot hit** count — not request volume, which is `reqs` |
 | `suppressed` | Detail `[bot-filter]` lines withheld by `BOT_LOG_MAX_PER_MIN` |
-| `err_codes` | Collect failures in the minute as `<stage>:<class>:<count>`, top 10; `-` when there were none |
+| `err_codes` | Top 10 collect failure keys as `<stage>:<class>:<count>`, plus `other:N` for omitted occurrences and `untracked:N` for occurrences beyond the 50-key tracking cap; `-` when there were none |
 
 A collect request that ends in a 500 also writes a detail line:
 
@@ -130,7 +130,7 @@ A collect request that ends in a 500 also writes a detail line:
 Notes for operators:
 
 - A minute with no traffic emits no line at all (a minute that saw only a collect failure still does).
-- `[collect-error]` detail lines are capped at `COLLECT_ERROR_LOG_MAX_PER_MIN` per minute. The withheld ones are not counted in `suppressed=`, which is bot-filter only; derive them by subtracting the printed lines from that minute's `err_codes=` total.
+- `[collect-error]` detail lines are capped at `COLLECT_ERROR_LOG_MAX_PER_MIN` per minute. The withheld ones are not counted in `suppressed=`, which is bot-filter only; derive them by subtracting the printed lines from that minute's `err_codes=` total. Sum every named count, `other:N` and `untracked:N` to obtain that total; both tail values count failure occurrences.
 - The open minute is flushed on `SIGTERM` / `SIGINT`, so a redeploy does not lose the window a deploy-triggered problem would appear in.
 - The logger runs before CORS and the body parser and records on the first of the handler's `res.end`, `res 'close'`, or a cut-off request body, so a request whose body never finishes arriving — or whose client hangs up before the answer — is counted as `aborted` rather than vanishing. This holds under both Node and Bun (the Docker image runs Bun: its `node` is a bun symlink, and Bun's `http` emits no `res 'close'` for an aborted request).
 - Every other route keeps a per-request line: `14:59:31 GET /api/stats?siteId=site_x 200 42ms [secret]`, with a trailing `aborted` marker when the client left before the answer went out.
