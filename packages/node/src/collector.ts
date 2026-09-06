@@ -359,7 +359,7 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
           return;
         }
         const siteId = Array.from(siteIds)[0] as string;
-        batchSiteId = siteId;
+        batchSiteId = typeof siteId === 'string' ? siteId : undefined;
 
         const userAgent = req.headers?.['user-agent'] || '';
         const acceptLanguage =

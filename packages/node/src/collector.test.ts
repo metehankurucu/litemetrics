@@ -1360,6 +1360,38 @@ describe('collector collect error context', () => {
     expect(insertEvents).not.toHaveBeenCalled();
   });
 
+  it.each([123, true, { key: 'site_test' }, ['site_test']])(
+    'omits a non-string site ID from callback metadata: %j',
+    async (siteId) => {
+      getSite.mockRejectedValueOnce(new Error('site read failed'));
+      const errors: CollectErrorInfo[] = [];
+      const collector = await collectorWith((info) => errors.push(info));
+      const res = makeRes();
+
+      await collector.handler()(makeReq([{ ...pageview(), siteId }]), res);
+
+      expect(res.statusCode).toBe(500);
+      expect(errors).toHaveLength(1);
+      expect(errors[0]).toMatchObject({ stage: 'site', eventCount: 1 });
+      expect(errors[0].siteId).toBeUndefined();
+      expect(insertEvents).not.toHaveBeenCalled();
+    },
+  );
+
+  it('keeps malformed enrichment failures reportable without a string site ID', async () => {
+    const errors: CollectErrorInfo[] = [];
+    const collector = await collectorWith((info) => errors.push(info));
+    const res = makeRes();
+
+    await collector.handler()(makeReq([{ ...pageview(), siteId: 123, referrer: 1 }]), res);
+
+    expect(res.statusCode).toBe(500);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatchObject({ stage: 'identity', errorClass: 'TypeError', eventCount: 1 });
+    expect(errors[0].siteId).toBeUndefined();
+    expect(insertEvents).not.toHaveBeenCalled();
+  });
+
   // Every member of CollectErrorStage has to be reachable, otherwise the union is
   // lying about what a reader can expect to see. identity is the last one.
   it('separates an identity-resolution failure from the insert that follows it', async () => {
