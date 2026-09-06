@@ -51,7 +51,45 @@ describe('redactUrlCredentials', () => {
     ).toBe('read https://docs.example.com and mail admin@example.com');
   });
 
-  it('stays linear on a long colon-free run (bounded quantifiers)', () => {
+  it.each([512, 513, 10_000])('redacts userinfo of length %i without a cutoff', (length) => {
+    const userinfo = `user:${'p'.repeat(length - 5)}`;
+    expect(redactUrlCredentials(`postgres://${userinfo}@db.internal/lm`)).toBe(
+      'postgres://***@db.internal/lm',
+    );
+  });
+
+  it('supports long valid scheme names', () => {
+    const scheme = `custom${'x'.repeat(100)}`;
+    expect(redactUrlCredentials(`${scheme}://user:secret@host/path`)).toBe(
+      `${scheme}://***@host/path`,
+    );
+  });
+
+  it('redacts through the final @ in an authority', () => {
+    expect(redactUrlCredentials('postgres://user:pass@word@db.internal/lm')).toBe(
+      'postgres://***@db.internal/lm',
+    );
+  });
+
+  it.each(['?email=a@b', '#a@b'])('leaves an @ in %s outside the authority untouched', (suffix) => {
+    const url = `https://example.com${suffix}`;
+    expect(redactUrlCredentials(url)).toBe(url);
+    expect(redactUrlCredentials(`https://user:secret@example.com${suffix}`)).toBe(
+      `https://***@example.com${suffix}`,
+    );
+  });
+
+  it('leaves a long credential-free authority untouched', () => {
+    const url = `https://${'a'.repeat(200_000)}/path`;
+    expect(redactUrlCredentials(url)).toBe(url);
+  });
+
+  it('leaves already redacted credentials unchanged', () => {
+    const message = 'postgres://***@db.internal/lm';
+    expect(redactUrlCredentials(message)).toBe(message);
+  });
+
+  it('stays linear on a long colon-free run', () => {
     const run = 'a'.repeat(200_000);
     const started = performance.now();
     expect(redactUrlCredentials(run)).toBe(run);

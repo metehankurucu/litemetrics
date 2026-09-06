@@ -7,13 +7,22 @@
  * lose the `@` that marks the end of the credentials, and a half a DSN with the
  * password still in it reads as ordinary text to every later pass.
  */
-// Both quantifiers are bounded on purpose: the unbounded form backtracks quadratically on a
-// long colon-free run (200 KB of driver text measured at 16 s), and this runs on the raw
-// message before any truncation. Scheme names top out well under 32 chars; RFC 3986 userinfo
-// in a real DSN is far shorter than 512.
-const URL_CREDENTIALS = /([a-z][a-z0-9+.-]{0,31}:\/\/)[^/\s@]{1,512}@/gi;
+// Start at a fixed delimiter, then scan each authority once. An unbounded scheme
+// prefix in the regex would backtrack quadratically on long colon-free messages.
+// Path, query and fragment delimiters end the authority, so their @ stays intact.
+const URL_AUTHORITY = /:\/\/[^/\s?#]*/g;
+const SCHEME_CHARACTER = /[a-z0-9+.-]/i;
+const SCHEME_START = /[a-z]/i;
 
 /** Replace `scheme://user:pass@` with `scheme://***@`. Leaves everything else alone. */
 export function redactUrlCredentials(text: string): string {
-  return text.replace(URL_CREDENTIALS, '$1***@');
+  return text.replace(URL_AUTHORITY, (authority, offset: number) => {
+    // These preceding scheme runs cannot overlap, keeping the total scan linear.
+    let schemeStart = offset;
+    while (schemeStart > 0 && SCHEME_CHARACTER.test(text[schemeStart - 1]!)) schemeStart--;
+    if (schemeStart === offset || !SCHEME_START.test(text[schemeStart]!)) return authority;
+
+    const at = authority.lastIndexOf('@');
+    return at < 3 ? authority : `://***@${authority.slice(at + 1)}`;
+  });
 }

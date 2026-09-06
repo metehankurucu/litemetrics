@@ -1500,6 +1500,19 @@ describe('collector collect error context', () => {
     expect(errors[0].message.endsWith('...')).toBe(true);
   });
 
+  it('redacts long driver credentials before the callback message is truncated', async () => {
+    insertEvents.mockRejectedValueOnce(
+      new Error(`postgres://lm_user:${'secret'.repeat(200)}@db.internal:5432/lm`),
+    );
+    const errors: CollectErrorInfo[] = [];
+    const collector = await collectorWith((info) => errors.push(info));
+
+    await collector.handler()(makeReq([pageview()]), makeRes());
+
+    expect(errors).toHaveLength(1);
+    expect(errors[0].message).toBe('postgres://***@db.internal:5432/lm');
+  });
+
   it('still answers 500 when the host callback itself throws', async () => {
     insertEvents.mockImplementation(async () => {
       throw new Error('boom');
