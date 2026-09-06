@@ -7,6 +7,7 @@ import {
   nearest,
   invalidMetric,
   validatePeriod,
+  assertDateFlag,
   errorEnvelope,
   handleError,
   resolveCompact,
@@ -470,5 +471,115 @@ describe('resolveFormat (strict)', () => {
     // non-TTY, no env → error is emitted as JSON
     const payload = JSON.parse(errSpy.mock.calls[0][0] as string);
     expect(payload.error).toContain('xml');
+  });
+});
+
+// ─── D1: --from / --to must be dates ─────────────────
+// 31 Aug 2026: `--to` swallowed the next flag (`--json`) as its value, the CLI sent
+// it as-is, and the server answered 500. The value never was a date, and the CLI can
+// see that before a request goes out.
+describe('assertDateFlag', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const mockExit = () => {
+    vi.spyOn(process, 'exit').mockImplementation((() => {
+      throw new Error('exit');
+    }) as never);
+    return vi.spyOn(console, 'error').mockImplementation(() => {});
+  };
+
+  it('accepts an ISO day', () => {
+    mockExit();
+    expect(() => assertDateFlag('--from', '2026-08-11', 'json')).not.toThrow();
+  });
+
+  it('accepts a full ISO timestamp', () => {
+    mockExit();
+    expect(() => assertDateFlag('--to', '2026-08-16T00:00:00.000Z', 'json')).not.toThrow();
+  });
+
+  it('accepts an omitted flag', () => {
+    mockExit();
+    expect(() => assertDateFlag('--from', undefined, 'json')).not.toThrow();
+  });
+
+  it('rejects a swallowed flag and says so', () => {
+    const errSpy = mockExit();
+    expect(() => assertDateFlag('--to', '--json', 'json')).toThrow('exit');
+    const payload = JSON.parse(errSpy.mock.calls[0][0] as string);
+    expect(payload.error).toContain('--to');
+    expect(payload.error).toContain('looks like another flag');
+  });
+
+  it('rejects a value that is not a date', () => {
+    const errSpy = mockExit();
+    expect(() => assertDateFlag('--from', 'lastweek', 'json')).toThrow('exit');
+    expect(JSON.parse(errSpy.mock.calls[0][0] as string).error).toContain('must be an ISO date');
+  });
+
+  it('rejects an impossible calendar date', () => {
+    mockExit();
+    expect(() => assertDateFlag('--to', '2026-13-45', 'json')).toThrow('exit');
+  });
+
+  it('rejects two dates crammed into one value', () => {
+    const errSpy = mockExit();
+    expect(() => assertDateFlag('--from', '2026-08-11 2026-08-16', 'json')).toThrow('exit');
+    expect(JSON.parse(errSpy.mock.calls[0][0] as string).error).toContain('must be an ISO date');
+  });
+
+  it('reports in prose when the format is not json', () => {
+    const errSpy = mockExit();
+    expect(() => assertDateFlag('--to', '--json', 'table')).toThrow('exit');
+    expect(errSpy.mock.calls[0][0]).toContain('Error:');
+    expect(errSpy.mock.calls[0][0]).toContain('--to');
+  });
+});
+
+describe('validatePeriod date flags', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const mockExit = () => {
+    vi.spyOn(process, 'exit').mockImplementation((() => {
+      throw new Error('exit');
+    }) as never);
+    return vi.spyOn(console, 'error').mockImplementation(() => {});
+  };
+
+  it('rejects a two-date --from on a custom period', () => {
+    const errSpy = mockExit();
+    expect(() => validatePeriod('custom', '2026-08-11 2026-08-16', '--json', 'json')).toThrow('exit');
+    expect(JSON.parse(errSpy.mock.calls[0][0] as string).error).toContain('--from');
+  });
+
+  it('rejects a swallowed --from even when the period is not custom', () => {
+    const errSpy = mockExit();
+    expect(() => validatePeriod('30d', '--json', undefined, 'table')).toThrow('exit');
+    expect(errSpy.mock.calls[0][0]).toContain('--from');
+  });
+
+  it('rejects a swallowed --to even when the period is not custom', () => {
+    mockExit();
+    expect(() => validatePeriod('30d', undefined, '--json', 'json')).toThrow('exit');
+  });
+
+  it('rejects a bad --from when the period was left to the command default', () => {
+    mockExit();
+    expect(() => validatePeriod(undefined, 'yesterday', undefined, 'json')).toThrow('exit');
+  });
+
+  it('still accepts a well-formed custom range', () => {
+    mockExit();
+    expect(() => validatePeriod('custom', '2026-08-11', '2026-08-16', 'json')).not.toThrow();
+  });
+
+  it('still reports the missing-half error for custom with a valid --from only', () => {
+    const errSpy = mockExit();
+    expect(() => validatePeriod('custom', '2026-08-11', undefined, 'json')).toThrow('exit');
+    expect(JSON.parse(errSpy.mock.calls[0][0] as string).error).toContain('--to');
   });
 });

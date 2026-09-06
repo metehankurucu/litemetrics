@@ -84,17 +84,10 @@ function coarserGranularity(g: Granularity): Granularity | undefined {
   return i >= 0 && i < GRANULARITY_ORDER.length - 1 ? GRANULARITY_ORDER[i + 1] : undefined;
 }
 
-/**
- * A validation failure that should surface to the HTTP client as a 400 (not a
- * 500). The collector's error path reads `statusCode` off the thrown error.
- */
-export class QueryValidationError extends Error {
-  readonly statusCode = 400;
-  constructor(message: string) {
-    super(message);
-    this.name = 'QueryValidationError';
-  }
-}
+// Defined in query-validation.ts, where request-shape validation throws it before
+// any adapter runs. Re-exported here so the adapter side keeps its import path.
+import { QueryValidationError } from '../query-validation';
+export { QueryValidationError };
 
 /** Number of buckets a [from, to] range spans at the given granularity (inclusive). */
 export function countBuckets(from: Date, to: Date, granularity: Granularity): number {

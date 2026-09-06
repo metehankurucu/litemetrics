@@ -252,6 +252,24 @@ export interface BotDetectedInfo {
   mode: BotFilterMode;
 }
 
+/**
+ * Where a /api/collect request was when it failed. A 5xx counter alone cannot tell a
+ * database outage from a malformed body, and those two want opposite responses.
+ */
+export type CollectErrorStage = 'parse' | 'validate' | 'site' | 'identity' | 'insert';
+
+export interface CollectErrorInfo {
+  stage: CollectErrorStage;
+  /** `err.code` when the runtime gave one (ECONNRESET, ETIMEDOUT), else the class name. */
+  errorClass: string;
+  /** Error message, capped at 160 characters. */
+  message: string;
+  /** Present once the batch parsed and resolved to a single site. */
+  siteId?: string;
+  /** Events in the batch, present once the body parsed. */
+  eventCount?: number;
+}
+
 export interface CollectorConfig {
   db: DBConfig;
   adminSecret?: string;
@@ -260,6 +278,12 @@ export interface CollectorConfig {
   trustProxy?: boolean;
   timestampSanity?: TimestampSanityConfig;
   botFilter?: BotFilterConfig;
+  /**
+   * Called when /api/collect answers 500. The host decides what to do with it (log
+   * line, counter, alert); the collector only reports. A throw from this callback is
+   * swallowed so a broken logger cannot change the response.
+   */
+  onCollectError?: (info: CollectErrorInfo) => void;
 }
 
 export type TimestampOutOfWindowReason = 'future' | 'past' | 'invalid';

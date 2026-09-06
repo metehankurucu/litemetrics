@@ -5,7 +5,12 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { existsSync } from 'fs';
 import { createCollectSummary } from './collect-summary';
-import { formatAccessLine, formatBotFilterLine, formatSiteTypeMismatchLine } from './log-format';
+import {
+  formatAccessLine,
+  formatBotFilterLine,
+  formatCollectErrorLine,
+  formatSiteTypeMismatchLine,
+} from './log-format';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -47,6 +52,7 @@ const BOT_FILTER_MODE = (process.env.BOT_FILTER_MODE || 'standard') as 'off' | '
 const BOT_RATE_WINDOW_MS = intEnv('BOT_RATE_WINDOW_MS', 60_000);
 const BOT_RATE_MAX = intEnv('BOT_RATE_MAX', 60);
 const BOT_LOG_MAX_PER_MIN = intEnv('BOT_LOG_MAX_PER_MIN', 20);
+const COLLECT_ERROR_LOG_MAX_PER_MIN = intEnv('COLLECT_ERROR_LOG_MAX_PER_MIN', 5);
 
 const COLLECT_PATH = '/api/collect';
 
@@ -58,7 +64,10 @@ const COLLECT_PATH = '/api/collect';
 // whose body never finishes arriving is rejected by express.json() before this
 // middleware ever runs, so the aborted collect batch is invisible - and a lost batch
 // is lost data, the one thing this summary exists to make countable.
-const collectSummary = createCollectSummary({ maxBotLinesPerMinute: BOT_LOG_MAX_PER_MIN });
+const collectSummary = createCollectSummary({
+  maxBotLinesPerMinute: BOT_LOG_MAX_PER_MIN,
+  maxErrorLinesPerMinute: COLLECT_ERROR_LOG_MAX_PER_MIN,
+});
 
 app.use((req, res, next) => {
   const startedAt = process.hrtime.bigint();
@@ -146,6 +155,13 @@ const collector = await createCollector({
   adminSecret: ADMIN_SECRET,
   geoip: GEOIP,
   trustProxy: TRUST_PROXY,
+  // A collect 500 used to leave nothing but a 5xx counter behind, so a run of them
+  // could not be told apart from one another. The class lands in the minute summary
+  // (err_codes=) and the first few per minute also get a detail line.
+  onCollectError: (info) => {
+    const key = `${info.stage}:${info.errorClass}`;
+    if (collectSummary.recordError(key)) console.error(formatCollectErrorLine(info));
+  },
   botFilter: {
     defaultMode: BOT_FILTER_MODE,
     rateLimitWindowMs: BOT_RATE_WINDOW_MS,

@@ -5,6 +5,7 @@ import {
   formatBotFilterLine,
   formatSiteTypeMismatchLine,
   formatAccessLine,
+  formatCollectErrorLine,
 } from './log-format';
 
 describe('sanitizeUserAgent', () => {
@@ -254,5 +255,94 @@ describe('formatAccessLine', () => {
       auth: '',
     });
     expect(line.split('\n')).toHaveLength(1);
+  });
+});
+
+// ─── O1: the line behind a collect 5xx ────────────────
+describe('formatCollectErrorLine', () => {
+  const base = {
+    stage: 'insert' as const,
+    errorClass: 'ECONNRESET',
+    message: 'connect ECONNRESET 10.0.0.4:8123',
+    siteId: 'site_abc',
+    eventCount: 3,
+  };
+
+  it('names the stage, class, site, batch size and message', () => {
+    expect(formatCollectErrorLine(base)).toBe(
+      '[collect-error] stage=insert class=ECONNRESET site=site_abc events=3 msg="connect ECONNRESET 10.0.0.4:8123"',
+    );
+  });
+
+  it('shows a dash for a site and a count that were never resolved', () => {
+    const line = formatCollectErrorLine({
+      stage: 'parse',
+      errorClass: 'SyntaxError',
+      message: 'Unexpected end of JSON input',
+    });
+    expect(line).toContain('site=-');
+    expect(line).toContain('events=-');
+  });
+
+  // The message comes from a driver, and a driver can quote back whatever the request
+  // contained, so it is attacker-reachable text going into a log line.
+  it('stays a single line when the message carries a newline', () => {
+    const line = formatCollectErrorLine({
+      ...base,
+      message: 'boom\n[collect] minute=2026-09-05T00:00 reqs=1 ok=1',
+    });
+    expect(line.split('\n')).toHaveLength(1);
+  });
+
+  it('keeps the msg field parseable when the message contains a quote', () => {
+    const line = formatCollectErrorLine({ ...base, message: 'relation "events" does not exist' });
+    expect(line).toContain(`msg="relation 'events' does not exist"`);
+    expect(line.match(/"/g)).toHaveLength(2);
+  });
+
+  it('caps a runaway message', () => {
+    const line = formatCollectErrorLine({ ...base, message: 'x'.repeat(400) });
+    expect(line).toContain('...');
+    expect(line.length).toBeLessThan(280);
+  });
+
+  // A connection error can quote the DSN back, and the DSN carries the password.
+  it('redacts credentials a driver quoted back from a connection string', () => {
+    const line = formatCollectErrorLine({
+      ...base,
+      message: 'connect ECONNREFUSED postgres://lm_user:s3cr3t-pw@db.internal:5432/litemetrics',
+    });
+    expect(line).not.toContain('s3cr3t-pw');
+    expect(line).not.toContain('lm_user');
+    expect(line).toContain('postgres://***@db.internal:5432/litemetrics');
+  });
+
+  it('sanitizes a class value that is not a plain token', () => {
+    const line = formatCollectErrorLine({ ...base, errorClass: 'ECONN RESET\nfake=1' });
+    expect(line.split('\n')).toHaveLength(1);
+    expect(line).toContain('class=ECONNRESETfake=1');
+  });
+
+  it('sanitizes a site id that is not a plain token', () => {
+    const line = formatCollectErrorLine({ ...base, siteId: 'site_a b\nc' });
+    expect(line.split('\n')).toHaveLength(1);
+  });
+});
+
+describe('formatCollectErrorLine on the wired path', () => {
+  // The collector caps the message at 160 and marks the cut, so the formatter must
+  // pass that through: a second truncation here would eat the marker and make a cut
+  // message read as a complete one.
+  it('keeps a message the collector already capped and marked', () => {
+    const capped = `${'y'.repeat(157)}...`;
+    const line = formatCollectErrorLine({
+      stage: 'insert',
+      errorClass: 'ECONNRESET',
+      message: capped,
+      siteId: 'site_abc',
+      eventCount: 1,
+    });
+    expect(line.endsWith('..."')).toBe(true);
+    expect(line).toContain(`msg="${capped}"`);
   });
 });

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { EnrichedEvent } from '@litemetrics/core';
+import type { CollectErrorInfo, EnrichedEvent } from '@litemetrics/core';
 
 const {
   insertEvents,
@@ -11,6 +11,7 @@ const {
   listUsers,
   getUserEvents,
   deleteUserEvents,
+  getUserIdForVisitor,
 } = vi.hoisted(() => ({
   insertEvents: vi.fn<(events: EnrichedEvent[]) => Promise<void>>(async () => {}),
   getSite: vi.fn<(siteId: string) => Promise<any>>(async () => null),
@@ -24,6 +25,9 @@ const {
   ),
   deleteUserEvents: vi.fn<(siteId: string, identifier: string) => Promise<{ deleted: number }>>(
     async () => ({ deleted: 3 }),
+  ),
+  getUserIdForVisitor: vi.fn<(siteId: string, visitorId: string) => Promise<string | null>>(
+    async () => null,
   ),
 }));
 
@@ -42,7 +46,7 @@ vi.mock('./adapters/clickhouse', () => {
     getUserEvents = getUserEvents;
     upsertIdentity = async () => {};
     getVisitorIdsForUser = async () => [];
-    getUserIdForVisitor = async () => null;
+    getUserIdForVisitor = getUserIdForVisitor;
     createSite = async () => ({});
     getSite = getSite;
     getSiteBySecret = getSiteBySecret;
@@ -114,6 +118,8 @@ function resetAdapterMocks() {
   getUserEvents.mockImplementation(async () => ({}));
   deleteUserEvents.mockClear();
   deleteUserEvents.mockImplementation(async () => ({ deleted: 3 }));
+  getUserIdForVisitor.mockClear();
+  getUserIdForVisitor.mockImplementation(async () => null);
 }
 
 describe('collector timestamp sanitization', () => {
@@ -1126,5 +1132,437 @@ describe('collector includeBots query param plumbing', () => {
     expect(siteId).toBe('site_test');
     expect(identifier).toBe('visitor-abc');
     expect(params).toMatchObject({ includeBots: true });
+  });
+});
+
+// ─── D1: malformed custom date ranges are client errors, not 500s ──
+// 31 Aug 2026: `dateTo=--json` (a CLI flag swallowed as a value) travelled through
+// every handler into the adapter and came back as a 500. Nothing in the request was
+// unknowable up front, so it belongs in the 400 class - and the query must never be
+// executed at all.
+describe('collector date-range validation', () => {
+  beforeEach(() => {
+    resetAdapterMocks();
+  });
+
+  function makeAuthedGet(url: string) {
+    return {
+      method: 'GET',
+      url,
+      headers: { 'x-litemetrics-admin-secret': 'admin-secret' },
+    };
+  }
+
+  async function makeAuthedCollector() {
+    return createCollector({
+      db: { adapter: 'clickhouse', url: 'http://x' },
+      adminSecret: 'admin-secret',
+    });
+  }
+
+  it('events: a swallowed flag and a two-date value are rejected with 400 before the adapter runs', async () => {
+    const collector = await makeAuthedCollector();
+    const handler = collector.eventsHandler();
+    const res = makeRes();
+    await handler(
+      makeAuthedGet(
+        '/api/events?siteId=site_test&period=custom&dateFrom=2026-08-11+2026-08-16&dateTo=--json',
+      ),
+      res,
+    );
+    expect(res.statusCode).toBe(400);
+    expect(res.body).toMatchObject({ ok: false });
+    expect((res.body as { error: string }).error).toContain('dateFrom');
+    expect(listEvents).not.toHaveBeenCalled();
+  });
+
+  it('events: a well-formed custom range still reaches listEvents with both dates', async () => {
+    const collector = await makeAuthedCollector();
+    const handler = collector.eventsHandler();
+    const res = makeRes();
+    await handler(
+      makeAuthedGet(
+        '/api/events?siteId=site_test&period=custom&dateFrom=2026-08-11&dateTo=2026-08-16',
+      ),
+      res,
+    );
+    expect(res.statusCode).toBe(200);
+    expect(listEvents).toHaveBeenCalledOnce();
+    expect(listEvents.mock.calls[0]![0]).toMatchObject({
+      siteId: 'site_test',
+      period: 'custom',
+      dateFrom: '2026-08-11',
+      dateTo: '2026-08-16',
+    });
+  });
+
+  it('events: a reversed range is rejected with 400', async () => {
+    const collector = await makeAuthedCollector();
+    const handler = collector.eventsHandler();
+    const res = makeRes();
+    await handler(
+      makeAuthedGet(
+        '/api/events?siteId=site_test&period=custom&dateFrom=2026-08-16&dateTo=2026-08-11',
+      ),
+      res,
+    );
+    expect(res.statusCode).toBe(400);
+    expect((res.body as { error: string }).error).toMatch(/before/);
+    expect(listEvents).not.toHaveBeenCalled();
+  });
+
+  it('events: period=custom without dateTo is rejected with 400', async () => {
+    const collector = await makeAuthedCollector();
+    const handler = collector.eventsHandler();
+    const res = makeRes();
+    await handler(
+      makeAuthedGet('/api/events?siteId=site_test&period=custom&dateFrom=2026-08-11'),
+      res,
+    );
+    expect(res.statusCode).toBe(400);
+    expect((res.body as { error: string }).error).toContain('dateTo');
+    expect(listEvents).not.toHaveBeenCalled();
+  });
+
+  it('events: an adapter failure is still a 500, not a 400', async () => {
+    listEvents.mockImplementation(async () => {
+      throw new Error('connection refused');
+    });
+    const collector = await makeAuthedCollector();
+    const handler = collector.eventsHandler();
+    const res = makeRes();
+    await handler(makeAuthedGet('/api/events?siteId=site_test'), res);
+    expect(res.statusCode).toBe(500);
+  });
+
+  it('stats: dateTo=--json is rejected with 400 and db.query is never called', async () => {
+    const collector = await makeAuthedCollector();
+    const handler = collector.queryHandler();
+    const res = makeRes();
+    await handler(
+      makeAuthedGet('/api/stats?siteId=site_test&metric=pageviews&period=custom&dateFrom=2026-08-11&dateTo=--json'),
+      res,
+    );
+    expect(res.statusCode).toBe(400);
+    expect((res.body as { error: string }).error).toContain('dateTo');
+    expect(query).not.toHaveBeenCalled();
+  });
+
+  it('stats: a well-formed custom range still reaches db.query with both dates', async () => {
+    const collector = await makeAuthedCollector();
+    const handler = collector.queryHandler();
+    const res = makeRes();
+    await handler(
+      makeAuthedGet('/api/stats?siteId=site_test&metric=pageviews&period=custom&dateFrom=2026-08-11&dateTo=2026-08-16'),
+      res,
+    );
+    expect(res.statusCode).toBe(200);
+    expect(query.mock.calls[0]![0]).toMatchObject({
+      dateFrom: '2026-08-11',
+      dateTo: '2026-08-16',
+    });
+  });
+
+  it('user events: a malformed dateFrom is rejected with 400 before getUserEvents runs', async () => {
+    const collector = await makeAuthedCollector();
+    const handler = collector.usersHandler();
+    const res = makeRes();
+    await handler(
+      makeAuthedGet(
+        '/api/users/visitor-abc/events?siteId=site_test&period=custom&dateFrom=--json&dateTo=2026-08-16',
+      ),
+      res,
+    );
+    expect(res.statusCode).toBe(400);
+    expect((res.body as { error: string }).error).toContain('dateFrom');
+    expect(getUserEvents).not.toHaveBeenCalled();
+  });
+
+  it('user events: a well-formed custom range still reaches getUserEvents', async () => {
+    const collector = await makeAuthedCollector();
+    const handler = collector.usersHandler();
+    const res = makeRes();
+    await handler(
+      makeAuthedGet(
+        '/api/users/visitor-abc/events?siteId=site_test&period=custom&dateFrom=2026-08-11&dateTo=2026-08-16',
+      ),
+      res,
+    );
+    expect(res.statusCode).toBe(200);
+    expect(getUserEvents).toHaveBeenCalledOnce();
+    expect(getUserEvents.mock.calls[0]![2]).toMatchObject({
+      dateFrom: '2026-08-11',
+      dateTo: '2026-08-16',
+    });
+  });
+});
+
+// ─── O1: what was behind a collect 5xx ────────────────
+// The catch used to answer 500 and say nothing, so a run of collect failures was
+// countable (5xx=N in the minute summary) but not diagnosable. onCollectError hands
+// the host the stage, the error class, the site and the batch size.
+describe('collector collect error context', () => {
+  beforeEach(() => {
+    resetAdapterMocks();
+  });
+
+  function pageview(siteId = 'site_test') {
+    return {
+      type: 'pageview',
+      siteId,
+      timestamp: Date.now(),
+      sessionId: 'sess-1',
+      visitorId: 'vis-1',
+      url: 'https://example.com/pricing',
+    };
+  }
+
+  async function collectorWith(onCollectError?: (info: CollectErrorInfo) => void) {
+    return createCollector({
+      db: { adapter: 'clickhouse', url: 'http://x' },
+      onCollectError,
+    });
+  }
+
+  it('reports stage, error class, site and event count when the insert fails', async () => {
+    insertEvents.mockImplementation(async () => {
+      throw Object.assign(new Error('boom'), { code: 'ECONNRESET' });
+    });
+    const errors: CollectErrorInfo[] = [];
+    const collector = await collectorWith((info) => errors.push(info));
+    const res = makeRes();
+
+    await collector.handler()(makeReq([pageview()]), res);
+
+    expect(res.statusCode).toBe(500);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatchObject({
+      stage: 'insert',
+      errorClass: 'ECONNRESET',
+      siteId: 'site_test',
+      eventCount: 1,
+    });
+    expect(errors[0].message).toBe('boom');
+  });
+
+  it('separates a site-lookup failure from an insert failure', async () => {
+    getSite.mockImplementation(async () => {
+      throw Object.assign(new Error('site read failed'), { code: 'ETIMEDOUT' });
+    });
+    const errors: CollectErrorInfo[] = [];
+    const collector = await collectorWith((info) => errors.push(info));
+    const res = makeRes();
+
+    await collector.handler()(makeReq([pageview()]), res);
+
+    expect(res.statusCode).toBe(500);
+    expect(errors[0]).toMatchObject({ stage: 'site', errorClass: 'ETIMEDOUT', eventCount: 1 });
+    expect(insertEvents).not.toHaveBeenCalled();
+  });
+
+  it.each([123, true, { key: 'site_test' }, ['site_test']])(
+    'omits a non-string site ID from callback metadata: %j',
+    async (siteId) => {
+      getSite.mockRejectedValueOnce(new Error('site read failed'));
+      const errors: CollectErrorInfo[] = [];
+      const collector = await collectorWith((info) => errors.push(info));
+      const res = makeRes();
+
+      await collector.handler()(makeReq([{ ...pageview(), siteId }]), res);
+
+      expect(res.statusCode).toBe(500);
+      expect(errors).toHaveLength(1);
+      expect(errors[0]).toMatchObject({ stage: 'site', eventCount: 1 });
+      expect(errors[0].siteId).toBeUndefined();
+      expect(insertEvents).not.toHaveBeenCalled();
+    },
+  );
+
+  it('keeps malformed enrichment failures reportable without a string site ID', async () => {
+    const errors: CollectErrorInfo[] = [];
+    const collector = await collectorWith((info) => errors.push(info));
+    const res = makeRes();
+
+    await collector.handler()(makeReq([{ ...pageview(), siteId: 123, referrer: 1 }]), res);
+
+    expect(res.statusCode).toBe(500);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatchObject({ stage: 'identity', errorClass: 'TypeError', eventCount: 1 });
+    expect(errors[0].siteId).toBeUndefined();
+    expect(insertEvents).not.toHaveBeenCalled();
+  });
+
+  // Every member of CollectErrorStage has to be reachable, otherwise the union is
+  // lying about what a reader can expect to see. identity is the last one.
+  it('separates an identity-resolution failure from the insert that follows it', async () => {
+    getUserIdForVisitor.mockImplementation(async () => {
+      throw Object.assign(new Error('identity read failed'), { code: 'ECONNRESET' });
+    });
+    const errors: CollectErrorInfo[] = [];
+    const collector = await collectorWith((info) => errors.push(info));
+    const res = makeRes();
+
+    await collector.handler()(
+      makeReq([{ ...pageview(), visitorId: `vis-identity-${Date.now()}` }]),
+      res,
+    );
+
+    expect(res.statusCode).toBe(500);
+    expect(errors[0]).toMatchObject({
+      stage: 'identity',
+      errorClass: 'ECONNRESET',
+      siteId: 'site_test',
+      eventCount: 1,
+    });
+    expect(insertEvents).not.toHaveBeenCalled();
+  });
+
+  it('reports a body that never parsed as the parse stage, with no site to name', async () => {
+    const errors: CollectErrorInfo[] = [];
+    const collector = await collectorWith((info) => errors.push(info));
+    const res = makeRes();
+
+    await collector.handler()(
+      { method: 'POST', headers: {}, body: '{"events": [', socket: { remoteAddress: '1.2.3.4' } },
+      res,
+    );
+
+    expect(res.statusCode).toBe(500);
+    expect(errors[0]).toMatchObject({ stage: 'parse', errorClass: 'SyntaxError' });
+    expect(errors[0].siteId).toBeUndefined();
+    expect(errors[0].eventCount).toBeUndefined();
+  });
+
+  it('reports a malformed event inside a parsed body as the validate stage', async () => {
+    const errors: CollectErrorInfo[] = [];
+    const collector = await collectorWith((info) => errors.push(info));
+    const res = makeRes();
+
+    await collector.handler()(makeReq([null]), res);
+
+    expect(res.statusCode).toBe(500);
+    expect(errors[0]).toMatchObject({ stage: 'validate', errorClass: 'TypeError', eventCount: 1 });
+    expect(errors[0].siteId).toBeUndefined();
+  });
+
+  it('falls back to the error constructor name when there is no code', async () => {
+    insertEvents.mockImplementation(async () => {
+      throw new TypeError('events.map is not a function');
+    });
+    const errors: CollectErrorInfo[] = [];
+    const collector = await collectorWith((info) => errors.push(info));
+
+    await collector.handler()(makeReq([pageview()]), makeRes());
+
+    expect(errors[0].errorClass).toBe('TypeError');
+  });
+
+  it('truncates the message so one error cannot own the log line', async () => {
+    insertEvents.mockImplementation(async () => {
+      throw new Error('x'.repeat(400));
+    });
+    const errors: CollectErrorInfo[] = [];
+    const collector = await collectorWith((info) => errors.push(info));
+
+    await collector.handler()(makeReq([pageview()]), makeRes());
+
+    expect(errors[0].message).toHaveLength(160);
+  });
+
+  // Truncation must not be able to hide the end of a DSN: cut at 160 first and the
+  // `@` that closes the credentials can fall off the end, leaving `user:password`
+  // looking like ordinary text to every later pass.
+  it('redacts driver credentials before the message is truncated', async () => {
+    const password = 'sup3rsecretpassword1';
+    insertEvents.mockImplementation(async () => {
+      throw new Error(`${'x'.repeat(130)}postgres://lm_user:${password}@db.internal:5432/lm`);
+    });
+    const errors: CollectErrorInfo[] = [];
+    const collector = await collectorWith((info) => errors.push(info));
+
+    await collector.handler()(makeReq([pageview()]), makeRes());
+
+    expect(errors[0].message).not.toContain(password);
+    expect(errors[0].message).not.toContain('lm_user');
+    expect(errors[0].message).toContain('postgres://***@db.internal');
+  });
+
+  it('marks a truncated message so it cannot be read as the whole error', async () => {
+    insertEvents.mockImplementation(async () => {
+      throw new Error('y'.repeat(400));
+    });
+    const errors: CollectErrorInfo[] = [];
+    const collector = await collectorWith((info) => errors.push(info));
+
+    await collector.handler()(makeReq([pageview()]), makeRes());
+
+    expect(errors[0].message).toHaveLength(160);
+    expect(errors[0].message.endsWith('...')).toBe(true);
+  });
+
+  it('redacts long driver credentials before the callback message is truncated', async () => {
+    insertEvents.mockRejectedValueOnce(
+      new Error(`postgres://lm_user:${'secret'.repeat(200)}@db.internal:5432/lm`),
+    );
+    const errors: CollectErrorInfo[] = [];
+    const collector = await collectorWith((info) => errors.push(info));
+
+    await collector.handler()(makeReq([pageview()]), makeRes());
+
+    expect(errors).toHaveLength(1);
+    expect(errors[0].message).toBe('postgres://***@db.internal:5432/lm');
+  });
+
+  it('still answers 500 when the host callback itself throws', async () => {
+    insertEvents.mockImplementation(async () => {
+      throw new Error('boom');
+    });
+    const collector = await collectorWith(() => {
+      throw new Error('logger exploded');
+    });
+    const res = makeRes();
+
+    await expect(collector.handler()(makeReq([pageview()]), res)).resolves.toBeUndefined();
+    expect(res.statusCode).toBe(500);
+    expect(res.body).toMatchObject({ ok: false });
+  });
+
+  it('still answers 500 when no callback is configured', async () => {
+    insertEvents.mockImplementation(async () => {
+      throw new Error('boom');
+    });
+    const collector = await collectorWith(undefined);
+    const res = makeRes();
+
+    await collector.handler()(makeReq([pageview()]), res);
+
+    expect(res.statusCode).toBe(500);
+  });
+
+  it('says nothing when the batch is accepted', async () => {
+    const errors: CollectErrorInfo[] = [];
+    const collector = await collectorWith((info) => errors.push(info));
+    const res = makeRes();
+
+    await collector.handler()(makeReq([pageview()]), res);
+
+    expect(res.statusCode).toBe(200);
+    expect(errors).toHaveLength(0);
+  });
+
+  it('carries the real batch size, not one per event', async () => {
+    insertEvents.mockImplementation(async () => {
+      throw Object.assign(new Error('boom'), { code: 'ECONNRESET' });
+    });
+    const errors: CollectErrorInfo[] = [];
+    const collector = await collectorWith((info) => errors.push(info));
+
+    await collector.handler()(
+      makeReq([pageview(), pageview(), pageview()]),
+      makeRes(),
+    );
+
+    expect(errors).toHaveLength(1);
+    expect(errors[0].eventCount).toBe(3);
   });
 });

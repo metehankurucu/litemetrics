@@ -1,4 +1,5 @@
 import type { QueryParams } from '@litemetrics/core';
+import { validateDateRange } from './query-validation';
 
 export interface BotStatsResult {
   total: number;
@@ -51,12 +52,19 @@ export function extractQueryParams(req: any): QueryParams {
       console.warn(`[litemetrics] Invalid timezone "${q.timezone}", falling back to UTC`);
     }
   }
+  // Throws QueryValidationError (400) rather than letting an unparseable date reach the
+  // adapter and come back as a 500.
+  const { dateFrom, dateTo } = validateDateRange({
+    period: q.period,
+    dateFrom: q.dateFrom,
+    dateTo: q.dateTo,
+  });
   return {
     siteId: q.siteId as string,
     metric: q.metric as QueryParams['metric'],
     period: q.period as QueryParams['period'],
-    dateFrom: q.dateFrom as string | undefined,
-    dateTo: q.dateTo as string | undefined,
+    dateFrom,
+    dateTo,
     limit: q.limit ? parseInt(q.limit as string, 10) : undefined,
     filters: q.filters ? JSON.parse(q.filters as string) : undefined,
     compare: q.compare === 'true' || q.compare === '1',
