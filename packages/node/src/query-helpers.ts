@@ -52,7 +52,7 @@ export function extractQueryParams(req: any): QueryParams {
       console.warn(`[litemetrics] Invalid timezone "${q.timezone}", falling back to UTC`);
     }
   }
-  // Throws InvalidQueryError (400) rather than letting an unparseable date reach the
+  // Throws QueryValidationError (400) rather than letting an unparseable date reach the
   // adapter and come back as a 500.
   const { dateFrom, dateTo } = validateDateRange({
     period: q.period,
