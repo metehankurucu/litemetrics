@@ -64,6 +64,7 @@ Open `http://localhost:3002` for the dashboard.
 | `BOT_RATE_WINDOW_MS` | Sliding-window size for the per-IP rate limiter (ms) | `60000` |
 | `BOT_RATE_MAX` | Max events per window per IP before the rate-limit layer fires | `60` |
 | `BOT_LOG_MAX_PER_MIN` | Detail `[bot-filter]` log lines allowed per minute; the overflow is counted as `suppressed=` on the `[collect]` summary | `20` |
+| `COLLECT_ERROR_LOG_MAX_PER_MIN` | Detail `[collect-error]` log lines allowed per minute; every failure is still counted in `err_codes=` on the `[collect]` summary | `5` |
 
 `DATABASE_URL` and `LITEMETRICS_ADMIN_SECRET` also work as aliases.
 
@@ -104,7 +105,7 @@ To include flagged traffic in queries, pass `?includeBots=true` on `/api/stats`,
 `/api/collect` is not logged per request — at production volume that alone fills a fixed-size platform log window in hours. Each wall-clock minute with traffic emits one summary line instead:
 
 ```
-[collect] minute=2026-08-18T17:35 reqs=11 ok=8 3xx=0 4xx=0 5xx=0 aborted=3 dur_p50=302 dur_p95=712 dur_max=712 bot_dropped=5 bot_flagged=0 reasons=ua-signature:4,empty-ua:1 bot_sites=site_e2e:5 suppressed=2
+[collect] minute=2026-08-18T17:35 reqs=11 ok=8 3xx=0 4xx=0 5xx=0 aborted=3 dur_p50=302 dur_p95=712 dur_max=712 bot_dropped=5 bot_flagged=0 reasons=ua-signature:4,empty-ua:1 bot_sites=site_e2e:5 suppressed=2 err_codes=-
 ```
 
 | Field | Meaning |
@@ -116,10 +117,20 @@ To include flagged traffic in queries, pass `?includeBots=true` on `/api/stats`,
 | `reasons` | Drop reasons for the minute, by count |
 | `bot_sites` | Sites by **bot hit** count — not request volume, which is `reqs` |
 | `suppressed` | Detail `[bot-filter]` lines withheld by `BOT_LOG_MAX_PER_MIN` |
+| `err_codes` | Top 10 collect failure keys as `<stage>:<class>:<count>`, plus `other:N` for omitted occurrences and `untracked:N` for occurrences beyond the 50-key tracking cap; `-` when there were none |
+
+A collect request that ends in a 500 also writes a detail line:
+
+```
+[collect-error] stage=<parse|validate|site|identity|insert> class=<code or error class> site=<siteId> events=<batch size> msg="<message>"
+```
+
+`stage` is how far the request got, so a database outage (`stage=site` or `stage=insert`, `class=ECONNREFUSED`) is distinguishable from one broken caller (`stage=parse`, `class=SyntaxError`) without reproducing anything. `msg` is capped at 160 characters and credentials in a connection string the driver quotes back are redacted to `scheme://***@host`.
 
 Notes for operators:
 
-- A minute with no traffic emits no line at all.
+- A minute with no traffic emits no line at all (a minute that saw only a collect failure still does).
+- `[collect-error]` detail lines are capped at `COLLECT_ERROR_LOG_MAX_PER_MIN` per minute. The withheld ones are not counted in `suppressed=`, which is bot-filter only; derive them by subtracting the printed lines from that minute's `err_codes=` total. Sum every named count, `other:N` and `untracked:N` to obtain that total; both tail values count failure occurrences.
 - The open minute is flushed on `SIGTERM` / `SIGINT`, so a redeploy does not lose the window a deploy-triggered problem would appear in.
 - The logger runs before CORS and the body parser and records on the first of the handler's `res.end`, `res 'close'`, or a cut-off request body, so a request whose body never finishes arriving — or whose client hangs up before the answer — is counted as `aborted` rather than vanishing. This holds under both Node and Bun (the Docker image runs Bun: its `node` is a bun symlink, and Bun's `http` emits no `res 'close'` for an aborted request).
 - Every other route keeps a per-request line: `14:59:31 GET /api/stats?siteId=site_x 200 42ms [secret]`, with a trailing `aborted` marker when the client left before the answer went out.

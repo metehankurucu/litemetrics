@@ -10,6 +10,8 @@ export {
   type HeuristicBotReason,
 } from './heuristic-bot';
 export { createRateLimiter, type RateLimiter, type RateLimiterConfig, type RateLimitResult } from './rate-limit';
+export { validateDateRange } from './query-validation';
+export { redactUrlCredentials } from './redact';
 
 // Re-export types from core
 export type {
@@ -35,4 +37,6 @@ export type {
   BotDetectedInfo,
   BotDropReason,
   SiteTypeMismatchInfo,
+  CollectErrorInfo,
+  CollectErrorStage,
 } from '@litemetrics/core';

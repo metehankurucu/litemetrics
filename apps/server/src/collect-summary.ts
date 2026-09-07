@@ -31,6 +31,14 @@ export interface CollectSummaryConfig {
    * Default 200.
    */
   maxTrackedSites?: number;
+  /** Detail collect-error lines allowed per minute before suppression. Default 5. */
+  maxErrorLinesPerMinute?: number;
+  /**
+   * Upper bound on distinct error keys tracked per minute. The error class can come
+   * from a driver quoting the request back, so it is no more bounded than a site id.
+   * Default 50.
+   */
+  maxTrackedErrors?: number;
 }
 
 export interface BotHit {
@@ -52,6 +60,12 @@ export interface CollectSummary {
    * line, which is capped per minute so a bot storm cannot flood the log budget.
    */
   recordBot(hit: BotHit): boolean;
+  /**
+   * Record a collect failure under a `<stage>:<class>` key. Returns whether the
+   * caller should also print the detail line, capped per minute so a database outage
+   * cannot flood the log budget with one line per failed batch.
+   */
+  recordError(key: string): boolean;
   /** Emit the open minute immediately (shutdown path). */
   flush(): void;
   /** Close a minute that ended while no request arrived. Exposed for tests. */
@@ -78,6 +92,9 @@ interface Bucket {
   sitesOverflow: number;
   botLines: number;
   suppressed: number;
+  errors: Map<string, number>;
+  errorsOverflow: number;
+  errorLines: number;
 }
 
 function minuteKey(ts: number): string {
@@ -103,6 +120,9 @@ function newBucket(key: string): Bucket {
     sitesOverflow: 0,
     botLines: 0,
     suppressed: 0,
+    errors: new Map(),
+    errorsOverflow: 0,
+    errorLines: 0,
   };
 }
 
@@ -111,12 +131,22 @@ function percentile(sorted: number[], p: number): number {
   return sorted[Math.max(0, index)];
 }
 
-function topN(counts: Map<string, number>, limit: number, sanitize: boolean, overflow = 0): string {
+function topN(
+  counts: Map<string, number>,
+  limit: number,
+  sanitize: boolean,
+  overflow = 0,
+  tail: 'keys' | 'occurrences' = 'keys',
+): string {
   if (counts.size === 0 && overflow === 0) return '-';
   const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1]);
   const head = sorted.slice(0, limit).map(([key, n]) => `${sanitize ? sanitizeToken(key) : key}:${n}`);
   const rest = sorted.length - head.length;
-  if (rest > 0) head.push(`+${rest}`);
+  if (rest > 0) {
+    head.push(tail === 'occurrences'
+      ? `other:${sorted.slice(head.length).reduce((total, [, n]) => total + n, 0)}`
+      : `+${rest}`);
+  }
   // Hits that arrived after the tracking cap. Named rather than folded into the
   // listed sites, so the line never reads as "only these sites were hit".
   if (overflow > 0) head.push(`untracked:${overflow}`);
@@ -131,6 +161,8 @@ export function createCollectSummary(config: CollectSummaryConfig = {}): Collect
   const topSites = config.topSites ?? 5;
   const maxDurationSamples = config.maxDurationSamples ?? 1_000;
   const maxTrackedSites = config.maxTrackedSites ?? 200;
+  const maxErrorLinesPerMinute = config.maxErrorLinesPerMinute ?? 5;
+  const maxTrackedErrors = config.maxTrackedErrors ?? 50;
 
   let bucket: Bucket | null = null;
 
@@ -138,8 +170,10 @@ export function createCollectSummary(config: CollectSummaryConfig = {}): Collect
     if (!bucket) return;
     const b = bucket;
     bucket = null;
-    // R7: a minute with nothing in it costs no line.
-    if (b.reqs === 0 && b.dropped === 0 && b.flagged === 0) return;
+    // R7: a minute with nothing in it costs no line. An error counts as something: it
+    // is reported before the response completes, so a failure at the very end of a
+    // minute can land in a bucket whose request lands in the next one.
+    if (b.reqs === 0 && b.dropped === 0 && b.flagged === 0 && b.errors.size === 0 && b.errorsOverflow === 0) return;
 
     const sorted = [...b.durations].sort((x, y) => x - y);
     const p50 = sorted.length ? String(Math.round(percentile(sorted, 50))) : '-';
@@ -170,6 +204,9 @@ export function createCollectSummary(config: CollectSummaryConfig = {}): Collect
         // bot hits per site - not request volume, which sits in reqs.
         `bot_sites=${topN(b.sites, topSites, true, b.sitesOverflow)}`,
         `suppressed=${b.suppressed}`,
+        // Appended last on purpose: monitoring parses the fields above, so a new one
+        // goes on the end where it cannot move them.
+        `err_codes=${topN(b.errors, 10, true, b.errorsOverflow, 'occurrences')}`,
       ].join(' '),
     );
   }
@@ -229,6 +266,23 @@ export function createCollectSummary(config: CollectSummaryConfig = {}): Collect
         return true;
       }
       b.suppressed++;
+      return false;
+    },
+
+    recordError(key: string): boolean {
+      const b = current();
+      // Same cap shape as the site map: keys past the cap still show up, as an
+      // untracked count, rather than each minting a map entry.
+      if (b.errors.has(key) || b.errors.size < maxTrackedErrors) {
+        b.errors.set(key, (b.errors.get(key) ?? 0) + 1);
+      } else {
+        b.errorsOverflow++;
+      }
+
+      if (b.errorLines < maxErrorLinesPerMinute) {
+        b.errorLines++;
+        return true;
+      }
       return false;
     },
 

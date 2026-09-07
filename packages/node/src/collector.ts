@@ -1,4 +1,5 @@
 import type {
+  CollectErrorStage,
   CollectorConfig,
   DBAdapter,
   EnrichedEvent,
@@ -29,6 +30,10 @@ import { createRateLimiter } from './rate-limit';
 import type { BotFilterMode, BotDetectedInfo, BotDropReason } from '@litemetrics/core';
 import { resolveTimestampSanity, sanitizeEventTimestamp } from './timestamp-sanity';
 import { normalizeReferrer } from './normalize-referrer';
+import { redactUrlCredentials } from './redact';
+
+/** Cap on the message carried out of a collect failure (log-line budget). */
+const MAX_COLLECT_ERROR_MESSAGE = 160;
 
 export interface Collector {
   handler(): (req: any, res: any) => void | Promise<void>;
@@ -72,6 +77,49 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
 
   function reportBot(info: BotDetectedInfo): void {
     botCfg.onBotDetected?.(info);
+  }
+
+  /**
+   * Hand the host what is behind a collect 500: which stage the request reached, the
+   * error class (`err.code` when the runtime supplied one, otherwise the constructor
+   * name), a capped message, and the batch's site and size when the body had already
+   * parsed. The callback is best-effort - a host logger that throws must not turn a
+   * failed insert into a crashed request.
+   */
+  function reportCollectError(
+    err: unknown,
+    stage: CollectErrorStage,
+    siteId: string | undefined,
+    payload: CollectPayload | undefined,
+  ): void {
+    if (!config.onCollectError) return;
+    const source = err as { code?: unknown; message?: unknown; constructor?: { name?: string } };
+    const code = source?.code;
+    const errorClass =
+      typeof code === 'string' && code !== ''
+        ? code
+        : typeof code === 'number'
+        ? String(code)
+        : source?.constructor?.name ?? 'Error';
+    const raw = typeof source?.message === 'string' ? source.message : String(err);
+    // Redact first, truncate second: cutting at the budget can drop the `@` that ends
+    // a DSN's credentials, and what is left still carries the password.
+    const message = redactUrlCredentials(raw);
+    const events = payload?.events;
+    try {
+      config.onCollectError({
+        stage,
+        errorClass,
+        message:
+          message.length > MAX_COLLECT_ERROR_MESSAGE
+            ? `${message.slice(0, MAX_COLLECT_ERROR_MESSAGE - 3)}...`
+            : message,
+        siteId,
+        eventCount: Array.isArray(events) ? events.length : undefined,
+      });
+    } catch {
+      // Reporting is a side channel; the response below is the contract.
+    }
   }
 
   function resolveBotMode(site: { botFilterMode?: BotFilterMode | null } | null | undefined): BotFilterMode {
@@ -285,9 +333,16 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
         return;
       }
 
+      // Tracked outside the try so the catch can say where the request was. A 500 with
+      // no stage is what made the 03 Sep 2026 run of collect failures undiagnosable.
+      let stage: CollectErrorStage = 'parse';
+      let payload: CollectPayload | undefined;
+      let batchSiteId: string | undefined;
+
       try {
         const body = await parseBody(req);
-        const payload = body as CollectPayload;
+        payload = body as CollectPayload;
+        stage = 'validate';
 
         if (!payload?.events || !Array.isArray(payload.events) || payload.events.length === 0) {
           sendJson(res, 400, { ok: false, error: 'No events provided' });
@@ -304,6 +359,7 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
           return;
         }
         const siteId = Array.from(siteIds)[0] as string;
+        batchSiteId = typeof siteId === 'string' ? siteId : undefined;
 
         const userAgent = req.headers?.['user-agent'] || '';
         const acceptLanguage =
@@ -316,6 +372,7 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
         const ip = extractIp(req);
 
         // Resolve site early - needed for per-site bot mode override
+        stage = 'site';
         const site = await db.getSite(siteId);
         const mode = resolveBotMode(site);
 
@@ -388,12 +445,15 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
           }
         }
 
+        stage = 'identity';
         const enriched = enrichEvents(payload.events, ip, userAgent, bot?.layer);
 
         await processIdentity(enriched);
+        stage = 'insert';
         await db.insertEvents(enriched);
         sendJson(res, 200, { ok: true });
       } catch (err) {
+        reportCollectError(err, stage, batchSiteId, payload);
         sendJson(res, 500, { ok: false, error: err instanceof Error ? err.message : 'Internal error' });
       }
     };
@@ -600,6 +660,12 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
           ? q.eventNames.split(',').map((s: string) => s.trim()).filter(Boolean)
           : undefined;
 
+        const { dateFrom, dateTo } = validateDateRange({
+          period: q.period,
+          dateFrom: q.dateFrom,
+          dateTo: q.dateTo,
+        });
+
         const params: EventListParams = {
           siteId: q.siteId as string,
           type: q.type as EventListParams['type'],
@@ -609,8 +675,8 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
           visitorId: q.visitorId as string | undefined,
           userId: q.userId as string | undefined,
           period: q.period as EventListParams['period'],
-          dateFrom: q.dateFrom as string | undefined,
-          dateTo: q.dateTo as string | undefined,
+          dateFrom,
+          dateTo,
           limit: q.limit ? parseInt(q.limit as string, 10) : undefined,
           offset: q.offset ? parseInt(q.offset as string, 10) : undefined,
           includeBots: q.includeBots === 'true' || q.includeBots === '1',
@@ -619,7 +685,9 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
         const result = await db.listEvents(params);
         sendJson(res, 200, result);
       } catch (err) {
-        sendJson(res, 500, { ok: false, error: err instanceof Error ? err.message : 'Internal error' });
+        const code = err instanceof Error ? (err as { statusCode?: unknown }).statusCode : undefined;
+        const status = typeof code === 'number' ? code : 500;
+        sendJson(res, status, { ok: false, error: err instanceof Error ? err.message : 'Internal error' });
       }
     };
   }
@@ -692,6 +760,12 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
             ? q.eventNames.split(',').map((s: string) => s.trim()).filter(Boolean)
             : undefined;
 
+          const { dateFrom, dateTo } = validateDateRange({
+            period: q.period,
+            dateFrom: q.dateFrom,
+            dateTo: q.dateTo,
+          });
+
           const params: EventListParams = {
             siteId,
             type: q.type as EventListParams['type'],
@@ -699,8 +773,8 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
             eventNames,
             eventSource: q.eventSource as EventListParams['eventSource'],
             period: q.period as EventListParams['period'],
-            dateFrom: q.dateFrom as string | undefined,
-            dateTo: q.dateTo as string | undefined,
+            dateFrom,
+            dateTo,
             limit: q.limit ? parseInt(q.limit as string, 10) : undefined,
             offset: q.offset ? parseInt(q.offset as string, 10) : undefined,
             includeBots: q.includeBots === 'true' || q.includeBots === '1',
@@ -732,7 +806,9 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
         const result = await db.listUsers(params);
         sendJson(res, 200, result);
       } catch (err) {
-        sendJson(res, 500, { ok: false, error: err instanceof Error ? err.message : 'Internal error' });
+        const code = err instanceof Error ? (err as { statusCode?: unknown }).statusCode : undefined;
+        const status = typeof code === 'number' ? code : 500;
+        sendJson(res, status, { ok: false, error: err instanceof Error ? err.message : 'Internal error' });
       }
     };
   }
@@ -830,6 +906,7 @@ async function parseBody(req: any): Promise<unknown> {
 
 // Extracted to query-helpers.ts for testability
 import { extractQueryParams } from './query-helpers.js';
+import { validateDateRange } from './query-validation.js';
 
 function sendJson(res: any, status: number, body: unknown): void {
   if (typeof res.status === 'function' && typeof res.json === 'function') {

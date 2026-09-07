@@ -1,4 +1,5 @@
-import type { BotDetectedInfo, SiteTypeMismatchInfo } from '@litemetrics/node';
+import { redactUrlCredentials } from '@litemetrics/node';
+import type { BotDetectedInfo, CollectErrorInfo, SiteTypeMismatchInfo } from '@litemetrics/node';
 
 // Everything formatted here comes from the request: the User-Agent header, the
 // X-Forwarded-For chain, the siteId inside the JSON body, the URL. A newline in any
@@ -68,6 +69,28 @@ export function formatSiteTypeMismatchLine(info: SiteTypeMismatchInfo): string {
     `mode=${info.mode}`,
     '-',
     consequence,
+  ].join(' ');
+}
+
+/**
+ * Detail line for a /api/collect 500. The counters live in the minute summary; this
+ * says which stage failed and with what, which is the part that decides whether an
+ * operator is looking at a database outage or at one broken caller. Everything except
+ * the stage is either driver text or request-derived, so it is sanitized: the class
+ * and site as tokens, the message as a quoted free-text field (spaces kept, control
+ * characters and quotes neutralized, length capped).
+ */
+export function formatCollectErrorLine(info: CollectErrorInfo): string {
+  // The collector redacts before it truncates; this repeats it for any other caller
+  // (redaction is idempotent, so the wired path pays nothing for it).
+  const redacted = redactUrlCredentials(info.message ?? '');
+  return [
+    '[collect-error]',
+    `stage=${sanitizeToken(info.stage, 16)}`,
+    `class=${sanitizeToken(info.errorClass, 40)}`,
+    `site=${sanitizeToken(info.siteId)}`,
+    `events=${info.eventCount ?? '-'}`,
+    `msg="${sanitizeUserAgent(redacted, 160)}"`,
   ].join(' ');
 }
 
