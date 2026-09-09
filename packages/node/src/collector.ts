@@ -447,7 +447,8 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
           const shouldDrop =
             mode === 'standard' ? bot.layer === 'signature' :
             mode === 'strict'   ? true :
-            /* shadow / off */    false;
+            /* shadow, and any
+               unrecognised mode */ false;
 
           reportBot({
             siteId, ip, userAgent, layer: bot.layer, reason: bot.reason,

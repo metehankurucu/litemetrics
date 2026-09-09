@@ -129,7 +129,8 @@ User-Agents, which an app SDK does not send (React Native on Android goes out as
 `okhttp/<version>`, which `isbot` matches), so on an app site they would only
 misfire. A site receiving app SDK traffic must therefore be typed `app`
 (`POST` / `PUT /api/sites` with `{"type":"app"}`); otherwise it keeps being
-filtered as browser traffic and loses its Android events. When app SDK payloads
+filtered as browser traffic: the SDK User-Agent escapes Layer 1 but trips Layer 2,
+so `standard` hides its app traffic from reports and `strict` drops it. When app SDK payloads
 arrive at a non-app site the collector fires `onSiteTypeMismatch` once per site
 (reporting only — the payload never bypasses the filter).
 

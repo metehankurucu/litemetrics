@@ -978,6 +978,57 @@ describe('collector bot filter - app payload on a non-app site', () => {
     };
   }
 
+  // The cost of a mis-typed site changed with this fix, so it is pinned rather than
+  // left to be discovered. The RN SDK sends its own `litemetrics-react-native/<v>
+  // (<platform>)` User-Agent (packages/react-native/src/user-agent.ts) precisely so
+  // isbot's bare-token rule stops matching it - but ua-parser resolves neither a
+  // browser nor an engine from it, and the SDK sends no Accept-Language and no
+  // Referer, so on a site that is NOT typed `app` the heuristic layer now fires.
+  //
+  // Before this change `standard` never ran that layer, so the events were counted as
+  // real traffic. They are now stored with `bot_flag` and hidden from the default
+  // query. That is the documented rule applied consistently ("otherwise it is still
+  // filtered as browser traffic"), not a bypass: acting on the payload's `mobile`
+  // field would hand every caller a way to opt out of the filter with one JSON key.
+  // The fix is one API call, and the server already logs `[site-type-mismatch]`.
+  it('flags RN SDK traffic on a non-app site in standard mode, and does not drop it', async () => {
+    getSite.mockImplementation(async () => ({
+      siteId: 'site_test', name: 'Test', secretKey: 'k', type: 'web',
+    }));
+    const onSiteTypeMismatch = vi.fn();
+    const onBotDetected = vi.fn();
+    const collector = await createCollector({
+      db: { adapter: 'clickhouse', url: 'http://x' },
+      botFilter: { defaultMode: 'standard', onSiteTypeMismatch, onBotDetected },
+    });
+    await collector.handler()(makeMobileReq('litemetrics-react-native/0.9.0 (android)'), makeRes());
+    expect(insertEvents).toHaveBeenCalledOnce();
+    expect(insertEvents.mock.calls[0]![0][0]!.botFlag).toBe('heuristic');
+    expect(onBotDetected).toHaveBeenCalledWith(
+      expect.objectContaining({ layer: 'heuristic', action: 'flagged', mode: 'standard' }),
+    );
+    expect(onSiteTypeMismatch).toHaveBeenCalledWith(
+      expect.objectContaining({ siteId: 'site_test', siteType: 'web', platform: 'android' }),
+    );
+  });
+
+  // The remedy for the case above, pinned as the contrast: typing the site `app` is
+  // what makes the SDK's traffic count again. Same request, same mode, no flag.
+  it('stores the same RN SDK request unflagged once the site is typed app', async () => {
+    getSite.mockImplementation(async () => ({
+      siteId: 'site_test', name: 'Test App', secretKey: 'k', type: 'app',
+    }));
+    const onBotDetected = vi.fn();
+    const collector = await createCollector({
+      db: { adapter: 'clickhouse', url: 'http://x' },
+      botFilter: { defaultMode: 'standard', onBotDetected },
+    });
+    await collector.handler()(makeMobileReq('litemetrics-react-native/0.9.0 (android)'), makeRes());
+    expect(insertEvents).toHaveBeenCalledOnce();
+    expect(insertEvents.mock.calls[0]![0][0]!.botFlag).toBeUndefined();
+    expect(onBotDetected).not.toHaveBeenCalled();
+  });
+
   it('reports the mismatch and still applies the filter', async () => {
     getSite.mockImplementation(async () => ({
       siteId: 'site_test', name: 'Test', secretKey: 'k', type: 'web',
