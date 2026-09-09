@@ -1917,7 +1917,10 @@ describe('collector bot filtering - layer 4: visitor velocity', () => {
     );
     // Flagged, not dropped: every one of the 71 pageviews is still stored.
     expect(writtenFlags()).toHaveLength(71);
-    expect(writtenFlags().filter((f) => f === 'velocity').length).toBeGreaterThan(0);
+    // Exact, not "more than zero": the first 60 fill the window and go through
+    // unflagged, so batches 7 and 8 (10 + 1 pageviews) are the flagged ones. That
+    // number is the per-window leak rate an operator will ask about.
+    expect(writtenFlags().filter((f) => f === 'velocity')).toHaveLength(11);
   });
 
   // R9 - the other direction. A real person browsing fast: 20 pageviews inside the window,
@@ -1942,7 +1945,7 @@ describe('collector bot filtering - layer 4: visitor velocity', () => {
     const collector = await velocityCollector();
     const handler = collector.handler();
 
-    await handler(makeBatch({ visitorId: 'v_bot', pageviews: 40 }), makeRes());
+    await handler(makeBatch({ visitorId: 'v_bot', pageviews: 61 }), makeRes());
     insertEvents.mockClear();
     await handler(makeBatch({ visitorId: 'v_human', pageviews: 1 }), makeRes());
 
@@ -1953,10 +1956,10 @@ describe('collector bot filtering - layer 4: visitor velocity', () => {
   // R4 - events, not requests. This is the batching escape the IP limiter cannot close:
   // one single call carrying 31 pageviews spends exactly one rate-limit slot, so layer 3
   // sees a quiet IP. Layer 4 counts the pageviews.
-  it('counts pageviews, not collect calls: a single 31-pageview batch trips the layer', async () => {
+  it('counts pageviews, not collect calls: a single 61-pageview batch trips the layer', async () => {
     const onBotDetected = vi.fn();
     const collector = await velocityCollector({ onBotDetected, rateLimitMaxEvents: 60 });
-    await collector.handler()(makeBatch({ pageviews: 31 }), makeRes());
+    await collector.handler()(makeBatch({ pageviews: 61 }), makeRes());
 
     expect(onBotDetected).toHaveBeenCalledWith(
       expect.objectContaining({ layer: 'velocity', reason: 'visitor-velocity' }),
@@ -1985,7 +1988,7 @@ describe('collector bot filtering - layer 4: visitor velocity', () => {
   it('drops the same burst in strict mode', async () => {
     const onBotDetected = vi.fn();
     const collector = await velocityCollector({ defaultMode: 'strict', onBotDetected });
-    await collector.handler()(makeBatch({ pageviews: 31 }), makeRes());
+    await collector.handler()(makeBatch({ pageviews: 61 }), makeRes());
 
     expect(insertEvents).not.toHaveBeenCalled();
     expect(onBotDetected).toHaveBeenCalledWith(
@@ -1997,7 +2000,7 @@ describe('collector bot filtering - layer 4: visitor velocity', () => {
   it('flags without dropping in shadow mode', async () => {
     const onBotDetected = vi.fn();
     const collector = await velocityCollector({ defaultMode: 'shadow', onBotDetected });
-    await collector.handler()(makeBatch({ pageviews: 31 }), makeRes());
+    await collector.handler()(makeBatch({ pageviews: 61 }), makeRes());
 
     expect(insertEvents).toHaveBeenCalledOnce();
     expect(insertEvents.mock.calls[0]![0][0]!.botFlag).toBe('velocity');
@@ -2010,7 +2013,7 @@ describe('collector bot filtering - layer 4: visitor velocity', () => {
   it('runs no velocity check in off mode', async () => {
     const onBotDetected = vi.fn();
     const collector = await velocityCollector({ defaultMode: 'off', onBotDetected });
-    await collector.handler()(makeBatch({ pageviews: 50 }), makeRes());
+    await collector.handler()(makeBatch({ pageviews: 100 }), makeRes());
 
     expect(insertEvents).toHaveBeenCalledOnce();
     expect(writtenFlags().every((f) => f === undefined)).toBe(true);
@@ -2024,7 +2027,7 @@ describe('collector bot filtering - layer 4: visitor velocity', () => {
     const collector = await velocityCollector({ rateLimitMaxEvents: 1 });
     const handler = collector.handler();
 
-    await handler(makeBatch({ visitorId: 'v_bot', pageviews: 40 }), makeRes());
+    await handler(makeBatch({ visitorId: 'v_bot', pageviews: 61 }), makeRes());
     insertEvents.mockClear();
     await handler(makeBatch({ visitorId: 'v_human', pageviews: 1 }), makeRes());
 
@@ -2039,7 +2042,7 @@ describe('collector bot filtering - layer 4: visitor velocity', () => {
     const collector = await velocityCollector({ onBotDetected });
     // Scrubbed UA with no Accept-Language and no Referer: layer 2 fires.
     await collector.handler()(
-      makeBatch({ pageviews: 50, ua: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', headers: {} }),
+      makeBatch({ pageviews: 61, ua: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', headers: {} }),
       makeRes(),
     );
 
@@ -2058,7 +2061,7 @@ describe('collector bot filtering - layer 4: visitor velocity', () => {
     const onBotDetected = vi.fn();
     const collector = await velocityCollector({ onBotDetected });
     await collector.handler()(
-      makeBatch({ pageviews: 31, ua: 'litemetrics-react-native/0.9.0 (android)', headers: {} }),
+      makeBatch({ pageviews: 61, ua: 'litemetrics-react-native/0.9.0 (android)', headers: {} }),
       makeRes(),
     );
 
@@ -2067,6 +2070,51 @@ describe('collector bot filtering - layer 4: visitor velocity', () => {
     expect(onBotDetected).toHaveBeenCalledWith(
       expect.objectContaining({ layer: 'velocity', action: 'flagged' }),
     );
+  });
+
+  // R2 - the shipped threshold, pinned from both sides with no config in the test. 60 is
+  // where it is because 30 is exactly where a legitimate pattern sits: autoSpa is on by
+  // default and AutoTracker de-dupes on the full href, so a UI that mirrors its state into
+  // the URL emits one pageview per URL write, and an average 180-CPM typist in such a field
+  // produces three a second.
+  it('lets 60 pageviews through and flags the 61st, on the shipped default', async () => {
+    const onBotDetected = vi.fn();
+    const collector = await velocityCollector({ onBotDetected });
+    const handler = collector.handler();
+
+    await handler(makeBatch({ pageviews: 60 }), makeRes());
+    expect(writtenFlags()).toEqual(Array(60).fill(undefined));
+    expect(onBotDetected).not.toHaveBeenCalled();
+
+    insertEvents.mockClear();
+    await handler(makeBatch({ pageviews: 1 }), makeRes());
+    expect(insertEvents.mock.calls[0]![0][0]!.botFlag).toBe('velocity');
+  });
+
+  // R3 - the key cap is reachable from config, and evicting a window really does clear it.
+  // That is the shape of the attack the cap exists for: a client with rotating visitor ids
+  // evicts real visitors' windows, and the layer goes quiet for everyone in that process.
+  it('honours visitorVelocityMaxKeys and starts a window over after eviction', async () => {
+    const collector = await velocityCollector({
+      visitorVelocityMaxPageviews: 1,
+      visitorVelocityMaxKeys: 2,
+      rateLimitMaxEvents: 1000,
+    });
+    const handler = collector.handler();
+
+    // v1 is over its limit and stays flagged while its window is still tracked.
+    await handler(makeBatch({ visitorId: 'v1', pageviews: 2 }), makeRes());
+    insertEvents.mockClear();
+    await handler(makeBatch({ visitorId: 'v1', pageviews: 1 }), makeRes());
+    expect(insertEvents.mock.calls[0]![0][0]!.botFlag).toBe('velocity');
+
+    // Two fresh visitors push v1 out of a two-key cap.
+    await handler(makeBatch({ visitorId: 'v2', pageviews: 1 }), makeRes());
+    await handler(makeBatch({ visitorId: 'v3', pageviews: 1 }), makeRes());
+
+    insertEvents.mockClear();
+    await handler(makeBatch({ visitorId: 'v1', pageviews: 1 }), makeRes());
+    expect(insertEvents.mock.calls[0]![0][0]!.botFlag).toBeUndefined();
   });
 
   // R2 - the escape valve. An operator who hits a false positive can turn the layer off
@@ -2117,7 +2165,7 @@ describe('collector bot filtering - layer 4: visitor velocity', () => {
       const collector = await velocityCollector();
       const handler = collector.handler();
 
-      await handler(makeBatch({ pageviews: 40 }), makeRes());
+      await handler(makeBatch({ pageviews: 61 }), makeRes());
       expect(insertEvents.mock.calls[0]![0][0]!.botFlag).toBe('velocity');
 
       nowSpy.mockReturnValue(base + 9_999);
@@ -2184,7 +2232,7 @@ describe('collector bot filtering - layer 4: visitor velocity', () => {
     const collector = await velocityCollector();
     const handler = collector.handler();
 
-    await handler(makeBatch({ pageviews: 40 }), makeRes());
+    await handler(makeBatch({ pageviews: 61 }), makeRes());
     insertEvents.mockClear();
     const other = makeBatch({ pageviews: 1 });
     other.body.events[0]!.siteId = 'site_other';

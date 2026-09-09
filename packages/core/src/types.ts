@@ -216,7 +216,7 @@ export interface BotFilterConfig {
   visitorVelocityWindowMs?: number;
   /**
    * Max pageviews one `siteId:visitorId` pair may send inside the velocity window before
-   * layer 4 fires. Default: 30 (3 pageviews per second sustained for ten seconds).
+   * layer 4 fires. Default: 60 (6 pageviews per second sustained for ten seconds).
    *
    * Counted in pageviews, not collect requests: the layer exists because layer 3 counts
    * requests, so a batched flood hides inside a handful of calls. Custom events and
@@ -226,6 +226,17 @@ export interface BotFilterConfig {
    * Set to 0 to switch the layer off without switching the whole bot filter off.
    */
   visitorVelocityMaxPageviews?: number;
+  /**
+   * Cap on tracked `siteId:visitorId` windows for the velocity layer. Default: 50_000.
+   *
+   * Higher than the per-IP limiter's cap because layer 4 admits up to one new key per
+   * pageview (100 per collect request) against the IP layer's one, so a client sending
+   * rotating visitor ids fills it far faster. When the cap is reached the least-recently
+   * used window is evicted, which is exactly what such a client wants: evict every real
+   * visitor's window and the layer stops firing for the whole process. Raise it on a
+   * busy host; it costs roughly one entry plus its timestamps per tracked visitor.
+   */
+  visitorVelocityMaxKeys?: number;
   /** Optional callback fired whenever an event is flagged or dropped (analytics/audit). */
   onBotDetected?: (info: BotDetectedInfo) => void;
   /**

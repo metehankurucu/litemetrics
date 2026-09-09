@@ -124,7 +124,7 @@ tunable per-site via the `botFilterMode` site field.
 - **Layer 2 (heuristic)** — scrubbed / empty UAs (no UA, bare `Mozilla/5.0`, missing platform tokens).
 - **Layer 3 (rate limit)** — sliding-window per-IP cap, counted in collect requests.
 - **Layer 4 (visitor velocity)** — sliding-window cap on pageviews per `siteId:visitorId`
-  (default 30 per 10s). Layers 1-3 each judge one request in isolation, and the per-IP
+  (default 60 per 10s). Layers 1-3 each judge one request in isolation, and the per-IP
   window counts requests, so a batching client on a rotating address clears all three.
   Only pageviews count toward this one; custom events do not.
 
@@ -156,7 +156,8 @@ const collector = await createCollector({
     rateLimitWindowMs: 60_000,   // sliding window for Layer 3
     rateLimitMaxEvents: 60,      // max collect requests / window / IP (not events)
     visitorVelocityWindowMs: 10_000,    // sliding window for Layer 4
-    visitorVelocityMaxPageviews: 30,    // max pageviews / window / visitor; 0 disables Layer 4
+    visitorVelocityMaxPageviews: 60,    // max pageviews / window / visitor; 0 disables Layer 4
+    visitorVelocityMaxKeys: 50_000,     // cap on tracked siteId:visitorId windows (LRU)
     onBotDetected: (info) => {
       // info: { siteId, ip, userAgent, layer, reason, action, mode }
       // reason: 'empty-ua' | 'ua-signature' | 'no-browser-signals' | 'rate-limit'
@@ -188,7 +189,8 @@ Server wrapper env vars (`apps/server`):
 - `BOT_RATE_WINDOW_MS` (default `60000`): sliding-window size for the per-IP rate limiter (ms).
 - `BOT_RATE_MAX` (default `60`): max collect requests per window per IP before the rate-limit layer fires. Counted per request, not per event, so one batch of up to 100 events spends a single slot.
 - `BOT_VELOCITY_WINDOW_MS` (default `10000`): sliding-window size for the per-visitor velocity layer (ms).
-- `BOT_VELOCITY_MAX_PAGEVIEWS` (default `30`): max pageviews per window per `siteId:visitorId` before the velocity layer fires. Counted in pageviews, not requests, so batching does not hide a flood. Set to `0` to switch this layer off on its own.
+- `BOT_VELOCITY_MAX_PAGEVIEWS` (default `60`): max pageviews per window per `siteId:visitorId` before the velocity layer fires. Counted in pageviews, not requests, so batching does not hide a flood. Set to `0` to switch this layer off on its own.
+- `BOT_VELOCITY_MAX_KEYS` (default `50000`): cap on tracked `siteId:visitorId` windows. Past it the least recently used window is evicted, so a client sending rotating visitor ids can clear real windows; raise it on a busy host.
 - `BOT_LOG_MAX_PER_MIN` (default `20`): detail `[bot-filter]` log lines allowed per minute; the overflow is counted as `suppressed=` on the `[collect]` summary line.
 - `COLLECT_ERROR_LOG_MAX_PER_MIN` (default `5`): detail `[collect-error]` log lines allowed per minute. The `[collect]` summary's `err_codes=` lists the top 10 keys as `<stage>:<class>:<count>`, `other:N` for omitted occurrences and `untracked:N` for occurrences beyond the 50-key tracking cap. Sum all these counts for the total number of failures. Withheld lines are not part of `suppressed=` (that field is bot-filter only), so derive them by subtracting the printed lines from this total.
 

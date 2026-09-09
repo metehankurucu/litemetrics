@@ -336,13 +336,20 @@ Per-site mode is set via `PUT /api/sites/:siteId` with a `botFilterMode` field
 (`off` / `standard` / `strict` / `shadow` or `null` to fall back to the server
 default). The server-wide default is controlled by `BOT_FILTER_MODE`.
 
-**`queryBotStats` (in flight on `feat/bot-filter-and-dashboard-revamp`)** —
-adapters expose a `queryBotStats(siteId, range)` helper used by the dashboard's
-"bot traffic filtered" pill. Once committed it returns:
+**`GET /api/stats?siteId=<id>&metric=botStats&period=<period>`** — how many events
+each detection layer flagged in the window. This is what the dashboard's "bot traffic
+filtered" pill and `litemetrics bots` both read; adapters implement it as
+`queryBotStats(siteId, range)`. It returns:
 
 ```ts
-{ total: number, bySignature: number, byHeuristic: number, byRateLimit: number }
+{
+  total: number,          // the four buckets summed
+  bySignature: number,    // Layer 1: User-Agent matched the isbot list
+  byHeuristic: number,    // Layer 2: no browser, engine, Accept-Language or Referer
+  byRateLimit: number,    // Layer 3: the per-IP request window overflowed
+  byVelocity: number      // Layer 4: one visitorId's pageview window overflowed
+}
 ```
 
-This is not yet wired to a public HTTP endpoint; the dashboard reads it through
-the collector's typed query API.
+Only FLAGGED events are counted. A dropped event is never stored, so `strict` mode,
+which drops every layer, reports zeroes here.

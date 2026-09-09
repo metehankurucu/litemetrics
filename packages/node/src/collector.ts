@@ -35,9 +35,32 @@ import { redactUrlCredentials } from './redact';
 /** Cap on the message carried out of a collect failure (log-line budget). */
 const MAX_COLLECT_ERROR_MESSAGE = 160;
 
-/** Layer 4 defaults: 30 pageviews per visitor per 10s, i.e. 3 pageviews a second. */
+/**
+ * Layer 4 defaults: 60 pageviews per visitor per 10s, i.e. 6 pageviews a second.
+ *
+ * The window is 10s rather than something shorter because the server measures ARRIVAL
+ * time, and the tracker batches (`flushInterval` 5s), so a client that generated its
+ * pageviews over five seconds delivers them in a few bursts milliseconds apart. A short
+ * window would read that clustering as a flood.
+ *
+ * 60 rather than 30 because 30 is exactly where a legitimate pattern sits: `autoSpa` is
+ * on by default and `AutoTracker` de-dupes on the full href, so a UI that mirrors its
+ * state into the URL (search-as-you-type, filter chips) emits one pageview per URL
+ * write, and an average 180-CPM typist in such a field produces 3 a second. 60 leaves 2x
+ * headroom over that and is still 3.3x to 11.8x under the 20-71 pageviews a second the
+ * recorded case ran at.
+ */
 const DEFAULT_VELOCITY_WINDOW_MS = 10_000;
-const DEFAULT_VELOCITY_MAX_PAGEVIEWS = 30;
+const DEFAULT_VELOCITY_MAX_PAGEVIEWS = 60;
+
+/**
+ * Cap on tracked `siteId:visitorId` windows. Higher than the per-IP limiter's 10k
+ * default because layer 4 admits up to one new key per pageview (100 per request)
+ * against the IP layer's one per request, and eviction is what an attacker with
+ * rotating visitor ids would aim for: evict every real window and the layer goes blind
+ * for the whole process. Raising the cap raises the cost of that; it does not remove it.
+ */
+const DEFAULT_VELOCITY_MAX_KEYS = 50_000;
 
 export interface Collector {
   handler(): (req: any, res: any) => void | Promise<void>;
@@ -87,6 +110,7 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
   const velocityLimiter = createRateLimiter({
     windowMs: botCfg.visitorVelocityWindowMs ?? DEFAULT_VELOCITY_WINDOW_MS,
     maxEvents: velocityMaxPageviews,
+    maxKeys: botCfg.visitorVelocityMaxKeys ?? DEFAULT_VELOCITY_MAX_KEYS,
   });
 
   /**
@@ -454,7 +478,7 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
         // signature hit is always dropped before the insert. So in the shipped default
         // mode `botFlag` was never set on a stored event, `bot_flag` was a structural
         // NULL, and queryBotStats was structurally empty. Four docs promised the
-        // opposite (README "Layer 1 drops the event; Layers 2 + 3 flag it").
+        // opposite (README "Layer 1 drops the event; Layers 2, 3 and 4 flag it").
         if (mode !== 'off') {
           if (isAppSite) {
             // Layer 4 is not a browser heuristic - it measures how fast one visitor

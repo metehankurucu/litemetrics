@@ -109,8 +109,8 @@ describe('extractQueryParams', () => {
 
 // The bucket list is load-bearing, not cosmetic: `total` is summed from the buckets, so a
 // bot_flag value the aggregator does not know about is counted nowhere. The row is stored,
-// hidden from the default query by `bot_flag IS NOT NULL`, and then absent from the one
-// report that exists to show what was hidden.
+// hidden from the default query by its `bot_flag IS NULL` filter, and then absent from the
+// one report that exists to show what was hidden.
 describe('aggregateBotStats', () => {
   it('counts every layer, including velocity, into its own bucket and the total', () => {
     expect(

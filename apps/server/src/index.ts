@@ -42,8 +42,9 @@ const BOT_FILTER_MODE = (process.env.BOT_FILTER_MODE || 'standard') as 'off' | '
 const BOT_RATE_WINDOW_MS = intEnv('BOT_RATE_WINDOW_MS', 60_000);
 const BOT_RATE_MAX = intEnv('BOT_RATE_MAX', 60);
 const BOT_VELOCITY_WINDOW_MS = intEnv('BOT_VELOCITY_WINDOW_MS', 10_000);
+const BOT_VELOCITY_MAX_KEYS = intEnv('BOT_VELOCITY_MAX_KEYS', 50_000);
 // min: 0 - zero is the documented way to switch layer 4 off on its own.
-const BOT_VELOCITY_MAX_PAGEVIEWS = intEnv('BOT_VELOCITY_MAX_PAGEVIEWS', 30, { min: 0 });
+const BOT_VELOCITY_MAX_PAGEVIEWS = intEnv('BOT_VELOCITY_MAX_PAGEVIEWS', 60, { min: 0 });
 const BOT_LOG_MAX_PER_MIN = intEnv('BOT_LOG_MAX_PER_MIN', 20);
 const COLLECT_ERROR_LOG_MAX_PER_MIN = intEnv('COLLECT_ERROR_LOG_MAX_PER_MIN', 5);
 
@@ -161,6 +162,7 @@ const collector = await createCollector({
     rateLimitMaxEvents: BOT_RATE_MAX,
     visitorVelocityWindowMs: BOT_VELOCITY_WINDOW_MS,
     visitorVelocityMaxPageviews: BOT_VELOCITY_MAX_PAGEVIEWS,
+    visitorVelocityMaxKeys: BOT_VELOCITY_MAX_KEYS,
     onBotDetected: (info) => {
       // Lightweight audit log - kept structured so it's grep-friendly in Railway logs.
       // The counters always land in the minute summary; the detail line is capped so a
