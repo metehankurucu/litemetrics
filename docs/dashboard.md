@@ -45,7 +45,7 @@ Main overview page:
 - Top lists: pages, referrers, countries, events, conversions, browsers, devices
 - Period selector: 7d, 14d, 30d, 90d, or custom date range
 - **Include bot traffic** toggle — flips the `includeBots` flag on every query (defaults to off, so flagged bots are excluded)
-- A bot-traffic pill appears when the filter has dropped events in the current window
+- A bot-traffic pill appears when the filter has flagged events in the current window (flagged events are kept; tick *Include bot traffic* to see them). Dropped events are never stored, so they are never counted here
 - Export data as CSV
 
 ### Insights (`/insights`)

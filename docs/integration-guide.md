@@ -134,7 +134,7 @@ export function PageTracker() {
 bun add @litemetrics/react-native
 ```
 
-> **Create the site with `type: 'app'`** — `litemetrics sites create -n "My App" --type app`, or `POST /api/sites` with `{"type":"app"}` (an existing site: `PUT /api/sites/:siteId {"type":"app"}`). The bot filter treats a `web` site's traffic as browser traffic, and React Native on Android sends OkHttp's default `okhttp/<version>` User-Agent, which the signature layer drops — so on a `web` site every Android event is silently lost. See [Bot Filtering](#bot-filtering).
+> **Create the site with `type: 'app'`** — `litemetrics sites create -n "My App" --type app`, or `POST /api/sites` with `{"type":"app"}` (an existing site: `PUT /api/sites/:siteId {"type":"app"}`). The bot filter treats a `web` site's traffic as browser traffic: the SDK's `litemetrics-react-native/<version> (<platform>)` User-Agent escapes Layer 1 but trips Layer 2 (no browser, no engine, no `Accept-Language`, no `Referer`), so `standard` hides that traffic from every report and `strict` drops it. See [Bot Filtering](#bot-filtering).
 
 ```tsx
 import { LitemetricsProvider, useNavigationTracking } from '@litemetrics/react-native';

@@ -149,7 +149,7 @@ const collector = await createCollector({
   botFilter: {
     defaultMode: 'standard',     // server-wide default (off | standard | strict | shadow)
     rateLimitWindowMs: 60_000,   // sliding window for Layer 3
-    rateLimitMaxEvents: 60,      // max events / window / IP
+    rateLimitMaxEvents: 60,      // max collect requests / window / IP (not events)
     onBotDetected: (info) => {
       // info: { siteId, ip, userAgent, layer, reason, action, mode }
       // reason: 'empty-ua' | 'ua-signature' | 'no-browser-signals' | 'rate-limit'
@@ -178,7 +178,7 @@ Server wrapper env vars (`apps/server`):
 
 - `BOT_FILTER_MODE` (default `standard`): one of `off` / `standard` / `strict` / `shadow`. Controls server-wide bot filtering for sites that don't override per-site.
 - `BOT_RATE_WINDOW_MS` (default `60000`): sliding-window size for the per-IP rate limiter (ms).
-- `BOT_RATE_MAX` (default `60`): max events per window per IP before the rate-limit layer fires.
+- `BOT_RATE_MAX` (default `60`): max collect requests per window per IP before the rate-limit layer fires. Counted per request, not per event, so one batch of up to 100 events spends a single slot.
 - `BOT_LOG_MAX_PER_MIN` (default `20`): detail `[bot-filter]` log lines allowed per minute; the overflow is counted as `suppressed=` on the `[collect]` summary line.
 - `COLLECT_ERROR_LOG_MAX_PER_MIN` (default `5`): detail `[collect-error]` log lines allowed per minute. The `[collect]` summary's `err_codes=` lists the top 10 keys as `<stage>:<class>:<count>`, `other:N` for omitted occurrences and `untracked:N` for occurrences beyond the 50-key tracking cap. Sum all these counts for the total number of failures. Withheld lines are not part of `suppressed=` (that field is bot-filter only), so derive them by subtracting the printed lines from this total.
 

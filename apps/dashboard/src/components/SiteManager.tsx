@@ -443,8 +443,9 @@ function BotFilterModeSetting({ mode, siteType, onUpdate, saving }: {
   // App SDK traffic carries no browser User-Agent, so the signature and heuristic
   // layers never run on an app site - only the per-IP rate limit does. The hints
   // must say what each mode actually does for *this* site, including what
-  // `standard` FLAGS: a flagged event is stored but hidden from every report here,
-  // so a hint that only names the drops understates what the mode removes.
+  // `standard` FLAGS: a flagged event is stored but hidden from these reports unless
+  // `Include bot traffic` is on, so a hint that only names the drops understates what
+  // the mode removes.
   const isApp = siteType === 'app';
   const options: Array<{ value: 'off' | 'standard' | 'strict' | 'shadow'; label: string; hint: string }> = isApp
     ? [
@@ -465,7 +466,7 @@ function BotFilterModeSetting({ mode, siteType, onUpdate, saving }: {
       <div>
         <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">Bot Filtering</h3>
         <p className="text-xs text-zinc-500 mt-1">
-          Controls how this site filters bot traffic before storage.
+          Controls how this site filters bot traffic before it reaches your reports.
         </p>
       </div>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
