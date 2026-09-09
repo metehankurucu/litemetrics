@@ -208,6 +208,7 @@ export function AnalyticsPage({ siteId, client, period, onPeriodChange }: Analyt
             botStats.bySignature ? `${botStats.bySignature.toLocaleString()} signature` : null,
             botStats.byHeuristic ? `${botStats.byHeuristic.toLocaleString()} heuristic` : null,
             botStats.byRateLimit ? `${botStats.byRateLimit.toLocaleString()} rate-limit` : null,
+            botStats.byVelocity ? `${botStats.byVelocity.toLocaleString()} velocity` : null,
           ].filter(Boolean).join(', ')}
         </div>
       )}

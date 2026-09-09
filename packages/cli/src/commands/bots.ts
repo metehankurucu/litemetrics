@@ -35,6 +35,10 @@ export function registerBotsCommand(program: Command) {
               ['signature', String(result.bySignature)],
               ['heuristic', String(result.byHeuristic)],
               ['rate-limit', String(result.byRateLimit)],
+              // Read defensively: the shape of this row comes from whichever collector
+              // host the CLI is pointed at, not from the @litemetrics/client version it
+              // was built against, so a host predating layer 4 answers without the field.
+              ['velocity', String((result as { byVelocity?: number }).byVelocity ?? 0)],
             ],
             footer: `Total flagged: ${result.total}`,
           }),

@@ -1835,3 +1835,362 @@ describe('collector collect error context', () => {
     expect(errors[0].eventCount).toBe(3);
   });
 });
+
+// Layer 4 - visitor velocity. The three layers in front of it all read a single request:
+// layer 1 matches the User-Agent string, layer 2 reads UA + Accept-Language + Referer,
+// layer 3 counts CALLS per IP ("a batch of 100 events spends a single slot"). None of
+// them looks at what one visitor does over time, which is exactly the shape of the traffic
+// that was being counted as real: BeJudge web, 30 days to Sep 2026, 5032 of 5382 pageviews
+// (93.5%) from ONE visitorId at 20-71 pages per second, CN-origin, browser-shaped UA with
+// Accept-Language and Referer both present.
+describe('collector bot filtering - layer 4: visitor velocity', () => {
+  beforeEach(() => {
+    resetAdapterMocks();
+  });
+
+  const REAL_CHROME_UA =
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+  // Every header a real browser sends, because the recorded traffic sent them too. This
+  // fixture must clear layers 1 and 2 or it would be proving the wrong layer.
+  const BROWSER_HEADERS = { 'accept-language': 'zh-CN,zh;q=0.9,en;q=0.8', referer: 'https://bejudge.test/' };
+
+  /** One collect request: `pageviews` pageviews plus `events` custom events, one visitor. */
+  function makeBatch(opts: {
+    visitorId?: string;
+    pageviews?: number;
+    events?: number;
+    ip?: string;
+    ua?: string;
+    headers?: Record<string, string>;
+  } = {}) {
+    const visitorId = opts.visitorId === undefined ? 'v_bejudge' : opts.visitorId;
+    const body: { events: Record<string, unknown>[] } = { events: [] };
+    for (let i = 0; i < (opts.pageviews ?? 0); i++) {
+      body.events.push({
+        siteId: 'site_test', visitorId, sessionId: 's1', type: 'pageview',
+        name: '$pageview', timestamp: Date.now(), url: `https://bejudge.test/p/${i}`,
+      });
+    }
+    for (let i = 0; i < (opts.events ?? 0); i++) {
+      body.events.push({
+        siteId: 'site_test', visitorId, sessionId: 's1', type: 'event',
+        name: 'rage_click', eventSubtype: 'rage_click', timestamp: Date.now(),
+      });
+    }
+    return {
+      method: 'POST',
+      headers: { 'user-agent': opts.ua ?? REAL_CHROME_UA, ...(opts.headers ?? BROWSER_HEADERS) },
+      body,
+      socket: { remoteAddress: opts.ip ?? '203.0.113.7' },
+    };
+  }
+
+  async function velocityCollector(extra: Record<string, unknown> = {}) {
+    return createCollector({
+      db: { adapter: 'clickhouse', url: 'http://x' },
+      botFilter: { defaultMode: 'standard', ...extra },
+    });
+  }
+
+  /** Every botFlag written across every insertEvents call, flattened. */
+  function writtenFlags(): Array<string | undefined> {
+    return insertEvents.mock.calls.flatMap((call) => call[0].map((e) => e.botFlag));
+  }
+
+  // R1 + R7 - the missed case, reproduced. 71 pageviews per second from one visitorId,
+  // arriving the way the tracker actually ships them (batches of 10, DEFAULT_BATCH_SIZE).
+  // Under `standard` this is flagged, never dropped.
+  it('flags the BeJudge burst: one visitorId at 71 pageviews per second', async () => {
+    const onBotDetected = vi.fn();
+    const collector = await velocityCollector({ onBotDetected });
+    const handler = collector.handler();
+
+    // 71 pageviews inside one second = 8 batches of 10 (the last one short).
+    for (let i = 0; i < 8; i++) {
+      await handler(makeBatch({ pageviews: i === 7 ? 1 : 10 }), makeRes());
+    }
+
+    expect(onBotDetected).toHaveBeenCalledWith(
+      expect.objectContaining({
+        layer: 'velocity', reason: 'visitor-velocity', action: 'flagged', mode: 'standard',
+      }),
+    );
+    // Flagged, not dropped: every one of the 71 pageviews is still stored.
+    expect(writtenFlags()).toHaveLength(71);
+    expect(writtenFlags().filter((f) => f === 'velocity').length).toBeGreaterThan(0);
+  });
+
+  // R9 - the other direction. A real person browsing fast: 20 pageviews inside the window,
+  // same visitorId, same headers. Below the threshold, so nothing is flagged at all.
+  it('does not flag a real visitor browsing under the threshold', async () => {
+    const onBotDetected = vi.fn();
+    const collector = await velocityCollector({ onBotDetected });
+    const handler = collector.handler();
+
+    for (let i = 0; i < 20; i++) {
+      await handler(makeBatch({ visitorId: 'v_human', pageviews: 1 }), makeRes());
+    }
+
+    expect(insertEvents).toHaveBeenCalledTimes(20);
+    expect(writtenFlags()).toEqual(Array(20).fill(undefined));
+    expect(onBotDetected).not.toHaveBeenCalled();
+  });
+
+  // R1 - the key is the visitor, not the IP. A second visitor behind the same address
+  // (shared NAT, office, CGNAT) keeps counting clean while the first one is flagged.
+  it('flags the noisy visitor and not a second visitor on the same IP', async () => {
+    const collector = await velocityCollector();
+    const handler = collector.handler();
+
+    await handler(makeBatch({ visitorId: 'v_bot', pageviews: 40 }), makeRes());
+    insertEvents.mockClear();
+    await handler(makeBatch({ visitorId: 'v_human', pageviews: 1 }), makeRes());
+
+    expect(insertEvents).toHaveBeenCalledOnce();
+    expect(insertEvents.mock.calls[0]![0][0]!.botFlag).toBeUndefined();
+  });
+
+  // R4 - events, not requests. This is the batching escape the IP limiter cannot close:
+  // one single call carrying 31 pageviews spends exactly one rate-limit slot, so layer 3
+  // sees a quiet IP. Layer 4 counts the pageviews.
+  it('counts pageviews, not collect calls: a single 31-pageview batch trips the layer', async () => {
+    const onBotDetected = vi.fn();
+    const collector = await velocityCollector({ onBotDetected, rateLimitMaxEvents: 60 });
+    await collector.handler()(makeBatch({ pageviews: 31 }), makeRes());
+
+    expect(onBotDetected).toHaveBeenCalledWith(
+      expect.objectContaining({ layer: 'velocity', reason: 'visitor-velocity' }),
+    );
+    expect(insertEvents).toHaveBeenCalledOnce();
+    expect(insertEvents.mock.calls[0]![0].every((e) => e.botFlag === 'velocity')).toBe(true);
+  });
+
+  // R4 + R9 - a rage-click or scroll-depth burst is dozens of events per minute BY DESIGN
+  // (autoRageClicks, autoScrollDepth). Counting them would make the layer fire on the
+  // tracker's own features, so only pageviews count.
+  it('does not count custom events: 100 rage clicks from one visitor stay unflagged', async () => {
+    const onBotDetected = vi.fn();
+    const collector = await velocityCollector({ onBotDetected, rateLimitMaxEvents: 1000 });
+    const handler = collector.handler();
+
+    for (let i = 0; i < 2; i++) {
+      await handler(makeBatch({ pageviews: 0, events: 50 }), makeRes());
+    }
+
+    expect(writtenFlags()).toEqual(Array(100).fill(undefined));
+    expect(onBotDetected).not.toHaveBeenCalled();
+  });
+
+  // R7 - strict drops what standard flags. Same burst, opposite action.
+  it('drops the same burst in strict mode', async () => {
+    const onBotDetected = vi.fn();
+    const collector = await velocityCollector({ defaultMode: 'strict', onBotDetected });
+    await collector.handler()(makeBatch({ pageviews: 31 }), makeRes());
+
+    expect(insertEvents).not.toHaveBeenCalled();
+    expect(onBotDetected).toHaveBeenCalledWith(
+      expect.objectContaining({ layer: 'velocity', action: 'dropped', mode: 'strict' }),
+    );
+  });
+
+  // R7 - shadow flags without dropping, exactly like standard for this layer.
+  it('flags without dropping in shadow mode', async () => {
+    const onBotDetected = vi.fn();
+    const collector = await velocityCollector({ defaultMode: 'shadow', onBotDetected });
+    await collector.handler()(makeBatch({ pageviews: 31 }), makeRes());
+
+    expect(insertEvents).toHaveBeenCalledOnce();
+    expect(insertEvents.mock.calls[0]![0][0]!.botFlag).toBe('velocity');
+    expect(onBotDetected).toHaveBeenCalledWith(
+      expect.objectContaining({ layer: 'velocity', action: 'flagged', mode: 'shadow' }),
+    );
+  });
+
+  // R7 - `off` means off for layer 4 too.
+  it('runs no velocity check in off mode', async () => {
+    const onBotDetected = vi.fn();
+    const collector = await velocityCollector({ defaultMode: 'off', onBotDetected });
+    await collector.handler()(makeBatch({ pageviews: 50 }), makeRes());
+
+    expect(insertEvents).toHaveBeenCalledOnce();
+    expect(writtenFlags().every((f) => f === undefined)).toBe(true);
+    expect(onBotDetected).not.toHaveBeenCalled();
+  });
+
+  // R5 - a velocity hit must not spend the shared IP budget. maxEvents is 1, so if the
+  // flagged burst had consumed the IP slot, the next visitor behind that NAT would come
+  // back rate-limited instead of clean.
+  it('a velocity hit consumes no IP rate-limit slot', async () => {
+    const collector = await velocityCollector({ rateLimitMaxEvents: 1 });
+    const handler = collector.handler();
+
+    await handler(makeBatch({ visitorId: 'v_bot', pageviews: 40 }), makeRes());
+    insertEvents.mockClear();
+    await handler(makeBatch({ visitorId: 'v_human', pageviews: 1 }), makeRes());
+
+    expect(insertEvents.mock.calls[0]![0][0]!.botFlag).toBeUndefined();
+  });
+
+  // R5 - order. A layer-2 hit short-circuits before the velocity counter, so a scrubbed-UA
+  // bot cannot silently fill a visitor's velocity window; the reported layer stays the
+  // more specific one.
+  it('reports the heuristic layer, not velocity, when both would fire', async () => {
+    const onBotDetected = vi.fn();
+    const collector = await velocityCollector({ onBotDetected });
+    // Scrubbed UA with no Accept-Language and no Referer: layer 2 fires.
+    await collector.handler()(
+      makeBatch({ pageviews: 50, ua: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', headers: {} }),
+      makeRes(),
+    );
+
+    expect(onBotDetected).toHaveBeenCalledTimes(1);
+    expect(onBotDetected).toHaveBeenCalledWith(
+      expect.objectContaining({ layer: 'heuristic' }),
+    );
+  });
+
+  // R6 - app sites. Layers 1 and 2 are browser heuristics and stay off there (PR #12), but
+  // velocity is a volume signal: an app site id being replayed is exactly this shape.
+  it('runs on an app-type site, where layers 1 and 2 do not', async () => {
+    getSite.mockImplementation(async () => ({
+      siteId: 'site_test', name: 'Test App', secretKey: 'k', type: 'app',
+    }));
+    const onBotDetected = vi.fn();
+    const collector = await velocityCollector({ onBotDetected });
+    await collector.handler()(
+      makeBatch({ pageviews: 31, ua: 'litemetrics-react-native/0.9.0 (android)', headers: {} }),
+      makeRes(),
+    );
+
+    expect(insertEvents).toHaveBeenCalledOnce();
+    expect(insertEvents.mock.calls[0]![0][0]!.botFlag).toBe('velocity');
+    expect(onBotDetected).toHaveBeenCalledWith(
+      expect.objectContaining({ layer: 'velocity', action: 'flagged' }),
+    );
+  });
+
+  // R2 - the escape valve. An operator who hits a false positive can turn the layer off
+  // without turning the whole bot filter off.
+  it('is disabled by visitorVelocityMaxPageviews: 0', async () => {
+    const onBotDetected = vi.fn();
+    const collector = await velocityCollector({ visitorVelocityMaxPageviews: 0, onBotDetected });
+    await collector.handler()(makeBatch({ pageviews: 100 }), makeRes());
+
+    expect(insertEvents).toHaveBeenCalledOnce();
+    expect(writtenFlags().every((f) => f === undefined)).toBe(true);
+    expect(onBotDetected).not.toHaveBeenCalled();
+  });
+
+  // R2 - and it is tunable in the other direction.
+  it('honours a lowered visitorVelocityMaxPageviews', async () => {
+    const onBotDetected = vi.fn();
+    const collector = await velocityCollector({ visitorVelocityMaxPageviews: 2, onBotDetected });
+    const handler = collector.handler();
+    await handler(makeBatch({ pageviews: 2 }), makeRes());
+    expect(onBotDetected).not.toHaveBeenCalled();
+    await handler(makeBatch({ pageviews: 1 }), makeRes());
+    expect(onBotDetected).toHaveBeenCalledWith(
+      expect.objectContaining({ layer: 'velocity' }),
+    );
+  });
+
+  // R4 - a missing or blank visitorId must not bucket unrelated traffic together under one
+  // empty key, which would flag every anonymous event once the shared bucket overflowed.
+  it('does not count events whose visitorId is missing or blank', async () => {
+    const onBotDetected = vi.fn();
+    const collector = await velocityCollector({ onBotDetected, rateLimitMaxEvents: 1000 });
+    const handler = collector.handler();
+    await handler(makeBatch({ visitorId: '', pageviews: 50 }), makeRes());
+    await handler(makeBatch({ visitorId: '   ', pageviews: 50 }), makeRes());
+
+    expect(onBotDetected).not.toHaveBeenCalled();
+  });
+
+  // R2 - the window is sliding, so a flagged visitor is not flagged forever: once the old
+  // pageviews age out, the same visitor comes back clean. Configured nowhere in this test,
+  // so it also pins the shipped default window of 10s: at 9.999s the burst still counts,
+  // at 10.001s it has drained.
+  it('stops flagging once the default 10s window drains, and not before', async () => {
+    const base = Date.now();
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(base);
+    try {
+      const collector = await velocityCollector();
+      const handler = collector.handler();
+
+      await handler(makeBatch({ pageviews: 40 }), makeRes());
+      expect(insertEvents.mock.calls[0]![0][0]!.botFlag).toBe('velocity');
+
+      nowSpy.mockReturnValue(base + 9_999);
+      insertEvents.mockClear();
+      await handler(makeBatch({ pageviews: 1 }), makeRes());
+      expect(insertEvents.mock.calls[0]![0][0]!.botFlag).toBe('velocity');
+
+      nowSpy.mockReturnValue(base + 10_001);
+      insertEvents.mockClear();
+      await handler(makeBatch({ pageviews: 1 }), makeRes());
+      expect(insertEvents.mock.calls[0]![0][0]!.botFlag).toBeUndefined();
+    } finally {
+      nowSpy.mockRestore();
+    }
+  });
+
+  /** One collect request carrying pageviews for several visitors, in order. */
+  function makeMixedBatch(spec: Array<[string, number]>) {
+    const req = makeBatch({ pageviews: 0 });
+    for (const [visitorId, count] of spec) {
+      for (let i = 0; i < count; i++) {
+        req.body.events.push({
+          siteId: 'site_test', visitorId, sessionId: 's1', type: 'pageview',
+          name: '$pageview', timestamp: Date.now(), url: `https://bejudge.test/${visitorId}/${i}`,
+        });
+      }
+    }
+    return req;
+  }
+
+  // R4 - the loop must not stop at the first overflow. A proxy that forwards several
+  // visitors in one call would otherwise leave everyone after the noisy visitor
+  // uncounted, so their own window would never fill and the layer would be blind to them.
+  it('counts every visitor in a mixed batch, not only up to the first overflow', async () => {
+    const collector = await velocityCollector({ visitorVelocityMaxPageviews: 2 });
+    const handler = collector.handler();
+
+    // v_loud overflows on its third pageview; v_quiet's two must still be recorded.
+    await handler(makeMixedBatch([['v_loud', 3], ['v_quiet', 2]]), makeRes());
+    insertEvents.mockClear();
+
+    // v_quiet is now at 2 of 2, so this third one trips its own window.
+    await handler(makeMixedBatch([['v_quiet', 1]]), makeRes());
+    expect(insertEvents.mock.calls[0]![0][0]!.botFlag).toBe('velocity');
+  });
+
+  // R4 - the documented cost of a per-request flag: when one visitor in a mixed batch
+  // overflows, the whole batch is flagged. Pinned deliberately so a change to it is a
+  // decision rather than an accident. Layers 1-3 are per-request by nature, and the
+  // per-IP layer treats such a proxy far more bluntly - it flags every visitor behind
+  // the address, not only the ones sharing a batch with a noisy visitor.
+  it('flags the whole mixed batch when one of its visitors overflows', async () => {
+    const collector = await velocityCollector({ visitorVelocityMaxPageviews: 2 });
+    await collector.handler()(makeMixedBatch([['v_loud', 5], ['v_quiet', 1]]), makeRes());
+
+    const events = insertEvents.mock.calls[0]![0];
+    expect(events).toHaveLength(6);
+    expect(events.every((e) => e.botFlag === 'velocity')).toBe(true);
+  });
+
+  // R1 - the layer is per site as well as per visitor: the same visitorId string on a
+  // different site id keeps its own budget.
+  it('keys the window per site, not only per visitor', async () => {
+    const collector = await velocityCollector();
+    const handler = collector.handler();
+
+    await handler(makeBatch({ pageviews: 40 }), makeRes());
+    insertEvents.mockClear();
+    const other = makeBatch({ pageviews: 1 });
+    other.body.events[0]!.siteId = 'site_other';
+    await handler(other, makeRes());
+
+    expect(insertEvents).toHaveBeenCalledOnce();
+    expect(insertEvents.mock.calls[0]![0][0]!.botFlag).toBeUndefined();
+  });
+});

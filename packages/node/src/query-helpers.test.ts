@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { isValidTimezone, extractQueryParams } from './query-helpers';
+import { isValidTimezone, extractQueryParams, aggregateBotStats } from './query-helpers';
 
 describe('isValidTimezone', () => {
   it.each([
@@ -104,5 +104,53 @@ describe('extractQueryParams', () => {
     expect(params.siteId).toBe('s');
     expect(params.metric).toBe('visitors');
     expect(params.timezone).toBe('UTC');
+  });
+});
+
+// The bucket list is load-bearing, not cosmetic: `total` is summed from the buckets, so a
+// bot_flag value the aggregator does not know about is counted nowhere. The row is stored,
+// hidden from the default query by `bot_flag IS NOT NULL`, and then absent from the one
+// report that exists to show what was hidden.
+describe('aggregateBotStats', () => {
+  it('counts every layer, including velocity, into its own bucket and the total', () => {
+    expect(
+      aggregateBotStats([
+        { bot_flag: 'signature', n: 4 },
+        { bot_flag: 'heuristic', n: 3 },
+        { bot_flag: 'rate-limit', n: 2 },
+        { bot_flag: 'velocity', n: 5031 },
+      ]),
+    ).toEqual({
+      total: 5040,
+      bySignature: 4,
+      byHeuristic: 3,
+      byRateLimit: 2,
+      byVelocity: 5031,
+    });
+  });
+
+  it('reports zeroes for a site with no flagged rows', () => {
+    expect(aggregateBotStats([])).toEqual({
+      total: 0, bySignature: 0, byHeuristic: 0, byRateLimit: 0, byVelocity: 0,
+    });
+  });
+
+  it('accepts the string counts Postgres returns for ::bigint', () => {
+    const stats = aggregateBotStats([{ bot_flag: 'velocity', n: '5031' }]);
+    expect(stats.byVelocity).toBe(5031);
+    expect(stats.total).toBe(5031);
+  });
+
+  it('ignores null, unknown and unparseable rows instead of poisoning the total', () => {
+    expect(
+      aggregateBotStats([
+        { bot_flag: null, n: 900 },
+        { bot_flag: 'something-new', n: 7 },
+        { bot_flag: 'velocity', n: 'not-a-number' },
+        { bot_flag: 'velocity', n: 2 },
+      ]),
+    ).toEqual({
+      total: 2, bySignature: 0, byHeuristic: 0, byRateLimit: 0, byVelocity: 2,
+    });
   });
 });

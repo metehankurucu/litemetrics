@@ -470,6 +470,9 @@ litemetrics retention -p 30d -w 4
 
 Show how many events the bot filter flagged, broken down by detection layer.
 
+`velocity` is the per-visitor layer: one `visitorId` sending more pageviews per window
+than a person can read. A large count on a single site usually means one client, not many.
+
 ```bash
 litemetrics bots [options]
 ```
@@ -492,8 +495,9 @@ litemetrics bots -p 7d
  signature  | 128
  heuristic  | 14
  rate-limit | 3
+ velocity   | 5031
 ------------+--------
-Total flagged: 145
+Total flagged: 5176
 ```
 
 Re-run any metric with `--include-bots` to see totals that include this flagged traffic.

@@ -2,12 +2,15 @@ export interface RateLimiterConfig {
   /** Sliding window size in ms. */
   windowMs: number;
   /**
-   * Max calls to `check(ip)` per window per IP. The caller decides what one call
-   * means: the collector calls it once per collect request, so a batch of 100
-   * events spends a single slot.
+   * Max calls to `check(key)` per window per key. The caller decides what one call
+   * means and what the key is: the bot filter's layer 3 keys by IP and calls it once
+   * per collect request, so a batch of 100 events spends a single slot, while layer 4
+   * keys by `siteId:visitorId` and calls it once per pageview in the batch.
    */
   maxEvents: number;
-  /** Hard cap on tracked IPs (LRU-evicts oldest). Default: 10_000. */
+  /** Hard cap on tracked keys (LRU-evicts oldest). Default: 10_000. */
+  maxKeys?: number;
+  /** @deprecated Older name for {@link maxKeys}, kept working for existing callers. */
   maxIps?: number;
 }
 
@@ -16,22 +19,23 @@ export interface RateLimitResult {
   count: number;
 }
 
-interface IpEntry {
+interface KeyEntry {
   timestamps: number[];
 }
 
 export interface RateLimiter {
-  check(ip: string): RateLimitResult;
+  check(key: string): RateLimitResult;
   size(): number;
   reset(): void;
 }
 
 export function createRateLimiter(config: RateLimiterConfig): RateLimiter {
-  const { windowMs, maxEvents, maxIps = 10_000 } = config;
+  const { windowMs, maxEvents } = config;
+  const maxKeys = config.maxKeys ?? config.maxIps ?? 10_000;
   // JS Map preserves insertion order; re-inserting on access moves the key
   // to the end, so the first key returned by .keys() is the least-recently-used.
-  // This makes eviction O(1) under sustained unique-IP attacks.
-  const map = new Map<string, IpEntry>();
+  // This makes eviction O(1) under sustained unique-key attacks.
+  const map = new Map<string, KeyEntry>();
 
   function evictOldest(): void {
     const oldest = map.keys().next();
@@ -39,21 +43,21 @@ export function createRateLimiter(config: RateLimiterConfig): RateLimiter {
   }
 
   return {
-    check(ip: string): RateLimitResult {
-      if (!ip) return { limited: false, count: 0 };
+    check(key: string): RateLimitResult {
+      if (!key) return { limited: false, count: 0 };
 
       const now = Date.now();
       const cutoff = now - windowMs;
 
-      let entry = map.get(ip);
+      let entry = map.get(key);
       if (entry) {
         // Touch for LRU: move to end of insertion order.
-        map.delete(ip);
-        map.set(ip, entry);
+        map.delete(key);
+        map.set(key, entry);
       } else {
-        if (map.size >= maxIps) evictOldest();
+        if (map.size >= maxKeys) evictOldest();
         entry = { timestamps: [] };
-        map.set(ip, entry);
+        map.set(key, entry);
       }
 
       entry.timestamps = entry.timestamps.filter((t) => t > cutoff);

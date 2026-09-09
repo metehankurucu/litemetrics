@@ -1362,7 +1362,7 @@ export class ClickHouseAdapter implements DBAdapter {
   async queryBotStats(
     siteId: string,
     range: { from: number; to: number },
-  ): Promise<{ total: number; bySignature: number; byHeuristic: number; byRateLimit: number }> {
+  ): Promise<{ total: number; bySignature: number; byHeuristic: number; byRateLimit: number; byVelocity: number }> {
     const rows = await this.queryRows<{ bot_flag: string | null; n: string | number }>(
       `SELECT bot_flag, count() AS n
        FROM ${EVENTS_TABLE}

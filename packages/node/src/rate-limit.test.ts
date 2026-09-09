@@ -114,3 +114,42 @@ describe('createRateLimiter', () => {
     expect(rl.check('a')).toEqual({ limited: false, count: 1 });
   });
 });
+
+// Layer 4 reuses this limiter with a `siteId:visitorId` key instead of an IP, so the cap
+// on tracked keys had to stop being called `maxIps`. The old name stays a working alias:
+// it is exported from @litemetrics/node and renaming it outright would break callers.
+describe('createRateLimiter key cap', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-10T00:00:00Z'));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('caps tracked keys at maxKeys, LRU-evicting the oldest', () => {
+    const rl = createRateLimiter({ windowMs: 60_000, maxEvents: 1, maxKeys: 2 });
+    rl.check('site_a:v1');
+    rl.check('site_a:v2');
+    rl.check('site_a:v3');
+    expect(rl.size()).toBe(2);
+    // v1 was evicted, so its window starts over instead of reporting limited.
+    expect(rl.check('site_a:v1')).toEqual({ limited: false, count: 1 });
+  });
+
+  it('still honours the legacy maxIps name', () => {
+    const rl = createRateLimiter({ windowMs: 60_000, maxEvents: 1, maxIps: 2 });
+    rl.check('a');
+    rl.check('b');
+    rl.check('c');
+    expect(rl.size()).toBe(2);
+  });
+
+  it('prefers maxKeys when both names are given', () => {
+    const rl = createRateLimiter({ windowMs: 60_000, maxEvents: 1, maxKeys: 3, maxIps: 1 });
+    rl.check('a');
+    rl.check('b');
+    rl.check('c');
+    expect(rl.size()).toBe(3);
+  });
+});

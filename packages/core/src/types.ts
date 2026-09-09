@@ -162,7 +162,7 @@ export interface EnrichedEvent extends ClientContext {
   ip?: string;
   geo?: GeoInfo;
   device?: DeviceInfo;
-  botFlag?: 'signature' | 'heuristic' | 'rate-limit';
+  botFlag?: 'signature' | 'heuristic' | 'rate-limit' | 'velocity';
 }
 
 // ─── Collect Payload ────────────────────────────────────────
@@ -210,6 +210,22 @@ export interface BotFilterConfig {
    * window is shared by every site served by this collector.
    */
   rateLimitMaxEvents?: number;
+  /**
+   * Sliding-window size in ms for the visitor-velocity layer (layer 4). Default: 10_000.
+   */
+  visitorVelocityWindowMs?: number;
+  /**
+   * Max pageviews one `siteId:visitorId` pair may send inside the velocity window before
+   * layer 4 fires. Default: 30 (3 pageviews per second sustained for ten seconds).
+   *
+   * Counted in pageviews, not collect requests: the layer exists because layer 3 counts
+   * requests, so a batched flood hides inside a handful of calls. Custom events and
+   * identify calls are not counted - rage clicks and scroll-depth events are dozens per
+   * minute by design.
+   *
+   * Set to 0 to switch the layer off without switching the whole bot filter off.
+   */
+  visitorVelocityMaxPageviews?: number;
   /** Optional callback fired whenever an event is flagged or dropped (analytics/audit). */
   onBotDetected?: (info: BotDetectedInfo) => void;
   /**
@@ -246,13 +262,15 @@ export type BotDropReason =
   /** Heuristic layer: browser, engine, Accept-Language and Referer were all absent. */
   | 'no-browser-signals'
   /** The per-IP sliding window overflowed. */
-  | 'rate-limit';
+  | 'rate-limit'
+  /** One visitor sent more pageviews inside the velocity window than a human can read. */
+  | 'visitor-velocity';
 
 export interface BotDetectedInfo {
   siteId: string;
   ip: string;
   userAgent: string;
-  layer: 'signature' | 'heuristic' | 'rate-limit';
+  layer: 'signature' | 'heuristic' | 'rate-limit' | 'velocity';
   reason: BotDropReason;
   action: 'dropped' | 'flagged';
   mode: BotFilterMode;
@@ -389,6 +407,7 @@ export interface DBAdapter {
     bySignature: number;
     byHeuristic: number;
     byRateLimit: number;
+    byVelocity: number;
   }>;
 
   // Identity mapping

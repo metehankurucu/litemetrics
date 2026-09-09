@@ -35,6 +35,10 @@ import { redactUrlCredentials } from './redact';
 /** Cap on the message carried out of a collect failure (log-line budget). */
 const MAX_COLLECT_ERROR_MESSAGE = 160;
 
+/** Layer 4 defaults: 30 pageviews per visitor per 10s, i.e. 3 pageviews a second. */
+const DEFAULT_VELOCITY_WINDOW_MS = 10_000;
+const DEFAULT_VELOCITY_MAX_PAGEVIEWS = 30;
+
 export interface Collector {
   handler(): (req: any, res: any) => void | Promise<void>;
   queryHandler(): (req: any, res: any) => void | Promise<void>;
@@ -74,6 +78,42 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
     windowMs: botCfg.rateLimitWindowMs ?? 60_000,
     maxEvents: botCfg.rateLimitMaxEvents ?? 60,
   });
+
+  // Layer 4 reuses the same sliding-window limiter, as a SEPARATE instance keyed by
+  // `siteId:visitorId` instead of by IP, so the two layers never spend each other's
+  // budget. Same structure, different question: layer 3 asks how loud one address is,
+  // layer 4 asks how fast one visitor moves.
+  const velocityMaxPageviews = botCfg.visitorVelocityMaxPageviews ?? DEFAULT_VELOCITY_MAX_PAGEVIEWS;
+  const velocityLimiter = createRateLimiter({
+    windowMs: botCfg.visitorVelocityWindowMs ?? DEFAULT_VELOCITY_WINDOW_MS,
+    maxEvents: velocityMaxPageviews,
+  });
+
+  /**
+   * Layer 4. Counts the PAGEVIEWS in this batch against each visitor's window and
+   * reports whether any of them overflowed.
+   *
+   * Two deliberate choices:
+   *  - every pageview is checked, with no early exit on the first overflow, because
+   *    stopping early would leave the rest of a large batch uncounted and let a flood
+   *    stay just under the line by arriving in one call;
+   *  - only `pageview` events count. Custom events (rage clicks, scroll depth) fire
+   *    dozens of times a minute by design, so counting them would make the layer fire
+   *    on the tracker's own features.
+   */
+  function checkVisitorVelocity(siteId: string, events: ClientEvent[]): boolean {
+    if (velocityMaxPageviews <= 0) return false;
+    let limited = false;
+    for (const event of events) {
+      if (event?.type !== 'pageview') continue;
+      const visitorId = typeof event.visitorId === 'string' ? event.visitorId.trim() : '';
+      // No visitor id, no window: bucketing every anonymous event under one empty key
+      // would flag unrelated traffic as soon as that shared bucket overflowed.
+      if (!visitorId) continue;
+      if (velocityLimiter.check(`${siteId}:${visitorId}`).limited) limited = true;
+    }
+    return limited;
+  }
 
   function reportBot(info: BotDetectedInfo): void {
     botCfg.onBotDetected?.(info);
@@ -186,7 +226,7 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
     events: ClientEvent[],
     ip: string,
     userAgent: string,
-    botFlag?: 'signature' | 'heuristic' | 'rate-limit',
+    botFlag?: 'signature' | 'heuristic' | 'rate-limit' | 'velocity',
   ): EnrichedEvent[] {
     const uaDevice = parseUserAgent(userAgent);
     const now = Date.now();
@@ -393,7 +433,7 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
 
         // Layer and reason are one value so they cannot drift apart: a layer without a
         // reason would fall through the guard below and silently skip the drop.
-        let bot: { layer: 'signature' | 'heuristic' | 'rate-limit'; reason: BotDropReason } | undefined;
+        let bot: { layer: 'signature' | 'heuristic' | 'rate-limit' | 'velocity'; reason: BotDropReason } | undefined;
 
         // The signature and heuristic layers are browser heuristics: one matches a
         // User-Agent against a crawler list, the other flags a request with no
@@ -417,7 +457,12 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
         // opposite (README "Layer 1 drops the event; Layers 2 + 3 flag it").
         if (mode !== 'off') {
           if (isAppSite) {
-            if (rateLimiter.check(ip).limited) {
+            // Layer 4 is not a browser heuristic - it measures how fast one visitor
+            // moves - so unlike layers 1 and 2 it runs on app sites too, ahead of the
+            // per-IP layer for the short-circuit reason below.
+            if (checkVisitorVelocity(siteId, payload.events)) {
+              bot = { layer: 'velocity', reason: 'visitor-velocity' };
+            } else if (rateLimiter.check(ip).limited) {
               bot = { layer: 'rate-limit', reason: 'rate-limit' };
             }
           } else {
@@ -429,9 +474,15 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
               // rateLimiter.check is never reached, so a heuristic hit consumes no
               // rate-limit slot. Neither does a signature hit, for the same reason -
               // one bot must not spend a shared NAT's budget on a real visitor's behalf.
+              // Layer 4 sits between them and inherits both halves of that rule: it is
+              // never fed by a request layers 1-2 already answered, and a visitor it
+              // flags never reaches the per-IP window either, because one fast visitor
+              // must not spend a shared NAT's budget on its neighbours' behalf.
               const heuristic = classifyHeuristicBot({ userAgent, acceptLanguage, referer });
               if (heuristic) {
                 bot = { layer: 'heuristic', reason: heuristic };
+              } else if (checkVisitorVelocity(siteId, payload.events)) {
+                bot = { layer: 'velocity', reason: 'visitor-velocity' };
               } else if (rateLimiter.check(ip).limited) {
                 bot = { layer: 'rate-limit', reason: 'rate-limit' };
               }
@@ -442,7 +493,7 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
         if (bot) {
           // The mode decides the action, and only the action. `standard` drops the one
           // layer that carries a self-declared identity (the UA matched a crawler list)
-          // and flags the two that are inferences, so a false positive costs visibility
+          // and flags the three that are inferences, so a false positive costs visibility
           // in the default query, never the row.
           const shouldDrop =
             mode === 'standard' ? bot.layer === 'signature' :

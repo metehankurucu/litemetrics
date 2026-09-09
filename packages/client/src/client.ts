@@ -79,6 +79,8 @@ export interface BotStatsResult {
   bySignature: number;
   byHeuristic: number;
   byRateLimit: number;
+  /** Layer 4: one visitor sent more pageviews per window than a human can read. */
+  byVelocity: number;
 }
 
 export class LitemetricsClient {
