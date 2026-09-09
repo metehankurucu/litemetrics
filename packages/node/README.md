@@ -133,8 +133,10 @@ filtered as browser traffic and loses its Android events. When app SDK payloads
 arrive at a non-app site the collector fires `onSiteTypeMismatch` once per site
 (reporting only — the payload never bypasses the filter).
 
-Modes: `off`, `standard` (default — Layer 1 drops, Layers 2 & 3 flag; on an app
-site nothing runs), `strict` (every layer drops; app site: rate limit only),
+Modes: `off`, `standard` (the default: Layer 1 drops, Layers 2 & 3 flag, meaning the
+event is stored with a `bot_flag` and hidden from queries rather than discarded;
+on an app site only Layer 3 runs, and it flags), `strict` (every layer drops; app
+site: rate limit only),
 `shadow` (every layer flags only). Every detection reports both the `layer` that
 fired and a finer `reason` — the signature layer fires for a missing User-Agent
 (`empty-ua`) and for an `isbot` list match (`ua-signature`), and those call for

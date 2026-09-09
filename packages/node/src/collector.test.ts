@@ -263,11 +263,10 @@ describe('collector bot filtering', () => {
     expect(res.statusCode).toBe(200); // silent drop
   });
 
-  // Note: an integration test for "standard mode does NOT drop heuristic hits" is
-  // omitted because isbot v5 already classifies bare `Mozilla/5.0` as a signature
-  // bot, leaving no realistic UA that (a) escapes isbot AND (b) trips the heuristic
-  // without mocking. The strict-mode case below proves the heuristic layer fires
-  // when enabled; the off-mode and shadow-mode cases below prove the mode gate.
+  // A truncated Chrome UA - what a scraper sends when it copies only the platform
+  // token - escapes isbot v5 AND leaves ua-parser with no browser and no engine, so
+  // it is the realistic UA that drives the heuristic layer without mocking. The
+  // standard-mode layer-2 and layer-3 cases live in their own describe block below.
 
   it('drops heuristic hits in strict mode', async () => {
     const collector = await createCollector({
@@ -407,6 +406,200 @@ describe('collector bot filtering', () => {
     const handler = collector.handler();
     await handler(makeBotReq('okhttp/4.12.0'), makeRes());
     expect(onBotDetected).not.toHaveBeenCalled();
+  });
+});
+
+// The bug this block exists to prevent: `standard` is the shipped default
+// (`BOT_FILTER_MODE` unset -> `standard`) and it used to gate layers 2 and 3 off
+// entirely, so `bot` could only ever be a signature hit, which is always dropped -
+// making `bot_flag` a structural NULL and `queryBotStats` structurally empty. Every
+// doc (README, self-hosting, packages/node/README, getting-started) promised the
+// opposite: layer 1 drops, layers 2 and 3 flag.
+describe('collector bot filtering - standard mode runs layers 2 and 3', () => {
+  beforeEach(() => {
+    resetAdapterMocks();
+  });
+
+  // Truncated Chrome UA: escapes isbot v5, and ua-parser resolves neither a browser
+  // nor an engine from it. With no Accept-Language and no Referer either, all four
+  // heuristic signals are empty.
+  const SCRUBBED_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)';
+  const REAL_CHROME_UA =
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+  const BROWSER_HEADERS = { 'accept-language': 'en-US,en;q=0.9', referer: 'https://x.test/prev' };
+
+  function makeBotReq(ua: string, headers: Record<string, string> = {}, ip = '9.9.9.9') {
+    return {
+      method: 'POST',
+      headers: { 'user-agent': ua, ...headers },
+      body: {
+        events: [{
+          siteId: 'site_test', visitorId: 'v1', sessionId: 's1', type: 'pageview',
+          name: '$pageview', timestamp: Date.now(), url: 'https://x.test/',
+        }],
+      },
+      socket: { remoteAddress: ip },
+    };
+  }
+
+  // R1 - the layer-2 half of the fix.
+  it('flags but does not drop a heuristic hit in standard mode, persisting botFlag', async () => {
+    const onBotDetected = vi.fn();
+    const collector = await createCollector({
+      db: { adapter: 'clickhouse', url: 'http://x' },
+      botFilter: { defaultMode: 'standard', onBotDetected },
+    });
+    await collector.handler()(makeBotReq(SCRUBBED_UA), makeRes());
+    expect(insertEvents).toHaveBeenCalledOnce();
+    expect(insertEvents.mock.calls[0]![0][0]!.botFlag).toBe('heuristic');
+    expect(onBotDetected).toHaveBeenCalledWith(
+      expect.objectContaining({
+        layer: 'heuristic', reason: 'no-browser-signals', action: 'flagged', mode: 'standard',
+      }),
+    );
+  });
+
+  // R2 - the layer-3 half of the fix.
+  it('flags but does not drop a rate-limit overflow in standard mode, persisting botFlag', async () => {
+    const onBotDetected = vi.fn();
+    const collector = await createCollector({
+      db: { adapter: 'clickhouse', url: 'http://x' },
+      botFilter: { defaultMode: 'standard', rateLimitMaxEvents: 1, onBotDetected },
+    });
+    const handler = collector.handler();
+    await handler(makeBotReq(REAL_CHROME_UA, BROWSER_HEADERS), makeRes());
+    expect(onBotDetected).not.toHaveBeenCalled();
+    await handler(makeBotReq(REAL_CHROME_UA, BROWSER_HEADERS), makeRes());
+    expect(insertEvents).toHaveBeenCalledTimes(2);
+    expect(insertEvents.mock.calls[0]![0][0]!.botFlag).toBeUndefined();
+    expect(insertEvents.mock.calls[1]![0][0]!.botFlag).toBe('rate-limit');
+    expect(onBotDetected).toHaveBeenCalledWith(
+      expect.objectContaining({ layer: 'rate-limit', reason: 'rate-limit', action: 'flagged' }),
+    );
+  });
+
+  // R4 - the one enforcing layer must stay enforcing. A signature hit is still a drop,
+  // not a flag, even though the layers behind it now run.
+  it('still drops a signature hit in standard mode', async () => {
+    const onBotDetected = vi.fn();
+    const collector = await createCollector({
+      db: { adapter: 'clickhouse', url: 'http://x' },
+      botFilter: { defaultMode: 'standard', onBotDetected },
+    });
+    await collector.handler()(makeBotReq('curl/8.0.0'), makeRes());
+    expect(insertEvents).not.toHaveBeenCalled();
+    expect(onBotDetected).toHaveBeenCalledWith(
+      expect.objectContaining({ layer: 'signature', action: 'dropped', mode: 'standard' }),
+    );
+  });
+
+  // R5 - the short-circuit the else-if chain always had: a heuristic hit returns before
+  // rateLimiter.check, so a bot never eats a legitimate visitor's rate-limit slot on a
+  // shared NAT. maxEvents is 1, so if the scrubbed request had consumed the slot the
+  // real browser behind the same IP would come back rate-limited.
+  it('a heuristic hit consumes no rate-limit slot', async () => {
+    const onBotDetected = vi.fn();
+    const collector = await createCollector({
+      db: { adapter: 'clickhouse', url: 'http://x' },
+      botFilter: { defaultMode: 'standard', rateLimitMaxEvents: 1, onBotDetected },
+    });
+    const handler = collector.handler();
+    await handler(makeBotReq(SCRUBBED_UA), makeRes());
+    await handler(makeBotReq(REAL_CHROME_UA, BROWSER_HEADERS), makeRes());
+    expect(insertEvents).toHaveBeenCalledTimes(2);
+    expect(insertEvents.mock.calls[1]![0][0]!.botFlag).toBeUndefined();
+    expect(onBotDetected).toHaveBeenCalledTimes(1);
+  });
+
+  // R4 - a dropped signature hit must not consume a slot either.
+  it('a dropped signature hit consumes no rate-limit slot', async () => {
+    const collector = await createCollector({
+      db: { adapter: 'clickhouse', url: 'http://x' },
+      botFilter: { defaultMode: 'standard', rateLimitMaxEvents: 1 },
+    });
+    const handler = collector.handler();
+    await handler(makeBotReq('curl/8.0.0'), makeRes());
+    await handler(makeBotReq(REAL_CHROME_UA, BROWSER_HEADERS), makeRes());
+    expect(insertEvents).toHaveBeenCalledOnce();
+    expect(insertEvents.mock.calls[0]![0][0]!.botFlag).toBeUndefined();
+  });
+
+  // R4 - `off` still means off. Opening layers 2 and 3 in standard must not leak into it.
+  it('runs no layer at all in off mode', async () => {
+    const onBotDetected = vi.fn();
+    const collector = await createCollector({
+      db: { adapter: 'clickhouse', url: 'http://x' },
+      botFilter: { defaultMode: 'off', rateLimitMaxEvents: 1, onBotDetected },
+    });
+    const handler = collector.handler();
+    await handler(makeBotReq(SCRUBBED_UA), makeRes());
+    await handler(makeBotReq(SCRUBBED_UA), makeRes());
+    expect(insertEvents).toHaveBeenCalledTimes(2);
+    expect(insertEvents.mock.calls[0]![0][0]!.botFlag).toBeUndefined();
+    expect(insertEvents.mock.calls[1]![0][0]!.botFlag).toBeUndefined();
+    expect(onBotDetected).not.toHaveBeenCalled();
+  });
+
+  // R4 - strict still DROPS what standard now flags. Same UA, opposite action.
+  it('still drops the same heuristic hit in strict mode', async () => {
+    const onBotDetected = vi.fn();
+    const collector = await createCollector({
+      db: { adapter: 'clickhouse', url: 'http://x' },
+      botFilter: { defaultMode: 'strict', onBotDetected },
+    });
+    await collector.handler()(makeBotReq(SCRUBBED_UA), makeRes());
+    expect(insertEvents).not.toHaveBeenCalled();
+    expect(onBotDetected).toHaveBeenCalledWith(
+      expect.objectContaining({ layer: 'heuristic', action: 'dropped', mode: 'strict' }),
+    );
+  });
+
+  // R4 - a per-site override still outranks the server default.
+  it("honours site.botFilterMode='off' against a standard server default", async () => {
+    getSite.mockImplementation(async () => ({
+      siteId: 'site_test', name: 'Test', secretKey: 'k', type: 'web', botFilterMode: 'off',
+    }));
+    const onBotDetected = vi.fn();
+    const collector = await createCollector({
+      db: { adapter: 'clickhouse', url: 'http://x' },
+      botFilter: { defaultMode: 'standard', onBotDetected },
+    });
+    await collector.handler()(makeBotReq(SCRUBBED_UA), makeRes());
+    expect(insertEvents).toHaveBeenCalledOnce();
+    expect(insertEvents.mock.calls[0]![0][0]!.botFlag).toBeUndefined();
+    expect(onBotDetected).not.toHaveBeenCalled();
+  });
+
+  // R6 - the flag is what makes the event countable by queryBotStats, so every event in
+  // a flagged batch has to carry it, not just the first.
+  it('marks every event of a flagged batch, not only the first', async () => {
+    const collector = await createCollector({
+      db: { adapter: 'clickhouse', url: 'http://x' },
+      botFilter: { defaultMode: 'standard' },
+    });
+    const req = makeBotReq(SCRUBBED_UA);
+    req.body.events.push({
+      siteId: 'site_test', visitorId: 'v1', sessionId: 's1', type: 'pageview',
+      name: '$pageview', timestamp: Date.now(), url: 'https://x.test/two',
+    });
+    await collector.handler()(req, makeRes());
+    expect(insertEvents).toHaveBeenCalledOnce();
+    const events = insertEvents.mock.calls[0]![0];
+    expect(events).toHaveLength(2);
+    expect(events.map((e) => e.botFlag)).toEqual(['heuristic', 'heuristic']);
+  });
+
+  // R2 - the window is per IP, so one noisy IP must not flag a different visitor.
+  it('rate-limits per IP, not globally', async () => {
+    const collector = await createCollector({
+      db: { adapter: 'clickhouse', url: 'http://x' },
+      botFilter: { defaultMode: 'standard', rateLimitMaxEvents: 1 },
+    });
+    const handler = collector.handler();
+    await handler(makeBotReq(REAL_CHROME_UA, BROWSER_HEADERS, '1.1.1.1'), makeRes());
+    await handler(makeBotReq(REAL_CHROME_UA, BROWSER_HEADERS, '2.2.2.2'), makeRes());
+    expect(insertEvents).toHaveBeenCalledTimes(2);
+    expect(insertEvents.mock.calls[1]![0][0]!.botFlag).toBeUndefined();
   });
 });
 
@@ -709,17 +902,42 @@ describe('collector bot filter - app-type sites', () => {
     );
   });
 
-  // R3: standard mode never ran the rate-limit layer and must not start now.
-  it('does not start rate-limiting app sites in standard mode', async () => {
+  // R3: standard mode observes the rate-limit layer on an app site - it flags the
+  // overflow so `bot_flag` can fill, and still drops nothing. Before this change the
+  // layer was gated off entirely, which is why an app site's `bot_flag` could never
+  // be non-null in the default mode.
+  it('flags but does not drop an app-site rate-limit overflow in standard mode', async () => {
     getSite.mockImplementation(async () => appSite());
+    const onBotDetected = vi.fn();
     const collector = await createCollector({
       db: { adapter: 'clickhouse', url: 'http://x' },
-      botFilter: { defaultMode: 'standard', rateLimitMaxEvents: 1 },
+      botFilter: { defaultMode: 'standard', rateLimitMaxEvents: 1, onBotDetected },
     });
     const handler = collector.handler();
     await handler(makeReqFor('okhttp/4.12.0'), makeRes());
     await handler(makeReqFor('okhttp/4.12.0'), makeRes());
     expect(insertEvents).toHaveBeenCalledTimes(2);
+    expect(insertEvents.mock.calls[0]![0][0]!.botFlag).toBeUndefined();
+    expect(insertEvents.mock.calls[1]![0][0]!.botFlag).toBe('rate-limit');
+    expect(onBotDetected).toHaveBeenCalledWith(
+      expect.objectContaining({ layer: 'rate-limit', action: 'flagged', mode: 'standard' }),
+    );
+  });
+
+  // R3: layers 1 and 2 stay off on an app site in standard mode. A React Native
+  // request carries no browser, no engine, no Accept-Language and no Referer, so an
+  // ungated heuristic layer would flag 100% of app traffic.
+  it('does not let layers 1 or 2 flag app traffic in standard mode', async () => {
+    getSite.mockImplementation(async () => appSite());
+    const onBotDetected = vi.fn();
+    const collector = await createCollector({
+      db: { adapter: 'clickhouse', url: 'http://x' },
+      botFilter: { defaultMode: 'standard', onBotDetected },
+    });
+    await collector.handler()(makeReqFor('MyApp/1.0 CFNetwork/1498.700.2 Darwin/23.6.0'), makeRes());
+    expect(insertEvents).toHaveBeenCalledOnce();
+    expect(insertEvents.mock.calls[0]![0][0]!.botFlag).toBeUndefined();
+    expect(onBotDetected).not.toHaveBeenCalled();
   });
 
   // R4: an explicit per-site override still means what it said.

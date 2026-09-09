@@ -405,19 +405,30 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
         const isAppSite = site?.type === 'app';
         if (site && !isAppSite) reportSiteTypeMismatch(site, payload.events, mode);
 
+        // Every mode except `off` evaluates every layer the site type runs. What the
+        // mode decides is the ACTION (see shouldDrop below), not whether a layer is
+        // consulted at all: `standard` enforces layer 1 and observes the rest.
+        //
+        // Gating the evaluation on the mode - which is what this used to do - made
+        // `bot` unreachable for anything but a signature hit in `standard`, and a
+        // signature hit is always dropped before the insert. So in the shipped default
+        // mode `botFlag` was never set on a stored event, `bot_flag` was a structural
+        // NULL, and queryBotStats was structurally empty. Four docs promised the
+        // opposite (README "Layer 1 drops the event; Layers 2 + 3 flag it").
         if (mode !== 'off') {
           if (isAppSite) {
-            if ((mode === 'strict' || mode === 'shadow') && rateLimiter.check(ip).limited) {
+            if (rateLimiter.check(ip).limited) {
               bot = { layer: 'rate-limit', reason: 'rate-limit' };
             }
           } else {
             const signature = classifyUserAgent(userAgent);
             if (signature) {
               bot = { layer: 'signature', reason: signature };
-            } else if (mode === 'strict' || mode === 'shadow') {
-              // Same short-circuit the original else-if chain already had: when the
-              // heuristic layer fires, rateLimiter.check is never reached, so a
-              // heuristic hit consumes no rate-limit slot.
+            } else {
+              // The else-if chain is the short-circuit: when the heuristic layer fires,
+              // rateLimiter.check is never reached, so a heuristic hit consumes no
+              // rate-limit slot. Neither does a signature hit, for the same reason -
+              // one bot must not spend a shared NAT's budget on a real visitor's behalf.
               const heuristic = classifyHeuristicBot({ userAgent, acceptLanguage, referer });
               if (heuristic) {
                 bot = { layer: 'heuristic', reason: heuristic };
@@ -429,6 +440,10 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
         }
 
         if (bot) {
+          // The mode decides the action, and only the action. `standard` drops the one
+          // layer that carries a self-declared identity (the UA matched a crawler list)
+          // and flags the two that are inferences, so a false positive costs visibility
+          // in the default query, never the row.
           const shouldDrop =
             mode === 'standard' ? bot.layer === 'signature' :
             mode === 'strict'   ? true :
