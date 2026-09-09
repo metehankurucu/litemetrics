@@ -33,7 +33,7 @@ app.listen(3002);
 
 This creates 3 tables (`litemetrics_events`, `litemetrics_sites`, `litemetrics_identity_map`) on first start. Existing data is not touched.
 
-> Bot filtering is enabled by default (`BOT_FILTER_MODE=standard`). Crawlers, headless browsers, and scrubbed user agents are excluded from queries automatically. Set `BOT_FILTER_MODE=off` if you want every event counted, or see [Self-Hosting](./self-hosting.md#bot-filtering) for the full mode list.
+> Bot filtering is enabled by default (`BOT_FILTER_MODE=standard`). Crawlers, headless browsers, and scrubbed user agents are excluded from queries automatically. A known crawler signature is dropped outright; a scrubbed user agent or a per-IP flood is kept in the database with a `bot_flag` and hidden from queries, so you can audit it later with `?includeBots=true`. Set `BOT_FILTER_MODE=off` if you want every event counted, or see [Self-Hosting](./self-hosting.md#bot-filtering) for the full mode list.
 
 Using Postgres? Pass `{ adapter: 'postgres', url: 'postgres://user:pass@localhost:5432/myapp' }` to `db`.
 
@@ -98,7 +98,7 @@ function App() {
 bun add @litemetrics/react-native
 ```
 
-> Create the site with `type: 'app'` (`litemetrics sites create -n "My App" --type app`, or `POST /api/sites` with `{"type":"app"}`). On a `web` site the bot filter treats the SDK's traffic as browser traffic and drops Android's default `okhttp/<version>` User-Agent, so every Android event is lost. See [Self-Hosting → Bot Filtering](./self-hosting.md#bot-filtering).
+> Create the site with `type: 'app'` (`litemetrics sites create -n "My App" --type app`, or `POST /api/sites` with `{"type":"app"}`). On a `web` site the bot filter treats the SDK's traffic as browser traffic: the SDK's `litemetrics-react-native/<version> (<platform>)` User-Agent escapes Layer 1 but trips Layer 2 (no browser, no engine, no `Accept-Language`, no `Referer`), so `standard` hides that traffic from every report and `strict` drops it. See [Self-Hosting → Bot Filtering](./self-hosting.md#bot-filtering).
 
 ```tsx
 import { LitemetricsProvider } from '@litemetrics/react-native';

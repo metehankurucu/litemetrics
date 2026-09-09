@@ -204,15 +204,21 @@ export interface BotFilterConfig {
   defaultMode?: BotFilterMode;
   /** Sliding-window size in ms for rate-limit layer. Default: 60_000. */
   rateLimitWindowMs?: number;
-  /** Max events per window per IP before rate-limit fires. Default: 60. */
+  /**
+   * Max collect requests per window per IP before rate-limit fires. Default: 60.
+   * Counted per request, not per event, so one batch of 100 spends one slot. The
+   * window is shared by every site served by this collector.
+   */
   rateLimitMaxEvents?: number;
   /** Optional callback fired whenever an event is flagged or dropped (analytics/audit). */
   onBotDetected?: (info: BotDetectedInfo) => void;
   /**
    * Fired once per site when app-SDK events arrive at a site that is not typed as
    * `app`. Unless its bot-filter mode is `off`, such a site is filtered as browser
-   * traffic, which silently drops its Android events; either way the dashboard shows
-   * it as a web site. Reporting only - the request is filtered exactly as before.
+   * traffic: the SDK's User-Agent escapes the signature layer but trips the heuristic
+   * layer, so `standard` stores its app events with a `bot_flag` and hides them from
+   * every report, and `strict` drops them. Either way the dashboard shows it as a web
+   * site. Reporting only - the request is filtered exactly as before.
    */
   onSiteTypeMismatch?: (info: SiteTypeMismatchInfo) => void;
 }

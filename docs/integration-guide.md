@@ -134,7 +134,7 @@ export function PageTracker() {
 bun add @litemetrics/react-native
 ```
 
-> **Create the site with `type: 'app'`** — `litemetrics sites create -n "My App" --type app`, or `POST /api/sites` with `{"type":"app"}` (an existing site: `PUT /api/sites/:siteId {"type":"app"}`). The bot filter treats a `web` site's traffic as browser traffic, and React Native on Android sends OkHttp's default `okhttp/<version>` User-Agent, which the signature layer drops — so on a `web` site every Android event is silently lost. See [Bot Filtering](#bot-filtering).
+> **Create the site with `type: 'app'`** — `litemetrics sites create -n "My App" --type app`, or `POST /api/sites` with `{"type":"app"}` (an existing site: `PUT /api/sites/:siteId {"type":"app"}`). The bot filter treats a `web` site's traffic as browser traffic: the SDK's `litemetrics-react-native/<version> (<platform>)` User-Agent escapes Layer 1 but trips Layer 2 (no browser, no engine, no `Accept-Language`, no `Referer`), so `standard` hides that traffic from every report and `strict` drops it. See [Bot Filtering](#bot-filtering).
 
 ```tsx
 import { LitemetricsProvider, useNavigationTracking } from '@litemetrics/react-native';
@@ -383,4 +383,4 @@ const withBots = await client.getStats('pageviews', { period: '7d', includeBots:
 
 The server filters bots in three layers (signature match via `isbot`, heuristic for scrubbed user agents, per-IP rate limit) and the browser tracker short-circuits to a no-op when `navigator.webdriver === true` — catching Selenium / Puppeteer / Playwright at the source. Sites typed `app` run the rate-limit layer only — the other two are browser heuristics that would drop app SDK traffic (Android's default `okhttp/<version>` User-Agent is on the `isbot` list) — so a site receiving React Native traffic must be created with `type: 'app'`.
 
-Filtering is enabled by default (`BOT_FILTER_MODE=standard`), per-site overridable from the dashboard Settings page. All read endpoints accept `?includeBots=true` to surface flagged events. See [Self-Hosting](./self-hosting.md#bot-filtering) for mode details.
+Filtering is enabled by default (`BOT_FILTER_MODE=standard`): Layer 1 drops the event, Layers 2 and 3 keep it with a `bot_flag` and hide it from queries. It is per-site overridable from the dashboard Settings page. All read endpoints accept `?includeBots=true` to surface flagged events. See [Self-Hosting](./self-hosting.md#bot-filtering) for mode details.

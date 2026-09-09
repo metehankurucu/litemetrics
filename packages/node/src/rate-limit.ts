@@ -1,7 +1,11 @@
 export interface RateLimiterConfig {
   /** Sliding window size in ms. */
   windowMs: number;
-  /** Max events per window per IP. */
+  /**
+   * Max calls to `check(ip)` per window per IP. The caller decides what one call
+   * means: the collector calls it once per collect request, so a batch of 100
+   * events spends a single slot.
+   */
   maxEvents: number;
   /** Hard cap on tracked IPs (LRU-evicts oldest). Default: 10_000. */
   maxIps?: number;

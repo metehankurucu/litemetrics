@@ -62,7 +62,7 @@ Open `http://localhost:3002` for the dashboard.
 | `TRUST_PROXY` | Trust X-Forwarded-For headers | `true` |
 | `BOT_FILTER_MODE` | Server-wide bot filter default: `off`, `standard`, `strict`, or `shadow` | `standard` |
 | `BOT_RATE_WINDOW_MS` | Sliding-window size for the per-IP rate limiter (ms) | `60000` |
-| `BOT_RATE_MAX` | Max events per window per IP before the rate-limit layer fires | `60` |
+| `BOT_RATE_MAX` | Max collect **requests** per window per IP before the rate-limit layer fires (one request can carry up to 100 events) | `60` |
 | `BOT_LOG_MAX_PER_MIN` | Detail `[bot-filter]` log lines allowed per minute; the overflow is counted as `suppressed=` on the `[collect]` summary | `20` |
 | `COLLECT_ERROR_LOG_MAX_PER_MIN` | Detail `[collect-error]` log lines allowed per minute; every failure is still counted in `err_codes=` on the `[collect]` summary | `5` |
 
@@ -70,11 +70,11 @@ Open `http://localhost:3002` for the dashboard.
 
 ## Bot Filtering
 
-Bot filtering runs in three server-side layers (signature via `isbot`, heuristic for scrubbed UAs, per-IP rate limit) plus a tracker-side `navigator.webdriver` short-circuit. It is enabled by default in `standard` mode.
+Bot filtering runs in three server-side layers (signature via `isbot`, heuristic for scrubbed UAs, per-IP rate limit) plus a tracker-side `navigator.webdriver` short-circuit. It is enabled by default in `standard` mode. The rate-limit window counts collect requests rather than events, and one window is shared across every site served by the process.
 
-Sites typed `app` run the rate-limit layer only: the signature and heuristic layers are browser heuristics and an app SDK sends no browser User-Agent (React Native on Android goes out as `okhttp/<version>`, which `isbot` matches). A site that receives app SDK traffic must be created with `type: 'app'`, or it is filtered as browser traffic and its Android events are dropped. The server logs `[site-type-mismatch] site=<id> type=<type> platform=<platform> mode=<mode>` once per site when it sees app SDK payloads on a non-app site.
+Sites typed `app` run the rate-limit layer only: the signature and heuristic layers are browser heuristics and an app SDK sends no browser User-Agent (React Native on Android goes out as `okhttp/<version>`, which `isbot` matches). A site that receives app SDK traffic must be created with `type: 'app'`, or it is filtered as browser traffic: the SDK's `litemetrics-react-native/<version> (<platform>)` User-Agent escapes Layer 1 but trips Layer 2 (no browser, no engine, no `Accept-Language`, no `Referer`), so `standard` hides that traffic from every report and `strict` drops it. The server logs `[site-type-mismatch] site=<id> type=<type> platform=<platform> mode=<mode>` once per site when it sees app SDK payloads on a non-app site.
 
-- `BOT_FILTER_MODE=standard` (default): Layer 1 drops, Layers 2 + 3 flag (events stored with `bot_flag`, hidden from queries). On `app` sites nothing runs.
+- `BOT_FILTER_MODE=standard` (default): Layer 1 drops, Layers 2 + 3 flag (events stored with `bot_flag`, hidden from queries, countable via `litemetrics bots` and readable again with `?includeBots=true`). On `app` sites only Layer 3 runs, and it flags.
 - `BOT_FILTER_MODE=strict`: every layer drops (`app` sites: rate limit only).
 - `BOT_FILTER_MODE=shadow`: every layer flags only — useful for tuning thresholds without affecting data (`app` sites: rate limit only).
 - `BOT_FILTER_MODE=off`: disabled.

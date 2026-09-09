@@ -442,18 +442,21 @@ function BotFilterModeSetting({ mode, siteType, onUpdate, saving }: {
   const current = mode ?? 'standard';
   // App SDK traffic carries no browser User-Agent, so the signature and heuristic
   // layers never run on an app site - only the per-IP rate limit does. The hints
-  // must say what each mode actually does for *this* site.
+  // must say what each mode actually does for *this* site, including what
+  // `standard` FLAGS: a flagged event is stored but hidden from these reports unless
+  // `Include bot traffic` is on, so a hint that only names the drops understates what
+  // the mode removes.
   const isApp = siteType === 'app';
   const options: Array<{ value: 'off' | 'standard' | 'strict' | 'shadow'; label: string; hint: string }> = isApp
     ? [
         { value: 'off',      label: 'Off',      hint: 'No bot filtering. Useful for testing.' },
-        { value: 'standard', label: 'Standard', hint: 'No filtering on app sites (signature/heuristic layers are browser-only). Default.' },
+        { value: 'standard', label: 'Standard', hint: 'Flag per-IP rate-limit hits: kept, but hidden from reports. Drops nothing. Signature/heuristic layers are browser-only. Default.' },
         { value: 'strict',   label: 'Strict',   hint: 'Drop per-IP rate-limit hits. The only layer that applies to app traffic.' },
         { value: 'shadow',   label: 'Shadow',   hint: 'Flag rate-limit hits but drop nothing - for analysis.' },
       ]
     : [
         { value: 'off',      label: 'Off',      hint: 'No bot filtering. Useful for testing.' },
-        { value: 'standard', label: 'Standard', hint: 'Drop known bots (isbot signatures). Default.' },
+        { value: 'standard', label: 'Standard', hint: 'Drop known bots (isbot signatures); flag scrubbed-UA and rate-limit hits: kept, but hidden from reports. Default.' },
         { value: 'strict',   label: 'Strict',   hint: 'Drop known bots + scrubbed-UA + rate-limit hits.' },
         { value: 'shadow',   label: 'Shadow',   hint: 'Flag everything but drop nothing - for analysis.' },
       ];
@@ -463,7 +466,7 @@ function BotFilterModeSetting({ mode, siteType, onUpdate, saving }: {
       <div>
         <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">Bot Filtering</h3>
         <p className="text-xs text-zinc-500 mt-1">
-          Controls how this site filters bot traffic before storage.
+          Controls how this site filters bot traffic before it reaches your reports.
         </p>
       </div>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
