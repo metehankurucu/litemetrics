@@ -352,4 +352,5 @@ filtered" pill and `litemetrics bots` both read; adapters implement it as
 ```
 
 Only FLAGGED events are counted. A dropped event is never stored, so `strict` mode,
-which drops every layer, reports zeroes here.
+which drops every layer, reports zeroes here. For the same reason `bySignature` is only
+ever non-zero under `shadow`: `standard` drops Layer 1 hits rather than flagging them.

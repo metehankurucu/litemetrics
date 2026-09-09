@@ -415,7 +415,7 @@ describe('collector bot filtering', () => {
 // making `bot_flag` a structural NULL and `queryBotStats` structurally empty. Every
 // doc (README, self-hosting, packages/node/README, getting-started) promised the
 // opposite: layer 1 drops, layers 2 and 3 flag.
-describe('collector bot filtering - standard mode runs layers 2 and 3', () => {
+describe('collector bot filtering - standard mode runs the non-signature layers', () => {
   beforeEach(() => {
     resetAdapterMocks();
   });
@@ -524,7 +524,7 @@ describe('collector bot filtering - standard mode runs layers 2 and 3', () => {
     expect(insertEvents.mock.calls[0]![0][0]!.botFlag).toBeUndefined();
   });
 
-  // R4 - `off` still means off. Opening layers 2 and 3 in standard must not leak into it.
+  // R4 - `off` still means off. Opening layers 2, 3 and 4 in standard must not leak into it.
   it('runs no layer at all in off mode', async () => {
     const onBotDetected = vi.fn();
     const collector = await createCollector({
@@ -1954,7 +1954,7 @@ describe('collector bot filtering - layer 4: visitor velocity', () => {
   });
 
   // R4 - events, not requests. This is the batching escape the IP limiter cannot close:
-  // one single call carrying 31 pageviews spends exactly one rate-limit slot, so layer 3
+  // one single call carrying 61 pageviews spends exactly one rate-limit slot, so layer 3
   // sees a quiet IP. Layer 4 counts the pageviews.
   it('counts pageviews, not collect calls: a single 61-pageview batch trips the layer', async () => {
     const onBotDetected = vi.fn();
@@ -2148,10 +2148,49 @@ describe('collector bot filtering - layer 4: visitor velocity', () => {
     const onBotDetected = vi.fn();
     const collector = await velocityCollector({ onBotDetected, rateLimitMaxEvents: 1000 });
     const handler = collector.handler();
-    await handler(makeBatch({ visitorId: '', pageviews: 50 }), makeRes());
-    await handler(makeBatch({ visitorId: '   ', pageviews: 50 }), makeRes());
+    // Each half has to clear the threshold ON ITS OWN, or dropping `.trim()` would go
+    // unnoticed: whitespace would get its own key and simply never fill it.
+    await handler(makeBatch({ visitorId: '', pageviews: 100 }), makeRes());
+    await handler(makeBatch({ visitorId: '   ', pageviews: 100 }), makeRes());
+    await handler(makeBatch({ visitorId: '\t\n ', pageviews: 100 }), makeRes());
 
     expect(onBotDetected).not.toHaveBeenCalled();
+  });
+
+  // R4 - `visitorId` is attacker-controlled, unvalidated, and `parseBody` reads a
+  // non-JSON body with no size cap, so a Map key built from it is unbounded unless the
+  // length is checked. The key count cap does not help: the attack makes keys BIG, not
+  // numerous. Skipped rather than truncated, so a flood cannot ride in on a real
+  // visitor's window by sharing a prefix.
+  it('never keys a window on a visitorId longer than 128 characters', async () => {
+    const onBotDetected = vi.fn();
+    const collector = await velocityCollector({ onBotDetected, rateLimitMaxEvents: 1000 });
+    const handler = collector.handler();
+
+    const oversized = 'v'.repeat(129);
+    for (let i = 0; i < 3; i++) {
+      await handler(makeBatch({ visitorId: oversized, pageviews: 100 }), makeRes());
+    }
+
+    // 300 pageviews from one id, five times over the threshold, and nothing fires:
+    // the key was never stored, so it cannot be retained either.
+    expect(onBotDetected).not.toHaveBeenCalled();
+    expect(writtenFlags().every((f) => f === undefined)).toBe(true);
+  });
+
+  // R4 - and the boundary holds from the other side, so the guard cannot quietly
+  // tighten into rejecting ids the SDKs actually emit.
+  it('still keys a window on a visitorId of exactly 128 characters', async () => {
+    const onBotDetected = vi.fn();
+    const collector = await velocityCollector({ onBotDetected });
+    await collector.handler()(
+      makeBatch({ visitorId: 'v'.repeat(128), pageviews: 61 }),
+      makeRes(),
+    );
+
+    expect(onBotDetected).toHaveBeenCalledWith(
+      expect.objectContaining({ layer: 'velocity', reason: 'visitor-velocity' }),
+    );
   });
 
   // R2 - the window is sliding, so a flagged visitor is not flagged forever: once the old

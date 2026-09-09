@@ -235,6 +235,10 @@ export interface BotFilterConfig {
    * used window is evicted, which is exactly what such a client wants: evict every real
    * visitor's window and the layer stops firing for the whole process. Raise it on a
    * busy host; it costs roughly one entry plus its timestamps per tracked visitor.
+   *
+   * This bounds the key COUNT. Key SIZE is bounded separately and unconditionally: a
+   * `visitorId` longer than 128 characters is skipped rather than keyed, because it
+   * arrives unvalidated in the request body and a Map key lives as long as its entry.
    */
   visitorVelocityMaxKeys?: number;
   /** Optional callback fired whenever an event is flagged or dropped (analytics/audit). */

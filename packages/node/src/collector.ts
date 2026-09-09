@@ -62,6 +62,24 @@ const DEFAULT_VELOCITY_MAX_PAGEVIEWS = 60;
  */
 const DEFAULT_VELOCITY_MAX_KEYS = 50_000;
 
+/**
+ * Longest `visitorId` layer 4 will key a window on. Anything longer is skipped, not
+ * truncated.
+ *
+ * `visitorId` arrives in the request body and is never validated, and `parseBody` reads
+ * a non-JSON body with no size cap, so `express.json()`'s 100 KB limit is cleared by a
+ * single `Content-Type: text/plain` header. A Map key is retained for the life of its
+ * entry, so without this the ceiling is not the key COUNT that
+ * `visitorVelocityMaxKeys` bounds but container memory: measured at roughly 100
+ * unauthenticated requests per 512 MB, at 0.2% of the 50k cap.
+ *
+ * Skipping rather than truncating, because truncation would collapse distinct ids onto
+ * one key and let a flood ride in on a real visitor's window. 128 is generous: both
+ * shipped SDKs emit 16 characters (`packages/tracker/src/session.ts` `hash.slice(0, 16)`,
+ * `packages/react-native/src/tracker.ts` `generateId().slice(0, 16)`).
+ */
+const MAX_VISITOR_KEY_LEN = 128;
+
 export interface Collector {
   handler(): (req: any, res: any) => void | Promise<void>;
   queryHandler(): (req: any, res: any) => void | Promise<void>;
@@ -130,7 +148,11 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
     let limited = false;
     for (const event of events) {
       if (event?.type !== 'pageview') continue;
-      const visitorId = typeof event.visitorId === 'string' ? event.visitorId.trim() : '';
+      const rawVisitorId = typeof event.visitorId === 'string' ? event.visitorId : '';
+      // Length before trim, deliberately: trimming a multi-megabyte string allocates a
+      // copy of it, so the check has to come first to be worth anything.
+      if (rawVisitorId.length > MAX_VISITOR_KEY_LEN) continue;
+      const visitorId = rawVisitorId.trim();
       // No visitor id, no window: bucketing every anonymous event under one empty key
       // would flag unrelated traffic as soon as that shared bucket overflowed.
       if (!visitorId) continue;
