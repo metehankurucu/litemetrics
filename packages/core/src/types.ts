@@ -289,6 +289,15 @@ export interface BotDetectedInfo {
   reason: BotDropReason;
   action: 'dropped' | 'flagged';
   mode: BotFilterMode;
+  /**
+   * How many events of the batch the action actually covered.
+   *
+   * Layers 1 to 3 judge the request, so this is the whole batch. Layer 4 judges a
+   * visitor: it covers only the events of the visitors that overflowed, and the rest of
+   * the batch is stored. Without this number a `dropped layer=velocity` line reads as a
+   * whole-request drop, and the operator's drop counter would say the same.
+   */
+  events: number;
 }
 
 /**

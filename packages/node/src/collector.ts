@@ -71,6 +71,13 @@ const DEFAULT_VELOCITY_MAX_KEYS = 50_000;
  */
 const SERVER_VISITOR_ID = 'server';
 
+/**
+ * Longest string layer 3 will key a window on. 45 characters is the longest textual
+ * IPv6 address (an IPv4-mapped one, `0000:...:255.255.255.255`), which is also the cap
+ * the server's own audit line already applies to this field.
+ */
+const MAX_IP_LEN = 45;
+
 export interface Collector {
   handler(): (req: any, res: any) => void | Promise<void>;
   queryHandler(): (req: any, res: any) => void | Promise<void>;
@@ -364,7 +371,7 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
   async function processIdentity(events: EnrichedEvent[]): Promise<void> {
     for (const event of events) {
       // Skip sentinel visitorId used by server-side programmatic calls
-      if (!event.visitorId || event.visitorId === 'server') continue;
+      if (!event.visitorId || event.visitorId === SERVER_VISITOR_ID) continue;
 
       if (event.type === 'identify' && event.userId) {
         // Identify event → upsert identity map and cache
@@ -390,16 +397,33 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
     }
   }
 
+  /** The address the connection actually came from, itself length-checked. */
+  function directIp(req: any): string {
+    const raw = req.ip || req.socket?.remoteAddress || req.connection?.remoteAddress || '';
+    return typeof raw === 'string' && raw.length <= MAX_IP_LEN ? raw : '';
+  }
+
+  /**
+   * The layer-3 key. With `trustProxy` on (the default) it is caller-supplied header
+   * text, and it becomes a Map key the limiter retains until eviction, so an
+   * implausible value is not keyed on: anything past `MAX_IP_LEN` falls through to the
+   * socket address instead. Rejected rather than truncated, for the reason layer 4
+   * skips an oversized `visitorId` rather than cutting it: truncation would collapse
+   * distinct callers onto one shared window.
+   */
   function extractIp(req: any): string {
     if (config.trustProxy ?? true) {
       const forwarded = req.headers?.['x-forwarded-for'];
       if (forwarded) {
         const first = typeof forwarded === 'string' ? forwarded.split(',')[0] : forwarded[0];
-        return first.trim();
+        const candidate = typeof first === 'string' ? first.trim() : '';
+        if (candidate && candidate.length <= MAX_IP_LEN) return candidate;
+        return directIp(req);
       }
-      if (req.headers?.['x-real-ip']) return req.headers['x-real-ip'];
+      const realIp = req.headers?.['x-real-ip'];
+      if (typeof realIp === 'string' && realIp.length <= MAX_IP_LEN && realIp.trim()) return realIp;
     }
-    return req.ip || req.socket?.remoteAddress || req.connection?.remoteAddress || '';
+    return directIp(req);
   }
 
   function extractRequestHostname(req: any): string | undefined {
@@ -529,36 +553,46 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
         if (mode !== 'off') {
           if (isAppSite) {
             // Layer 4 is not a browser heuristic - it measures how fast one visitor
-            // moves - so unlike layers 1 and 2 it runs on app sites too, ahead of the
-            // per-IP layer for the short-circuit reason below.
-            velocityVisitors = checkVisitorVelocity(site, payload.events);
-            if (velocityVisitors.size > 0) {
-              bot = { layer: 'velocity', reason: 'velocity' };
-            } else if (rateLimiter.check(ip).limited) {
+            // moves - so unlike layers 1 and 2 it runs on app sites too. Layer 3 is
+            // consulted first, for the reason spelled out in the web branch below.
+            if (rateLimiter.check(ip).limited) {
               bot = { layer: 'rate-limit', reason: 'rate-limit' };
+            } else {
+              velocityVisitors = checkVisitorVelocity(site, payload.events);
+              if (velocityVisitors.size > 0) bot = { layer: 'velocity', reason: 'velocity' };
             }
           } else {
             const signature = classifyUserAgent(userAgent);
             if (signature) {
               bot = { layer: 'signature', reason: signature };
             } else {
-              // The else-if chain is the short-circuit: when the heuristic layer fires,
-              // rateLimiter.check is never reached, so a heuristic hit consumes no
-              // rate-limit slot. Neither does a signature hit, for the same reason -
-              // one bot must not spend a shared NAT's budget on a real visitor's behalf.
-              // Layer 4 sits between them and inherits both halves of that rule: it is
-              // never fed by a request layers 1-2 already answered, and a visitor it
-              // flags never reaches the per-IP window either, because one fast visitor
-              // must not spend a shared NAT's budget on its neighbours' behalf.
+              // Layers 1 and 2 short-circuit: when one of them fires, rateLimiter.check
+              // is never reached, so the hit consumes no rate-limit slot. They may do
+              // that because their action is to RETURN the whole request in the modes
+              // that drop it - nothing is stored, so charging the address would spend a
+              // shared NAT's budget on data that never landed.
+              //
+              // Layer 4 may NOT do that, and this ordering is the fix for a hole where
+              // it did. Layer 4 judges a visitor, so it flags (or drops) only that
+              // visitor's events and the rest of the batch is still stored - in
+              // `standard` stored unflagged and visible in every report. While layer 4
+              // came first, a client bought complete immunity from layer 3 for one
+              // pageview a request: hold one burner `visitorId` over the line so layer 4
+              // always fires, and up to 99 further events per call rode in clean on
+              // rotating fresh ids, forever, with the address never accounted for.
+              //
+              // So the per-request layer is asked first, and layer 4 refines what is
+              // left. The cost is the honest one: a fast visitor's requests now count
+              // against its address like any other client's.
               const heuristic = classifyHeuristicBot({ userAgent, acceptLanguage, referer });
               if (heuristic) {
                 bot = { layer: 'heuristic', reason: heuristic };
+              } else if (rateLimiter.check(ip).limited) {
+                bot = { layer: 'rate-limit', reason: 'rate-limit' };
               } else {
                 velocityVisitors = checkVisitorVelocity(site, payload.events);
                 if (velocityVisitors.size > 0) {
                   bot = { layer: 'velocity', reason: 'velocity' };
-                } else if (rateLimiter.check(ip).limited) {
-                  bot = { layer: 'rate-limit', reason: 'rate-limit' };
                 }
               }
             }
@@ -580,21 +614,31 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
             /* shadow, and any
                unrecognised mode */ false;
 
+          // Layers 1 to 3 act on the request, layer 4 on named visitors, so the report
+          // is assembled AFTER the split below rather than before it: a
+          // `dropped layer=velocity` line that did not say how many events it covered
+          // would read as a whole-request drop, and the host's drop counter with it.
+          if (shouldDrop) {
+            // Layers 1 to 3 drop the request. Layer 4 drops the visitors that overflowed
+            // and keeps the rest: dropping a proxied batch because one of its visitors
+            // was too fast would throw away a bystander's pageviews, and `strict` has no
+            // `?includeBots=true` to recover them from.
+            eventsToStore =
+              bot.layer === 'velocity'
+                ? payload.events.filter((e) => !isOverLimitVisitor(e, velocityVisitors))
+                : [];
+          }
+          const covered =
+            bot.layer === 'velocity'
+              ? payload.events.filter((e) => isOverLimitVisitor(e, velocityVisitors)).length
+              : payload.events.length;
+
           reportBot({
             siteId, ip, userAgent, layer: bot.layer, reason: bot.reason,
-            action: shouldDrop ? 'dropped' : 'flagged', mode,
+            action: shouldDrop ? 'dropped' : 'flagged', mode, events: covered,
           });
 
           if (shouldDrop) {
-            if (bot.layer !== 'velocity') {
-              sendJson(res, 200, { ok: true });
-              return;
-            }
-            // Same per-visitor rule as the flag, in the direction that destroys data:
-            // dropping a proxied batch because one of its visitors overflowed would throw
-            // away a bystander's pageviews, and `strict` has no `?includeBots=true` to
-            // recover them from.
-            eventsToStore = payload.events.filter((e) => !isOverLimitVisitor(e, velocityVisitors));
             if (eventsToStore.length === 0) {
               sendJson(res, 200, { ok: true });
               return;

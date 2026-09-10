@@ -65,7 +65,7 @@ matter the moment you scale past one instance:
   or lower `BOT_VELOCITY_MAX_PAGEVIEWS` and `BOT_RATE_MAX` by roughly the replica count and
   accept the false positives that buys.
 - **They cost memory per tracked key.** A window is its key plus up to `maxEvents` timestamps,
-  which is roughly 1 KB at the shipped thresholds, and it is held until it is evicted. Layer 4
+  which measures out at roughly 0.7 KB at the shipped thresholds (a 64-character key, up to 60 timestamps, and the Map's own entry), and it is held until it is evicted. Layer 4
   tracks up to `BOT_VELOCITY_MAX_KEYS` (default 50 000) windows, so its ceiling is on the order
   of 40 MB per process, reached only when every window is full. Layer 3 tracks 10 000 keys on
   the same shape. Both LRU-evict past the cap rather than growing, so the ceiling holds under a

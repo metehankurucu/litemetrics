@@ -123,6 +123,8 @@ tunable per-site via the `botFilterMode` site field.
 - **Layer 1 (signature)** — UA matched against the [`isbot`](https://github.com/omrilotan/isbot) list.
 - **Layer 2 (heuristic)** — scrubbed / empty UAs (no UA, bare `Mozilla/5.0`, missing platform tokens).
 - **Layer 3 (rate limit)** — sliding-window per-IP cap, counted in collect requests.
+  Evaluated before Layer 4, because a Layer 4 hit still stores the batch's other
+  visitors and a request that stores rows has to be counted against its address.
 - **Layer 4 (visitor velocity)** — sliding-window cap on pageviews per `siteId:visitorId`
   (default 60 per 10s). Layers 1-3 each judge one request in isolation, and the per-IP
   window counts requests, so a batching client on a rotating address clears all three.
@@ -159,10 +161,12 @@ const collector = await createCollector({
     visitorVelocityMaxPageviews: 60,    // max pageviews / window / visitor; 0 disables Layer 4
     visitorVelocityMaxKeys: 50_000,     // cap on tracked siteId:visitorId windows (LRU)
     onBotDetected: (info) => {
-      // info: { siteId, ip, userAgent, layer, reason, action, mode }
+      // info: { siteId, ip, userAgent, layer, reason, action, mode, events }
+      // events: how many of the batch the action covered - the whole batch for layers
+      //         1-3, only the over-limit visitors' events for layer 4
       // reason: 'empty-ua' | 'ua-signature' | 'no-browser-signals' | 'rate-limit'
       //       | 'velocity'
-      console.log(`[bot-filter] ${info.action} layer=${info.layer} reason=${info.reason} mode=${info.mode} site=${info.siteId} ip=${info.ip} ua="${info.userAgent}"`);
+      console.log(`[bot-filter] ${info.action} layer=${info.layer} reason=${info.reason} mode=${info.mode} events=${info.events} site=${info.siteId} ip=${info.ip} ua="${info.userAgent}"`);
     },
     onSiteTypeMismatch: (info) => {
       // info: { siteId, siteType, platform, mode } — fired once per site when app SDK

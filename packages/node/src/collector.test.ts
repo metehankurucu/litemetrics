@@ -589,6 +589,49 @@ describe('collector bot filtering - standard mode runs the non-signature layers'
     expect(events.map((e) => e.botFlag)).toEqual(['heuristic', 'heuristic']);
   });
 
+  // R22 - the layer-3 key is caller-supplied header text under the default `trustProxy`,
+  // and it is retained as a Map key until eviction. An implausible one is not keyed on:
+  // the request falls back to the socket address, so 16 KB of header cannot become 16 KB
+  // of retained key. Rejected rather than truncated, or two callers would share a window.
+  it('does not key the rate limiter on an oversized X-Forwarded-For', async () => {
+    const onBotDetected = vi.fn();
+    const collector = await createCollector({
+      db: { adapter: 'clickhouse', url: 'http://x' },
+      botFilter: { defaultMode: 'standard', rateLimitMaxEvents: 1, onBotDetected },
+    });
+    const handler = collector.handler();
+    const oversized = '1.2.3.'.repeat(2000);
+
+    await handler(makeBotReq(REAL_CHROME_UA, { ...BROWSER_HEADERS, 'x-forwarded-for': oversized }), makeRes());
+    await handler(makeBotReq(REAL_CHROME_UA, { ...BROWSER_HEADERS, 'x-forwarded-for': oversized }), makeRes());
+
+    // The second call is rate-limited, which can only happen if both were keyed on the
+    // same fallback address rather than on the header.
+    expect(onBotDetected).toHaveBeenCalledWith(
+      expect.objectContaining({ layer: 'rate-limit', ip: '9.9.9.9' }),
+    );
+    expect(onBotDetected.mock.calls.every(([info]) => info.ip.length <= 45)).toBe(true);
+  });
+
+  // R22 - the boundary from the other side: a real forwarded address is still honoured,
+  // so the guard cannot quietly turn `trustProxy` off.
+  it('still keys on a plausible X-Forwarded-For', async () => {
+    const onBotDetected = vi.fn();
+    const collector = await createCollector({
+      db: { adapter: 'clickhouse', url: 'http://x' },
+      botFilter: { defaultMode: 'standard', rateLimitMaxEvents: 1, onBotDetected },
+    });
+    const handler = collector.handler();
+    const headers = { ...BROWSER_HEADERS, 'x-forwarded-for': '203.0.113.9, 10.0.0.1' };
+
+    await handler(makeBotReq(REAL_CHROME_UA, headers), makeRes());
+    await handler(makeBotReq(REAL_CHROME_UA, headers), makeRes());
+
+    expect(onBotDetected).toHaveBeenCalledWith(
+      expect.objectContaining({ layer: 'rate-limit', ip: '203.0.113.9' }),
+    );
+  });
+
   // R2 - the window is per IP, so one noisy IP must not flag a different visitor.
   it('rate-limits per IP, not globally', async () => {
     const collector = await createCollector({
@@ -2026,18 +2069,49 @@ describe('collector bot filtering - layer 4: visitor velocity', () => {
     expect(onBotDetected).not.toHaveBeenCalled();
   });
 
-  // R5 - a velocity hit must not spend the shared IP budget. maxEvents is 1, so if the
-  // flagged burst had consumed the IP slot, the next visitor behind that NAT would come
-  // back rate-limited instead of clean.
-  it('a velocity hit consumes no IP rate-limit slot', async () => {
-    const collector = await velocityCollector({ rateLimitMaxEvents: 1 });
+  // R5 - CORRECTED. A velocity hit DOES spend the per-IP slot, because unlike a layer-1 or
+  // layer-2 hit it does not return the request: the batch's other visitors are stored, and
+  // in `standard` they are stored unflagged and visible in every report. Skipping the
+  // per-IP window for such a request let a client buy immunity from layer 3 outright, by
+  // keeping one burner visitorId over the line and rotating fresh ids for the rest of the
+  // batch. maxEvents is 1, so the second request from that address comes back rate-limited.
+  it('a velocity hit spends the IP rate-limit slot, because its request still stores rows', async () => {
+    const onBotDetected = vi.fn();
+    const collector = await velocityCollector({ rateLimitMaxEvents: 1, onBotDetected });
     const handler = collector.handler();
 
     await handler(makeBatch({ visitorId: 'v_bot', pageviews: 61 }), makeRes());
     insertEvents.mockClear();
     await handler(makeBatch({ visitorId: 'v_human', pageviews: 1 }), makeRes());
 
-    expect(insertEvents.mock.calls[0]![0][0]!.botFlag).toBeUndefined();
+    expect(insertEvents.mock.calls[0]![0][0]!.botFlag).toBe('rate-limit');
+    expect(onBotDetected).toHaveBeenCalledWith(
+      expect.objectContaining({ layer: 'rate-limit', reason: 'rate-limit' }),
+    );
+  });
+
+  // R5 - the attack that correction closes, driven end to end. One burner visitor is held
+  // over the line so layer 4 fires on every call; before the fix that skipped layer 3
+  // entirely and the batch's OTHER visitors were stored clean, without limit. Now the
+  // address runs out of budget and the bystanders carry a flag.
+  it('does not let a permanent velocity hit smuggle unlimited clean rows past layer 3', async () => {
+    const collector = await velocityCollector({
+      visitorVelocityMaxPageviews: 2, rateLimitMaxEvents: 2,
+    });
+    const handler = collector.handler();
+
+    // Requests 1-2 put `v_burner` over its own line and spend the address's two slots.
+    await handler(makeMixedBatch([['v_burner', 3]]), makeRes());
+    await handler(makeMixedBatch([['v_burner', 1], ['v_fresh_a', 1]]), makeRes());
+    insertEvents.mockClear();
+
+    // Request 3: layer 4 still fires on `v_burner`, but the address is out of budget, so
+    // the fresh visitor is no longer stored clean.
+    await handler(makeMixedBatch([['v_burner', 1], ['v_fresh_b', 1]]), makeRes());
+    const stored = insertEvents.mock.calls[0]![0];
+    expect(stored).toHaveLength(2);
+    expect(stored.every((e) => e.botFlag !== undefined)).toBe(true);
+    expect(stored.find((e) => e.visitorId === 'v_fresh_b')!.botFlag).toBe('rate-limit');
   });
 
   // R5 - order. A layer-2 hit short-circuits before the velocity counter, so a scrubbed-UA
@@ -2376,6 +2450,57 @@ describe('collector bot filtering - layer 4: visitor velocity', () => {
       expect.objectContaining({ layer: 'velocity', reason: 'velocity' }),
     );
     expect(writtenFlags().filter((f) => f === 'velocity').length).toBeGreaterThan(0);
+  });
+
+  // R15 - the events of an over-limit visitor go together, whatever their type. Only
+  // pageviews COUNT toward the window, which is not the same as saying only pageviews are
+  // acted on: once a visitor is judged too fast, its conversions and rage clicks in that
+  // same batch are its events too. Pinned because the docs used to say only the first half.
+  it("acts on an over-limit visitor's custom events too, not only its pageviews", async () => {
+    const collector = await velocityCollector({ rateLimitMaxEvents: 1000 });
+    await collector.handler()(makeBatch({ pageviews: 61, events: 3 }), makeRes());
+
+    const stored = insertEvents.mock.calls[0]![0];
+    expect(stored).toHaveLength(64);
+    expect(stored.every((e) => e.botFlag === 'velocity')).toBe(true);
+  });
+
+  it("drops an over-limit visitor's custom events too, under strict", async () => {
+    const collector = await velocityCollector({ defaultMode: 'strict', rateLimitMaxEvents: 1000 });
+    await collector.handler()(makeBatch({ pageviews: 61, events: 3 }), makeRes());
+
+    expect(insertEvents).not.toHaveBeenCalled();
+  });
+
+  // R14 - the window key is the TRIMMED id, so surrounding whitespace does not buy a
+  // second budget. The stored row keeps the raw string, so the two are still two rows.
+  it('treats a whitespace-padded visitorId as the same window', async () => {
+    const collector = await velocityCollector({ rateLimitMaxEvents: 1000 });
+    const handler = collector.handler();
+
+    await handler(makeBatch({ visitorId: 'v_pad', pageviews: 60 }), makeRes());
+    insertEvents.mockClear();
+    await handler(makeBatch({ visitorId: '  v_pad  ', pageviews: 1 }), makeRes());
+
+    const stored = insertEvents.mock.calls[0]![0];
+    expect(stored[0]!.botFlag).toBe('velocity');
+    // The row is stored as it was sent; only the window key is trimmed.
+    expect(stored[0]!.visitorId).toBe('  v_pad  ');
+  });
+
+  // R21 - `onBotDetected` says how much of the batch its action covered. Without it, a
+  // partial velocity drop is reported exactly like a whole-request drop, and the host's
+  // `bot_dropped=` counter inherits the error.
+  it('reports how many events the action covered, not the batch size', async () => {
+    const onBotDetected = vi.fn();
+    const collector = await velocityCollector({
+      defaultMode: 'strict', visitorVelocityMaxPageviews: 2, onBotDetected,
+    });
+    await collector.handler()(makeMixedBatch([['v_loud', 5], ['v_quiet', 1]]), makeRes());
+
+    expect(onBotDetected).toHaveBeenCalledWith(
+      expect.objectContaining({ layer: 'velocity', action: 'dropped', events: 5 }),
+    );
   });
 
   // R1 - the layer is per site as well as per visitor: the same visitorId string on a
