@@ -632,6 +632,24 @@ describe('collector bot filtering - standard mode runs the non-signature layers'
     );
   });
 
+  // R22 - `x-real-ip` is trimmed like the forwarded header, so one client's padded and
+  // unpadded headers do not become two retained windows.
+  it('trims x-real-ip so padding does not buy a second window', async () => {
+    const onBotDetected = vi.fn();
+    const collector = await createCollector({
+      db: { adapter: 'clickhouse', url: 'http://x' },
+      botFilter: { defaultMode: 'standard', rateLimitMaxEvents: 1, onBotDetected },
+    });
+    const handler = collector.handler();
+
+    await handler(makeBotReq(REAL_CHROME_UA, { ...BROWSER_HEADERS, 'x-real-ip': '203.0.113.5' }), makeRes());
+    await handler(makeBotReq(REAL_CHROME_UA, { ...BROWSER_HEADERS, 'x-real-ip': '  203.0.113.5  ' }), makeRes());
+
+    expect(onBotDetected).toHaveBeenCalledWith(
+      expect.objectContaining({ layer: 'rate-limit', ip: '203.0.113.5' }),
+    );
+  });
+
   // R2 - the window is per IP, so one noisy IP must not flag a different visitor.
   it('rate-limits per IP, not globally', async () => {
     const collector = await createCollector({
@@ -2105,8 +2123,8 @@ describe('collector bot filtering - layer 4: visitor velocity', () => {
     await handler(makeMixedBatch([['v_burner', 1], ['v_fresh_a', 1]]), makeRes());
     insertEvents.mockClear();
 
-    // Request 3: layer 4 still fires on `v_burner`, but the address is out of budget, so
-    // the fresh visitor is no longer stored clean.
+    // Request 3: the address is out of budget, so layer 3 answers before layer 4 is even
+    // asked, and the fresh visitor is no longer stored clean.
     await handler(makeMixedBatch([['v_burner', 1], ['v_fresh_b', 1]]), makeRes());
     const stored = insertEvents.mock.calls[0]![0];
     expect(stored).toHaveLength(2);

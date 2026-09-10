@@ -420,8 +420,12 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
         if (candidate && candidate.length <= MAX_IP_LEN) return candidate;
         return directIp(req);
       }
-      const realIp = req.headers?.['x-real-ip'];
-      if (typeof realIp === 'string' && realIp.length <= MAX_IP_LEN && realIp.trim()) return realIp;
+      const realIp = typeof req.headers?.['x-real-ip'] === 'string'
+        ? (req.headers['x-real-ip'] as string).trim()
+        : '';
+      // Trimmed like the forwarded branch above, or one client's padded and unpadded
+      // headers would be two retained windows instead of one.
+      if (realIp && realIp.length <= MAX_IP_LEN) return realIp;
     }
     return directIp(req);
   }
@@ -567,10 +571,12 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
               bot = { layer: 'signature', reason: signature };
             } else {
               // Layers 1 and 2 short-circuit: when one of them fires, rateLimiter.check
-              // is never reached, so the hit consumes no rate-limit slot. They may do
-              // that because their action is to RETURN the whole request in the modes
-              // that drop it - nothing is stored, so charging the address would spend a
-              // shared NAT's budget on data that never landed.
+              // is never reached, so the hit consumes no rate-limit slot. What entitles
+              // them to that is not that they always drop - in `standard` a heuristic hit
+              // does not - it is that they never admit an UNFLAGGED row. Either the
+              // request returns and nothing is stored, or the whole batch is stored
+              // carrying the flag. Nothing rides in unaccounted, so charging the address
+              // would only spend a shared NAT's budget on traffic already marked.
               //
               // Layer 4 may NOT do that, and this ordering is the fix for a hole where
               // it did. Layer 4 judges a visitor, so it flags (or drops) only that
