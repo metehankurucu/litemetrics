@@ -1239,7 +1239,7 @@ export class PostgresAdapter implements DBAdapter {
   async queryBotStats(
     siteId: string,
     range: { from: number; to: number },
-  ): Promise<{ total: number; bySignature: number; byHeuristic: number; byRateLimit: number }> {
+  ): Promise<{ total: number; bySignature: number; byHeuristic: number; byRateLimit: number; byVelocity: number }> {
     const result = await this.pool.query<{ bot_flag: string | null; n: string }>(
       `SELECT bot_flag, COUNT(*)::bigint AS n
        FROM ${EVENTS_TABLE}

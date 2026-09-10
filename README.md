@@ -207,7 +207,10 @@ docker run -p 3002:3002 \
 | `TRUST_PROXY` | Trust X-Forwarded-For headers | `true` |
 | `BOT_FILTER_MODE` | Server-wide bot filter default: `off` / `standard` / `strict` / `shadow` | `standard` |
 | `BOT_RATE_WINDOW_MS` | Sliding-window size for the per-IP rate limiter (ms) | `60000` |
-| `BOT_RATE_MAX` | Max events per window per IP before rate-limit fires | `60` |
+| `BOT_RATE_MAX` | Max collect **requests** per window per IP before rate-limit fires (one request can carry up to 100 events) | `60` |
+| `BOT_VELOCITY_WINDOW_MS` | Sliding-window size for the per-visitor velocity layer (ms) | `10000` |
+| `BOT_VELOCITY_MAX_PAGEVIEWS` | Max **pageviews** one visitor may send per window before the velocity layer fires. `0` switches this layer off on its own | `60` |
+| `BOT_VELOCITY_MAX_KEYS` | Cap on tracked `siteId:visitorId` windows (LRU-evicts the oldest) | `50000` |
 | `BOT_LOG_MAX_PER_MIN` | Detail `[bot-filter]` log lines allowed per minute; the overflow is counted as `suppressed=` on the `[collect]` summary | `20` |
 | `COLLECT_ERROR_LOG_MAX_PER_MIN` | Detail `[collect-error]` log lines allowed per minute; every failure is still counted in `err_codes=` on the `[collect]` summary | `5` |
 
@@ -288,27 +291,28 @@ Litemetrics ships with multi-layer bot filtering enabled by default. Bot traffic
 
 - **Tracker short-circuit** — when `navigator.webdriver === true`, the browser tracker becomes a no-op. Catches Selenium / Puppeteer / Playwright at the source before the event ever leaves the page.
 - **Layer 1 (signature)** — server-side match against the maintained [`isbot`](https://github.com/omrilotan/isbot) list of known crawlers / preview bots.
-- **Layer 2 (heuristic)** — catches scrubbed or empty user agents (no UA, bare `Mozilla/5.0`, missing platform tokens, etc).
-- **Layer 3 (rate limit)** — sliding-window per-IP cap (`BOT_RATE_WINDOW_MS` / `BOT_RATE_MAX`) for traffic that escapes the first two layers.
+- **Layer 2 (heuristic)** — catches scrubbed or empty user agents (no UA, bare `Mozilla/5.0`, missing platform tokens, etc). A request that carries a real browser UA *and* `Accept-Language` *and* `Referer` clears this layer, which is why Layer 4 exists.
+- **Layer 3 (rate limit)** — sliding-window per-IP cap (`BOT_RATE_WINDOW_MS` / `BOT_RATE_MAX`) for traffic that escapes Layers 1 and 2. It is evaluated **before** Layer 4, and deliberately: Layer 4 judges one visitor and stores the rest of the batch, so a request it flags still lands rows, and a request that lands rows has to be counted against its address. A Layer 1 or Layer 2 hit does skip this window, because neither ever admits an **unflagged** row: either the request returns and nothing is stored, or the whole batch is stored carrying the flag. Layer 4 is the one that stores unflagged rows alongside a hit, which is why it may not skip. The window counts collect requests, not events, and is shared across every site served by the process, so one IP browsing two of your sites reaches the cap twice as fast.
+- **Layer 4 (visitor velocity)** — sliding-window cap on how many **pageviews** a single `visitorId` may send (`BOT_VELOCITY_WINDOW_MS` / `BOT_VELOCITY_MAX_PAGEVIEWS`, default 60 per 10 seconds). The three layers above all read one request in isolation: two read headers, and the per-IP window counts *requests*, so a batched flood arrives as a handful of calls from an address that rotates. This layer measures the visitor instead. Only pageviews count toward it — rage clicks and scroll-depth events fire dozens of times a minute by design — and the window is per `siteId:visitorId`, so it is keyed to a visitor rather than to an address: a shared NAT is not pooled by its IP. **A `visitorId` is a device fingerprint for one day, not a person, and the client sends it.** The browser tracker derives it from `hostname|day|User-Agent|language|timezone|screen` (`packages/tracker/src/session.ts`), which is a hash of things two people can easily share: same site, same day, same browser build, same locale, same timezone, same screen size. Two such visitors send the *same* id and DO share one window, so about 6 pageviews a second between them reaches the threshold. Because the id travels in the request body and its inputs are observable, it can also be **forged**: anyone can compute a common visitor's id and burn that window deliberately, which in `standard` hides that visitor's next pageviews from the default reports and in `strict` drops them. Keying the window on the IP as well would close that, and would also hand the batching, address-rotating client this layer exists for a free pass, so it is not done. The React Native SDK is unaffected either way: it draws a random per-install id. If your own visitors cluster like that on a URL-syncing page, raise `BOT_VELOCITY_MAX_PAGEVIEWS` or run `shadow` first. Once a visitor is over the line, **all** of its events in that batch are acted on, custom events included; only pageviews *count* toward the window.
 
-**App sites (`type: 'app'`) run Layer 3 only.** Layers 1 and 2 are browser heuristics — a native app SDK sends no browser User-Agent, no `Accept-Language` and no `Referer`, so on an app site they only ever misfire (on Android, React Native's `fetch` goes out as `okhttp/<version>`, which `isbot` matches, and every Android event was being dropped). On an app site `standard` therefore drops nothing and `strict` / `shadow` apply the per-IP rate limit only. This makes the site type load-bearing: **a site that receives app SDK traffic must be created with `type: 'app'`** (`litemetrics sites create --type app`, or `POST` / `PUT /api/sites` with `{"type":"app"}`), otherwise it is still filtered as browser traffic and its Android events are lost. The server logs `[site-type-mismatch] site=<id> type=<type> platform=<platform> mode=<mode>` once per site when it sees app SDK payloads on a non-app site; the payload alone never bypasses the filter.
+**App sites (`type: 'app'`) run Layers 3 and 4 only.** Layers 1 and 2 are browser heuristics — a native app SDK sends no browser User-Agent, no `Accept-Language` and no `Referer`, so on an app site they only ever misfire (on Android, React Native's `fetch` goes out as `okhttp/<version>`, which `isbot` matches, and every Android event was being dropped). On an app site `standard` therefore drops nothing: Layers 3 and 4 still run and flag an over-limit request (kept in DB, hidden from queries), while `strict` drops it and `shadow` flags it. Layer 4 is not a browser heuristic — it measures how fast one visitor moves — so it applies to app traffic the same way the per-IP window does. This makes the site type load-bearing: **a site that receives app SDK traffic must be created with `type: 'app'`** (`litemetrics sites create --type app`, or `POST` / `PUT /api/sites` with `{"type":"app"}`), otherwise it is still filtered as browser traffic, and that now costs more than it used to: the SDK's own `litemetrics-react-native/<version> (<platform>)` User-Agent escapes Layer 1, but it resolves to no browser and no engine and the SDK sends no `Accept-Language` or `Referer`, so Layer 2 flags it. On a mis-typed site `standard` therefore hides that app traffic from every report (recoverable with `?includeBots=true`) and `strict` drops it outright. The server logs `[site-type-mismatch] site=<id> type=<type> platform=<platform> mode=<mode>` once per site when it sees app SDK payloads on a non-app site; the payload alone never bypasses the filter.
 
-Modes are configured server-wide via `BOT_FILTER_MODE` and overridable per-site (on `app` sites only Layer 3 applies, see above):
+Modes are configured server-wide via `BOT_FILTER_MODE` and overridable per-site (on `app` sites only Layers 3 and 4 apply, see above):
 
 | Mode | Behavior |
 |------|----------|
 | `off` | All filtering disabled |
-| `standard` (default) | Layer 1 drops the event; Layers 2 + 3 flag it (kept in DB, hidden from queries) |
+| `standard` (default) | Layer 1 drops the event; Layers 2, 3 and 4 flag it (kept in DB, hidden from queries) |
 | `strict` | Every layer drops the event |
 | `shadow` | Every layer flags only — useful for tuning before going live |
 
 Each detection emits a structured audit log line:
 
 ```
-[bot-filter] dropped layer=signature reason=ua-signature mode=standard site=site_abc ip=203.0.113.4 ua="okhttp/4.12.0"
+[bot-filter] dropped layer=signature reason=ua-signature mode=standard events=1 site=site_abc ip=203.0.113.4 ua="okhttp/4.12.0"
 ```
 
-`layer` says which of the three layers fired; `reason` says why, which is what makes a drop diagnosable from the log line alone:
+`layer` says which of the four layers fired; `reason` says why, which is what makes a drop diagnosable from the log line alone:
 
 | `reason` | Layer | Meaning |
 |------|-------|---------|
@@ -316,6 +320,7 @@ Each detection emits a structured audit log line:
 | `ua-signature` | signature | The UA matched the `isbot` list. Usually a real crawler — but also catches HTTP client defaults like `okhttp/*` |
 | `no-browser-signals` | heuristic | Browser, engine, `Accept-Language` and `Referer` were all absent |
 | `rate-limit` | rate-limit | The per-IP sliding window overflowed |
+| `velocity` | velocity | One `visitorId` sent more pageviews inside the velocity window than a person can read |
 
 `ua` is the raw User-Agent, sanitized to a single line and capped at 200 characters. Detail lines are capped at `BOT_LOG_MAX_PER_MIN` per minute so a bot storm cannot flush the rest of your log window; the overflow is counted as `suppressed=` on the summary line below.
 
@@ -336,7 +341,7 @@ Pass `?includeBots=true` to `/api/stats`, `/api/events`, or `/api/users` to see 
 | `reqs` / `ok` / `3xx` / `4xx` / `5xx` | Requests in the minute, split by response status class |
 | `aborted` | Requests the client gave up on — body never finished arriving, or hung up before the answer went out. Its own class, not part of a status class: `reqs = ok + 3xx + 4xx + 5xx + aborted` |
 | `dur_p50` / `dur_p95` / `dur_max` | Response time in ms (`-` when the minute saw no requests) |
-| `bot_dropped` / `bot_flagged` | Bot-filter outcomes; these totals survive even after the individual detail lines age out of the window |
+| `bot_dropped` / `bot_flagged` | Bot-filter outcomes, counted per **request**; these totals survive even after the individual detail lines age out of the window. A Layer 4 drop is per visitor, so one `bot_dropped` can mean part of a batch went and the rest was stored: the per-hit `events=` field on the detail line below is what says how much |
 | `reasons` | Drop reasons for the minute, by count (see the table above) |
 | `bot_sites` | Sites by **bot hit** count — not request volume, which is `reqs` |
 | `suppressed` | Detail bot-filter lines withheld by `BOT_LOG_MAX_PER_MIN` |

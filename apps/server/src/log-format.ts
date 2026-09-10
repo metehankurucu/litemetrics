@@ -45,6 +45,9 @@ export function formatBotFilterLine(info: BotDetectedInfo): string {
     `layer=${info.layer}`,
     `reason=${info.reason}`,
     `mode=${info.mode}`,
+    // Layer 4 acts on visitors, not on the request, so `dropped` alone does not say how
+    // much of the batch went. Every layer reports it, so the field is never conditional.
+    `events=${info.events}`,
     `site=${sanitizeToken(info.siteId)}`,
     `ip=${sanitizeToken(info.ip, 45)}`,
     `ua="${sanitizeUserAgent(info.userAgent)}"`,

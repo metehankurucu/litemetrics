@@ -122,19 +122,29 @@ tunable per-site via the `botFilterMode` site field.
 
 - **Layer 1 (signature)** — UA matched against the [`isbot`](https://github.com/omrilotan/isbot) list.
 - **Layer 2 (heuristic)** — scrubbed / empty UAs (no UA, bare `Mozilla/5.0`, missing platform tokens).
-- **Layer 3 (rate limit)** — sliding-window per-IP cap.
+- **Layer 3 (rate limit)** — sliding-window per-IP cap, counted in collect requests.
+  Evaluated before Layer 4, because a Layer 4 hit still stores the batch's other
+  visitors and a request that stores rows has to be counted against its address.
+- **Layer 4 (visitor velocity)** — sliding-window cap on pageviews per `siteId:visitorId`
+  (default 60 per 10s). Layers 1-3 each judge one request in isolation, and the per-IP
+  window counts requests, so a batching client on a rotating address clears all three.
+  Only pageviews count toward this one; custom events do not.
 
-**Sites with `type: 'app'` run Layer 3 only.** Layers 1 and 2 reason about browser
+**Sites with `type: 'app'` run Layers 3 and 4 only.** Layers 1 and 2 reason about browser
 User-Agents, which an app SDK does not send (React Native on Android goes out as
 `okhttp/<version>`, which `isbot` matches), so on an app site they would only
 misfire. A site receiving app SDK traffic must therefore be typed `app`
 (`POST` / `PUT /api/sites` with `{"type":"app"}`); otherwise it keeps being
-filtered as browser traffic and loses its Android events. When app SDK payloads
+filtered as browser traffic: the SDK User-Agent escapes Layer 1 but trips Layer 2,
+so `standard` hides its app traffic from reports and `strict` drops it. Layer 4 is a
+volume signal rather than a browser heuristic, so it applies to app sites unchanged. When app SDK payloads
 arrive at a non-app site the collector fires `onSiteTypeMismatch` once per site
 (reporting only — the payload never bypasses the filter).
 
-Modes: `off`, `standard` (default — Layer 1 drops, Layers 2 & 3 flag; on an app
-site nothing runs), `strict` (every layer drops; app site: rate limit only),
+Modes: `off`, `standard` (the default: Layer 1 drops, Layers 2, 3 & 4 flag, meaning the
+event is stored with a `bot_flag` and hidden from queries rather than discarded;
+on an app site only Layers 3 and 4 run, and both flag), `strict` (every layer drops; app
+site: rate limit and velocity only),
 `shadow` (every layer flags only). Every detection reports both the `layer` that
 fired and a finer `reason` — the signature layer fires for a missing User-Agent
 (`empty-ua`) and for an `isbot` list match (`ua-signature`), and those call for
@@ -146,11 +156,17 @@ const collector = await createCollector({
   botFilter: {
     defaultMode: 'standard',     // server-wide default (off | standard | strict | shadow)
     rateLimitWindowMs: 60_000,   // sliding window for Layer 3
-    rateLimitMaxEvents: 60,      // max events / window / IP
+    rateLimitMaxEvents: 60,      // max collect requests / window / IP (not events)
+    visitorVelocityWindowMs: 10_000,    // sliding window for Layer 4
+    visitorVelocityMaxPageviews: 60,    // max pageviews / window / visitor; 0 disables Layer 4
+    visitorVelocityMaxKeys: 50_000,     // cap on tracked siteId:visitorId windows (LRU)
     onBotDetected: (info) => {
-      // info: { siteId, ip, userAgent, layer, reason, action, mode }
+      // info: { siteId, ip, userAgent, layer, reason, action, mode, events }
+      // events: how many of the batch the action covered - the whole batch for layers
+      //         1-3, only the over-limit visitors' events for layer 4
       // reason: 'empty-ua' | 'ua-signature' | 'no-browser-signals' | 'rate-limit'
-      console.log(`[bot-filter] ${info.action} layer=${info.layer} reason=${info.reason} mode=${info.mode} site=${info.siteId} ip=${info.ip} ua="${info.userAgent}"`);
+      //       | 'velocity'
+      console.log(`[bot-filter] ${info.action} layer=${info.layer} reason=${info.reason} mode=${info.mode} events=${info.events} site=${info.siteId} ip=${info.ip} ua="${info.userAgent}"`);
     },
     onSiteTypeMismatch: (info) => {
       // info: { siteId, siteType, platform, mode } — fired once per site when app SDK
@@ -175,7 +191,10 @@ Server wrapper env vars (`apps/server`):
 
 - `BOT_FILTER_MODE` (default `standard`): one of `off` / `standard` / `strict` / `shadow`. Controls server-wide bot filtering for sites that don't override per-site.
 - `BOT_RATE_WINDOW_MS` (default `60000`): sliding-window size for the per-IP rate limiter (ms).
-- `BOT_RATE_MAX` (default `60`): max events per window per IP before the rate-limit layer fires.
+- `BOT_RATE_MAX` (default `60`): max collect requests per window per IP before the rate-limit layer fires. Counted per request, not per event, so one batch of up to 100 events spends a single slot.
+- `BOT_VELOCITY_WINDOW_MS` (default `10000`): sliding-window size for the per-visitor velocity layer (ms).
+- `BOT_VELOCITY_MAX_PAGEVIEWS` (default `60`): max pageviews per window per `siteId:visitorId` before the velocity layer fires. Counted in pageviews, not requests, so batching does not hide a flood. Set to `0` to switch this layer off on its own.
+- `BOT_VELOCITY_MAX_KEYS` (default `50000`): cap on tracked `siteId:visitorId` windows. Past it the least recently used window is evicted, so a client sending rotating visitor ids can clear real windows; raise it on a busy host.
 - `BOT_LOG_MAX_PER_MIN` (default `20`): detail `[bot-filter]` log lines allowed per minute; the overflow is counted as `suppressed=` on the `[collect]` summary line.
 - `COLLECT_ERROR_LOG_MAX_PER_MIN` (default `5`): detail `[collect-error]` log lines allowed per minute. The `[collect]` summary's `err_codes=` lists the top 10 keys as `<stage>:<class>:<count>`, `other:N` for omitted occurrences and `untracked:N` for occurrences beyond the 50-key tracking cap. Sum all these counts for the total number of failures. Withheld lines are not part of `suppressed=` (that field is bot-filter only), so derive them by subtracting the printed lines from this total.
 
@@ -197,7 +216,7 @@ Resolves both `userId` and `visitorId` through the identity map; idempotent.
 ## Features
 
 - **Event Collection** - Receives batched events from the browser tracker
-- **Bot Filtering** - Multi-layer (signature + heuristic + rate limit), per-site mode
+- **Bot Filtering** - Multi-layer (signature + heuristic + per-IP rate limit + per-visitor velocity), per-site mode
 - **GeoIP Enrichment** - Resolves country/city from IP using MaxMind GeoLite2
 - **User-Agent Parsing** - Extracts browser, OS, and device type
 - **Hostname Filtering** - Only count events from allowed hostnames per site (matched against request Origin/Referer)

@@ -162,7 +162,7 @@ export interface EnrichedEvent extends ClientContext {
   ip?: string;
   geo?: GeoInfo;
   device?: DeviceInfo;
-  botFlag?: 'signature' | 'heuristic' | 'rate-limit';
+  botFlag?: 'signature' | 'heuristic' | 'rate-limit' | 'velocity';
 }
 
 // ─── Collect Payload ────────────────────────────────────────
@@ -204,15 +204,52 @@ export interface BotFilterConfig {
   defaultMode?: BotFilterMode;
   /** Sliding-window size in ms for rate-limit layer. Default: 60_000. */
   rateLimitWindowMs?: number;
-  /** Max events per window per IP before rate-limit fires. Default: 60. */
+  /**
+   * Max collect requests per window per IP before rate-limit fires. Default: 60.
+   * Counted per request, not per event, so one batch of 100 spends one slot. The
+   * window is shared by every site served by this collector.
+   */
   rateLimitMaxEvents?: number;
+  /**
+   * Sliding-window size in ms for the visitor-velocity layer (layer 4). Default: 10_000.
+   */
+  visitorVelocityWindowMs?: number;
+  /**
+   * Max pageviews one `siteId:visitorId` pair may send inside the velocity window before
+   * layer 4 fires. Default: 60 (6 pageviews per second sustained for ten seconds).
+   *
+   * Counted in pageviews, not collect requests: the layer exists because layer 3 counts
+   * requests, so a batched flood hides inside a handful of calls. Custom events and
+   * identify calls are not counted - rage clicks and scroll-depth events are dozens per
+   * minute by design.
+   *
+   * Set to 0 to switch the layer off without switching the whole bot filter off.
+   */
+  visitorVelocityMaxPageviews?: number;
+  /**
+   * Cap on tracked `siteId:visitorId` windows for the velocity layer. Default: 50_000.
+   *
+   * Higher than the per-IP limiter's cap because layer 4 admits up to one new key per
+   * pageview (100 per collect request) against the IP layer's one, so a client sending
+   * rotating visitor ids fills it far faster. When the cap is reached the least-recently
+   * used window is evicted, which is exactly what such a client wants: evict every real
+   * visitor's window and the layer stops firing for the whole process. Raise it on a
+   * busy host; it costs roughly one entry plus its timestamps per tracked visitor.
+   *
+   * This bounds the key COUNT. Key SIZE is bounded separately and unconditionally: a
+   * `visitorId` longer than 128 characters is skipped rather than keyed, because it
+   * arrives unvalidated in the request body and a Map key lives as long as its entry.
+   */
+  visitorVelocityMaxKeys?: number;
   /** Optional callback fired whenever an event is flagged or dropped (analytics/audit). */
   onBotDetected?: (info: BotDetectedInfo) => void;
   /**
    * Fired once per site when app-SDK events arrive at a site that is not typed as
    * `app`. Unless its bot-filter mode is `off`, such a site is filtered as browser
-   * traffic, which silently drops its Android events; either way the dashboard shows
-   * it as a web site. Reporting only - the request is filtered exactly as before.
+   * traffic: the SDK's User-Agent escapes the signature layer but trips the heuristic
+   * layer, so `standard` stores its app events with a `bot_flag` and hides them from
+   * every report, and `strict` drops them. Either way the dashboard shows it as a web
+   * site. Reporting only - the request is filtered exactly as before.
    */
   onSiteTypeMismatch?: (info: SiteTypeMismatchInfo) => void;
 }
@@ -240,16 +277,27 @@ export type BotDropReason =
   /** Heuristic layer: browser, engine, Accept-Language and Referer were all absent. */
   | 'no-browser-signals'
   /** The per-IP sliding window overflowed. */
-  | 'rate-limit';
+  | 'rate-limit'
+  /** One visitor sent more pageviews inside the velocity window than a human can read. */
+  | 'velocity';
 
 export interface BotDetectedInfo {
   siteId: string;
   ip: string;
   userAgent: string;
-  layer: 'signature' | 'heuristic' | 'rate-limit';
+  layer: 'signature' | 'heuristic' | 'rate-limit' | 'velocity';
   reason: BotDropReason;
   action: 'dropped' | 'flagged';
   mode: BotFilterMode;
+  /**
+   * How many events of the batch the action actually covered.
+   *
+   * Layers 1 to 3 judge the request, so this is the whole batch. Layer 4 judges a
+   * visitor: it covers only the events of the visitors that overflowed, and the rest of
+   * the batch is stored. Without this number a `dropped layer=velocity` line reads as a
+   * whole-request drop, and the operator's drop counter would say the same.
+   */
+  events: number;
 }
 
 /**
@@ -383,6 +431,7 @@ export interface DBAdapter {
     bySignature: number;
     byHeuristic: number;
     byRateLimit: number;
+    byVelocity: number;
   }>;
 
   // Identity mapping

@@ -1244,7 +1244,7 @@ export class MongoDBAdapter implements DBAdapter {
   async queryBotStats(
     siteId: string,
     range: { from: number; to: number },
-  ): Promise<{ total: number; bySignature: number; byHeuristic: number; byRateLimit: number }> {
+  ): Promise<{ total: number; bySignature: number; byHeuristic: number; byRateLimit: number; byVelocity: number }> {
     const docs = await this.collection.aggregate<{ _id: string | null; n: number }>([
       {
         $match: {

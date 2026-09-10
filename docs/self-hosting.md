@@ -62,7 +62,10 @@ Open `http://localhost:3002` for the dashboard.
 | `TRUST_PROXY` | Trust X-Forwarded-For headers | `true` |
 | `BOT_FILTER_MODE` | Server-wide bot filter default: `off`, `standard`, `strict`, or `shadow` | `standard` |
 | `BOT_RATE_WINDOW_MS` | Sliding-window size for the per-IP rate limiter (ms) | `60000` |
-| `BOT_RATE_MAX` | Max events per window per IP before the rate-limit layer fires | `60` |
+| `BOT_RATE_MAX` | Max collect **requests** per window per IP before the rate-limit layer fires (one request can carry up to 100 events) | `60` |
+| `BOT_VELOCITY_WINDOW_MS` | Sliding-window size for the per-visitor velocity layer (ms) | `10000` |
+| `BOT_VELOCITY_MAX_PAGEVIEWS` | Max **pageviews** one `siteId:visitorId` pair may send per window before the velocity layer fires. `0` switches this layer off without switching the filter off | `60` |
+| `BOT_VELOCITY_MAX_KEYS` | Cap on tracked `siteId:visitorId` windows; the least recently used is evicted past it | `50000` |
 | `BOT_LOG_MAX_PER_MIN` | Detail `[bot-filter]` log lines allowed per minute; the overflow is counted as `suppressed=` on the `[collect]` summary | `20` |
 | `COLLECT_ERROR_LOG_MAX_PER_MIN` | Detail `[collect-error]` log lines allowed per minute; every failure is still counted in `err_codes=` on the `[collect]` summary | `5` |
 
@@ -70,22 +73,26 @@ Open `http://localhost:3002` for the dashboard.
 
 ## Bot Filtering
 
-Bot filtering runs in three server-side layers (signature via `isbot`, heuristic for scrubbed UAs, per-IP rate limit) plus a tracker-side `navigator.webdriver` short-circuit. It is enabled by default in `standard` mode.
+Bot filtering runs in four server-side layers, evaluated in this order: signature via `isbot`, heuristic for scrubbed UAs, per-IP rate limit, then per-visitor velocity. A tracker-side `navigator.webdriver` short-circuit sits in front of all of them. Layers 1 and 2 skip the per-IP window when they fire, because neither ever admits an unflagged row: either the request returns and nothing is stored, or the whole batch is stored carrying the flag. The velocity layer does not get that exemption, because it flags or drops one visitor and stores the rest of the batch unflagged. It is enabled by default in `standard` mode. The rate-limit window counts collect requests rather than events, and one window is shared across every site served by the process.
 
-Sites typed `app` run the rate-limit layer only: the signature and heuristic layers are browser heuristics and an app SDK sends no browser User-Agent (React Native on Android goes out as `okhttp/<version>`, which `isbot` matches). A site that receives app SDK traffic must be created with `type: 'app'`, or it is filtered as browser traffic and its Android events are dropped. The server logs `[site-type-mismatch] site=<id> type=<type> platform=<platform> mode=<mode>` once per site when it sees app SDK payloads on a non-app site.
+Layer 4 exists because the first three all judge a single request: two read its headers, and the per-IP window counts *requests*, so a client that batches (the tracker batches by default) and rotates addresses shows up as a quiet IP. It caps how many **pageviews** one `siteId:visitorId` pair may send inside `BOT_VELOCITY_WINDOW_MS`. Only pageviews count: rage clicks and scroll-depth events are dozens a minute by design. Note what the key is and is not: it is a visitor rather than an address, so a shared NAT is not pooled by its IP, but a `visitorId` is a **device fingerprint for one day, not a person**, and the client is what sends it (the browser tracker hashes `hostname|day|User-Agent|language|timezone|screen`, `packages/tracker/src/session.ts`). Two visitors on the same site, on the same day, with the same browser build, locale, timezone and screen size therefore send the *same* id and do share one window: roughly 6 pageviews a second between them reaches the default threshold. Because the inputs are observable, that id can also be **forged**: a caller can compute a common visitor's id and burn its window on purpose, which hides that visitor's next pageviews from the default reports under `standard`, and drops them under `strict`. Adding the IP to the key would close that and would also hand the address-rotating client this layer exists for a free pass, so it is not done; run `shadow` if you want to see the layer's verdicts before they affect anything - noting that Layer 3 still answers first there too, so a busy address masks Layer 4's verdicts and `byVelocity` under-reports; RAISE `BOT_RATE_MAX` to see them, do not lower it. The React Native SDK is unaffected either way: it draws a random per-install id. Once a visitor is over the line, every event of that visitor in the same batch is acted on, custom events and `identify` included; only pageviews *count* toward the window. The window is in memory and per process, so behind N collector instances a visitor's events split N ways and need N times the rate to trip - the per-IP window has the same property.
 
-- `BOT_FILTER_MODE=standard` (default): Layer 1 drops, Layers 2 + 3 flag (events stored with `bot_flag`, hidden from queries). On `app` sites nothing runs.
-- `BOT_FILTER_MODE=strict`: every layer drops (`app` sites: rate limit only).
-- `BOT_FILTER_MODE=shadow`: every layer flags only — useful for tuning thresholds without affecting data (`app` sites: rate limit only).
+The default is 60 pageviews per 10 seconds, and a visitor keeps 60 unflagged pageviews per window, so sustained traffic under 6 pageviews a second never trips this layer. **How many of a burst's pageviews carry the flag depends on how the client batched them**, because the layer decides once per request: the same 71 pageviews arriving as 8 batches of 10 have 11 flagged (the two batches after the 61st crossed the line), while all 71 in a single call are flagged together. Neither number is a tuning knob, it is where the request boundaries fell. What is stable is the threshold: nothing is flagged until a visitor's window overflows. It is not tighter because `autoSpa` is on by default and the tracker de-dupes navigations on the full URL, so a UI that mirrors its state into the URL (a search box syncing `?q=`, filter chips) emits one pageview per URL write: an average 180-CPM typist in such a field produces three a second, and 30 per 10 seconds would flag them. Raise `BOT_VELOCITY_MAX_PAGEVIEWS`, or set it to `0`, if your own UI still trips it. `BOT_VELOCITY_MAX_KEYS` bounds how many visitor windows are tracked at once; past it the least recently used window is dropped, so a client sending rotating visitor ids can evict real ones. A `visitorId` longer than 128 characters is skipped rather than keyed, which means it is also never counted: that is a free pass through this layer, and it grants nothing a rotating id does not already grant. The events are still stored and still counted by the per-IP layer. It is higher than the per-IP cap because this layer admits up to one new key per pageview against the per-IP layer's one per request.
+
+Sites typed `app` run the rate-limit and velocity layers only: the signature and heuristic layers are browser heuristics and an app SDK sends no browser User-Agent (React Native on Android goes out as `okhttp/<version>`, which `isbot` matches). A site that receives app SDK traffic must be created with `type: 'app'`, or it is filtered as browser traffic: the SDK's `litemetrics-react-native/<version> (<platform>)` User-Agent escapes Layer 1 but trips Layer 2 (no browser, no engine, no `Accept-Language`, no `Referer`), so `standard` hides that traffic from every report and `strict` drops it. The server logs `[site-type-mismatch] site=<id> type=<type> platform=<platform> mode=<mode>` once per site when it sees app SDK payloads on a non-app site.
+
+- `BOT_FILTER_MODE=standard` (default): Layer 1 drops, Layers 2, 3 and 4 flag (events stored with `bot_flag`, hidden from queries, countable via `litemetrics bots` and readable again with `?includeBots=true`). On `app` sites only Layers 3 and 4 run, and both flag.
+- `BOT_FILTER_MODE=strict`: every layer drops (`app` sites: rate limit and velocity only).
+- `BOT_FILTER_MODE=shadow`: every layer flags only — useful for tuning thresholds without affecting data (`app` sites: rate limit and velocity only).
 - `BOT_FILTER_MODE=off`: disabled.
 
 Per-site overrides live on the site record (`botFilterMode` field) and are configurable from the dashboard Settings page. Each detection emits a grep-friendly audit line:
 
 ```
-[bot-filter] <action> layer=<layer> reason=<reason> mode=<mode> site=<siteId> ip=<ip> ua="<user-agent>"
+[bot-filter] <action> layer=<layer> reason=<reason> mode=<mode> events=<n> site=<siteId> ip=<ip> ua="<user-agent>"
 ```
 
-`layer` is which of the three layers fired; `reason` is why. The distinction matters in practice: the signature layer fires both for a missing User-Agent and for an `isbot` list match, and those call for opposite responses.
+`layer` is which of the four layers fired; `reason` is why; `events` is how much of the batch the action covered. That last one matters for Layer 4 alone: layers 1 to 3 act on the request, so `events` is the whole batch, while Layer 4 acts on the visitors that overflowed, so a `dropped layer=velocity events=5` line on a 60-event batch means 55 events were stored. The distinction matters in practice: the signature layer fires both for a missing User-Agent and for an `isbot` list match, and those call for opposite responses.
 
 | `reason` | Layer | Meaning |
 |------|-------|---------|
@@ -93,6 +100,7 @@ Per-site overrides live on the site record (`botFilterMode` field) and are confi
 | `ua-signature` | signature | Matched the `isbot` list. Real crawlers, but also HTTP client defaults such as `okhttp/*` — the Android default, which React Native's `fetch` sends when the caller sets no User-Agent |
 | `no-browser-signals` | heuristic | Browser, engine, `Accept-Language` and `Referer` were all absent |
 | `rate-limit` | rate-limit | The per-IP sliding window overflowed |
+| `velocity` | velocity | One `visitorId` sent more pageviews inside `BOT_VELOCITY_WINDOW_MS` than a person can read |
 
 If mobile SDK traffic is missing from your data, grep for `reason=ua-signature` and check the `ua` field — a native HTTP client that sends no explicit User-Agent gets a library default that `isbot` matches.
 
