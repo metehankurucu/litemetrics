@@ -161,7 +161,7 @@ const collector = await createCollector({
     onBotDetected: (info) => {
       // info: { siteId, ip, userAgent, layer, reason, action, mode }
       // reason: 'empty-ua' | 'ua-signature' | 'no-browser-signals' | 'rate-limit'
-      //       | 'visitor-velocity'
+      //       | 'velocity'
       console.log(`[bot-filter] ${info.action} layer=${info.layer} reason=${info.reason} mode=${info.mode} site=${info.siteId} ip=${info.ip} ua="${info.userAgent}"`);
     },
     onSiteTypeMismatch: (info) => {

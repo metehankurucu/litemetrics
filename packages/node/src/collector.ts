@@ -27,6 +27,7 @@ import { parseUserAgent } from './useragent';
 import { classifyUserAgent } from './botfilter';
 import { classifyHeuristicBot } from './heuristic-bot';
 import { createRateLimiter } from './rate-limit';
+import { MAX_VISITOR_KEY_LEN, velocityKey } from './velocity-key';
 import type { BotFilterMode, BotDetectedInfo, BotDropReason } from '@litemetrics/core';
 import { resolveTimestampSanity, sanitizeEventTimestamp } from './timestamp-sanity';
 import { normalizeReferrer } from './normalize-referrer';
@@ -63,22 +64,12 @@ const DEFAULT_VELOCITY_MAX_PAGEVIEWS = 60;
 const DEFAULT_VELOCITY_MAX_KEYS = 50_000;
 
 /**
- * Longest `visitorId` layer 4 will key a window on. Anything longer is skipped, not
- * truncated.
- *
- * `visitorId` arrives in the request body and is never validated, and `parseBody` reads
- * a non-JSON body with no size cap, so `express.json()`'s 100 KB limit is cleared by a
- * single `Content-Type: text/plain` header. A Map key is retained for the life of its
- * entry, so without this the ceiling is not the key COUNT that
- * `visitorVelocityMaxKeys` bounds but container memory: measured at roughly 100
- * unauthenticated requests per 512 MB, at 0.2% of the 50k cap.
- *
- * Skipping rather than truncating, because truncation would collapse distinct ids onto
- * one key and let a flood ride in on a real visitor's window. 128 is generous: both
- * shipped SDKs emit 16 characters (`packages/tracker/src/session.ts` `hash.slice(0, 16)`,
- * `packages/react-native/src/tracker.ts` `generateId().slice(0, 16)`).
+ * The sentinel `track()` and `identify()` stamp on programmatic, server-side events.
+ * `processIdentity` already skips it, and so does layer 4: it is one shared string, not a
+ * visitor, so a host that forwards its server-side events through /api/collect would pool
+ * all of them into a single window and flag them together once it overflowed.
  */
-const MAX_VISITOR_KEY_LEN = 128;
+const SERVER_VISITOR_ID = 'server';
 
 export interface Collector {
   handler(): (req: any, res: any) => void | Promise<void>;
@@ -131,11 +122,38 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
     maxKeys: botCfg.visitorVelocityMaxKeys ?? DEFAULT_VELOCITY_MAX_KEYS,
   });
 
+  /** Does this event belong to one of the visitors layer 4 just put over the line? */
+  function isOverLimitVisitor(event: ClientEvent, overLimit: Set<string> | undefined): boolean {
+    if (!overLimit || overLimit.size === 0) return false;
+    const visitorId = velocityVisitorOf(event);
+    return visitorId !== undefined && overLimit.has(visitorId);
+  }
+
+  /** The window key's visitor half, or `undefined` when this event gets no window. */
+  function velocityVisitorOf(event: ClientEvent): string | undefined {
+    const rawVisitorId = typeof event?.visitorId === 'string' ? event.visitorId : '';
+    // Length before trim, deliberately: trimming a multi-megabyte string allocates a
+    // copy of it, so the check has to come first to be worth anything.
+    if (rawVisitorId.length > MAX_VISITOR_KEY_LEN) return undefined;
+    const visitorId = rawVisitorId.trim();
+    // No visitor id, no window: bucketing every anonymous event under one empty key
+    // would flag unrelated traffic as soon as that shared bucket overflowed. Same for
+    // the `server` sentinel, which is one shared string rather than a visitor.
+    if (!visitorId || visitorId === SERVER_VISITOR_ID) return undefined;
+    return visitorId;
+  }
+
   /**
-   * Layer 4. Counts the PAGEVIEWS in this batch against each visitor's window and
-   * reports whether any of them overflowed.
+   * Layer 4. Counts the PAGEVIEWS in this batch against each visitor's window and returns
+   * the visitors that overflowed, so the caller can act on THOSE visitors rather than on
+   * the request that happened to carry them.
    *
-   * Two deliberate choices:
+   * Three deliberate choices:
+   *  - the resolved `site` is required, not the request's `siteId`. `siteId` is
+   *    unvalidated body text with no length cap, an unknown one resolves to `null` and
+   *    skips the hostname filter (`if (site?.allowedOrigins ...)`) without stopping the
+   *    request, so keying on it would put an attacker-shaped string in a retained Map key.
+   *    `reportedTypeMismatches` takes the same gate for the same reason;
    *  - every pageview is checked, with no early exit on the first overflow, because
    *    stopping early would leave the rest of a large batch uncounted and let a flood
    *    stay just under the line by arriving in one call;
@@ -143,22 +161,19 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
    *    dozens of times a minute by design, so counting them would make the layer fire
    *    on the tracker's own features.
    */
-  function checkVisitorVelocity(siteId: string, events: ClientEvent[]): boolean {
-    if (velocityMaxPageviews <= 0) return false;
-    let limited = false;
+  function checkVisitorVelocity(site: Site | null, events: ClientEvent[]): Set<string> {
+    const overLimit = new Set<string>();
+    if (!site) return overLimit;
+    if (velocityMaxPageviews <= 0) return overLimit;
     for (const event of events) {
       if (event?.type !== 'pageview') continue;
-      const rawVisitorId = typeof event.visitorId === 'string' ? event.visitorId : '';
-      // Length before trim, deliberately: trimming a multi-megabyte string allocates a
-      // copy of it, so the check has to come first to be worth anything.
-      if (rawVisitorId.length > MAX_VISITOR_KEY_LEN) continue;
-      const visitorId = rawVisitorId.trim();
-      // No visitor id, no window: bucketing every anonymous event under one empty key
-      // would flag unrelated traffic as soon as that shared bucket overflowed.
+      const visitorId = velocityVisitorOf(event);
       if (!visitorId) continue;
-      if (velocityLimiter.check(`${siteId}:${visitorId}`).limited) limited = true;
+      if (velocityLimiter.check(velocityKey(site.siteId, visitorId)).limited) {
+        overLimit.add(visitorId);
+      }
     }
-    return limited;
+    return overLimit;
   }
 
   function reportBot(info: BotDetectedInfo): void {
@@ -273,6 +288,7 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
     ip: string,
     userAgent: string,
     botFlag?: 'signature' | 'heuristic' | 'rate-limit' | 'velocity',
+    velocityVisitors?: Set<string>,
   ): EnrichedEvent[] {
     const uaDevice = parseUserAgent(userAgent);
     const now = Date.now();
@@ -303,7 +319,12 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
       }
 
       const enrichedEvent: EnrichedEvent = { ...event, timestamp, ip, geo, device };
-      if (botFlag) enrichedEvent.botFlag = botFlag;
+      // Layers 1-3 judge the request, so their flag lands on all of it. Layer 4 judged one
+      // visitor, so it lands on that visitor's events only: a bystander that shared a
+      // proxied batch with a noisy visitor keeps its pageviews in the default reports.
+      if (botFlag && (botFlag !== 'velocity' || isOverLimitVisitor(event, velocityVisitors))) {
+        enrichedEvent.botFlag = botFlag;
+      }
       if (event.type === 'pageview') {
         enrichedEvent.referrer = normalizeReferrer(event.referrer);
       }
@@ -480,6 +501,10 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
         // Layer and reason are one value so they cannot drift apart: a layer without a
         // reason would fall through the guard below and silently skip the drop.
         let bot: { layer: 'signature' | 'heuristic' | 'rate-limit' | 'velocity'; reason: BotDropReason } | undefined;
+        // The visitors layer 4 put over the line, empty until it runs. Layer 4 is the only
+        // layer that names WHO tripped it, and both the flag and the drop below act on
+        // that set rather than on the whole request.
+        let velocityVisitors = new Set<string>();
 
         // The signature and heuristic layers are browser heuristics: one matches a
         // User-Agent against a crawler list, the other flags a request with no
@@ -506,8 +531,9 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
             // Layer 4 is not a browser heuristic - it measures how fast one visitor
             // moves - so unlike layers 1 and 2 it runs on app sites too, ahead of the
             // per-IP layer for the short-circuit reason below.
-            if (checkVisitorVelocity(siteId, payload.events)) {
-              bot = { layer: 'velocity', reason: 'visitor-velocity' };
+            velocityVisitors = checkVisitorVelocity(site, payload.events);
+            if (velocityVisitors.size > 0) {
+              bot = { layer: 'velocity', reason: 'velocity' };
             } else if (rateLimiter.check(ip).limited) {
               bot = { layer: 'rate-limit', reason: 'rate-limit' };
             }
@@ -527,14 +553,21 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
               const heuristic = classifyHeuristicBot({ userAgent, acceptLanguage, referer });
               if (heuristic) {
                 bot = { layer: 'heuristic', reason: heuristic };
-              } else if (checkVisitorVelocity(siteId, payload.events)) {
-                bot = { layer: 'velocity', reason: 'visitor-velocity' };
-              } else if (rateLimiter.check(ip).limited) {
-                bot = { layer: 'rate-limit', reason: 'rate-limit' };
+              } else {
+                velocityVisitors = checkVisitorVelocity(site, payload.events);
+                if (velocityVisitors.size > 0) {
+                  bot = { layer: 'velocity', reason: 'velocity' };
+                } else if (rateLimiter.check(ip).limited) {
+                  bot = { layer: 'rate-limit', reason: 'rate-limit' };
+                }
               }
             }
           }
         }
+
+        // What survives the drop below. Layers 1-3 judge the request, so a drop takes all
+        // of it; layer 4 judged named visitors, so a drop takes only their events.
+        let eventsToStore: ClientEvent[] = payload.events;
 
         if (bot) {
           // The mode decides the action, and only the action. `standard` drops the one
@@ -553,13 +586,26 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
           });
 
           if (shouldDrop) {
-            sendJson(res, 200, { ok: true });
-            return;
+            if (bot.layer !== 'velocity') {
+              sendJson(res, 200, { ok: true });
+              return;
+            }
+            // Same per-visitor rule as the flag, in the direction that destroys data:
+            // dropping a proxied batch because one of its visitors overflowed would throw
+            // away a bystander's pageviews, and `strict` has no `?includeBots=true` to
+            // recover them from.
+            eventsToStore = payload.events.filter((e) => !isOverLimitVisitor(e, velocityVisitors));
+            if (eventsToStore.length === 0) {
+              sendJson(res, 200, { ok: true });
+              return;
+            }
+            // Nothing that is left tripped a layer, so nothing that is left is flagged.
+            bot = undefined;
           }
         }
 
         stage = 'identity';
-        const enriched = enrichEvents(payload.events, ip, userAgent, bot?.layer);
+        const enriched = enrichEvents(eventsToStore, ip, userAgent, bot?.layer, velocityVisitors);
 
         await processIdentity(enriched);
         stage = 'insert';

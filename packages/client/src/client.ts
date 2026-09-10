@@ -79,8 +79,14 @@ export interface BotStatsResult {
   bySignature: number;
   byHeuristic: number;
   byRateLimit: number;
-  /** Layer 4: one visitor sent more pageviews per window than a human can read. */
-  byVelocity: number;
+  /**
+   * Layer 4: one visitor sent more pageviews per window than a human can read.
+   *
+   * Optional because this shape comes from whichever collector host the client is pointed
+   * at, not from the package version it was built against: a host predating layer 4
+   * answers without the field, and `total` still adds up from the buckets it did send.
+   */
+  byVelocity?: number;
 }
 
 export class LitemetricsClient {

@@ -279,7 +279,7 @@ export type BotDropReason =
   /** The per-IP sliding window overflowed. */
   | 'rate-limit'
   /** One visitor sent more pageviews inside the velocity window than a human can read. */
-  | 'visitor-velocity';
+  | 'velocity';
 
 export interface BotDetectedInfo {
   siteId: string;
