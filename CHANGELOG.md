@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased
+
+**`standard` bot-filter mode now runs layers 2 and 3.** The default mode used to evaluate only the signature layer, so `bot_flag` was never set on a stored event and `litemetrics bots` always reported 0.
+
+### `@litemetrics/node`
+
+- **Layers 2 and 3 flag in `standard`.** Layer 1 (signature) still drops. A heuristic or per-IP rate-limit hit is now stored with `bot_flag` and hidden from default reports. On `app` sites the rate-limit layer now flags in `standard`; it still drops nothing.
+- **Data note: default counts go down on upgrade.** Traffic that layers 2 and 3 now flag stops appearing in default reports. Nothing is deleted: `?includeBots=true` returns the previous totals and `litemetrics bots` counts what was hidden. `BOT_RATE_MAX` counts collect requests (not events) per IP, and one window is shared by every site on the process.
+- **Operators: a site that receives React Native SDK traffic must be typed `app`.** On a mis-typed site the SDK's Android requests now trip the heuristic layer, so `standard` hides them and `strict` drops them (iOS unmeasured). Fix with `PUT /api/sites/:id {"type":"app"}`; the `[site-type-mismatch]` log line names the affected sites.
+- **User detail honours the bot filter.** `GET /api/users/:identifier` and `getUserDetail` counted bot-flagged events that the user list and event history hid. They now exclude them by default and accept `includeBots`.
+
+### `@litemetrics/core`
+
+- `DBAdapter.getUserDetail` takes an optional `UserDetailOptions` (`{ includeBots?: boolean }`).
+
+### `@litemetrics/client`
+
+- `getUserDetail(identifier, { includeBots })`.
+
 ## 0.9.0 - Ad click IDs, link click identity, one event per labelled click
 
 **Ad click IDs are captured at landing and stored as first-class columns.** A click ID (`gclid`, `gbraid`, `wbraid`, `fbclid`) not recorded at click time cannot be backfilled later; server-side conversion upload APIs key on them and do not accept UTM values as a substitute.
