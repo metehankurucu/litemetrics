@@ -215,10 +215,12 @@ export interface BotFilterConfig {
   /**
    * Fired once per site when app-SDK events arrive at a site that is not typed as
    * `app`. Unless its bot-filter mode is `off`, such a site is filtered as browser
-   * traffic: the SDK's User-Agent escapes the signature layer but trips the heuristic
-   * layer, so `standard` stores its app events with a `bot_flag` and hides them from
-   * every report, and `strict` drops them. Either way the dashboard shows it as a web
-   * site. Reporting only - the request is filtered exactly as before.
+   * traffic: the SDK's User-Agent escapes the signature layer, but on Android it trips
+   * the heuristic layer, so `standard` stores those events with a `bot_flag` and hides
+   * them from every report, and `strict` drops them. iOS is unmeasured: `NSURLSession`
+   * may add `Accept-Language` on its own, which keeps iOS requests unflagged. Either way
+   * the dashboard shows it as a web site. Reporting only - the request is filtered
+   * exactly as before.
    */
   onSiteTypeMismatch?: (info: SiteTypeMismatchInfo) => void;
 }

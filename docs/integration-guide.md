@@ -134,7 +134,7 @@ export function PageTracker() {
 bun add @litemetrics/react-native
 ```
 
-> **Create the site with `type: 'app'`** — `litemetrics sites create -n "My App" --type app`, or `POST /api/sites` with `{"type":"app"}` (an existing site: `PUT /api/sites/:siteId {"type":"app"}`). The bot filter treats a `web` site's traffic as browser traffic: the SDK's `litemetrics-react-native/<version> (<platform>)` User-Agent escapes Layer 1 but trips Layer 2 (no browser, no engine, no `Accept-Language`, no `Referer`), so `standard` hides that traffic from every report and `strict` drops it. See [Bot Filtering](#bot-filtering).
+> **Create the site with `type: 'app'`** — `litemetrics sites create -n "My App" --type app`, or `POST /api/sites` with `{"type":"app"}` (an existing site: `PUT /api/sites/:siteId {"type":"app"}`). The bot filter treats a `web` site's traffic as browser traffic: the SDK's `litemetrics-react-native/<version> (<platform>)` User-Agent escapes Layer 1, but on Android the request trips Layer 2 (no browser, no engine, no `Accept-Language`, no `Referer`), so `standard` hides that Android traffic from every report and `strict` drops it. iOS is unmeasured: `NSURLSession` may add `Accept-Language` itself, which would leave iOS traffic unflagged and make a mis-typed site show iOS but not Android. See [Bot Filtering](#bot-filtering).
 
 ```tsx
 import { LitemetricsProvider, useNavigationTracking } from '@litemetrics/react-native';

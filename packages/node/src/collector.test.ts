@@ -988,8 +988,10 @@ describe('collector bot filter - app payload on a non-app site', () => {
   // left to be discovered. The RN SDK sends its own `litemetrics-react-native/<v>
   // (<platform>)` User-Agent (packages/react-native/src/user-agent.ts) precisely so
   // isbot's bare-token rule stops matching it - but ua-parser resolves neither a
-  // browser nor an engine from it, and the SDK sends no Accept-Language and no
-  // Referer, so on a site that is NOT typed `app` the heuristic layer now fires.
+  // browser nor an engine from it, and an Android SDK request carries no Accept-Language
+  // and no Referer (OkHttp adds neither), so on a site that is NOT typed `app` the
+  // heuristic layer now fires. iOS is not pinned here: NSURLSession may add
+  // Accept-Language.
   //
   // Before this change `standard` never ran that layer, so the events were counted as
   // real traffic. They are now stored with `bot_flag` and hidden from the default
