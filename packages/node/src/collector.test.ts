@@ -963,7 +963,7 @@ describe('collector bot filter - app-type sites', () => {
     );
   });
 
-  // R3 (round 4) - main required this ("R3: standard mode never ran the rate-limit
+  // R3 (review round 6) - main required this ("R3: standard mode never ran the rate-limit
   // layer and must not start now"), #25 flipped it, and this review restores it: an
   // app SDK batches on a 5s timer (up to 12 requests/min per device) and the per-IP
   // window is shared by every device behind one carrier CGNAT address. About 5 active
@@ -986,7 +986,7 @@ describe('collector bot filter - app-type sites', () => {
     expect(onBotDetected).not.toHaveBeenCalled();
   });
 
-  // R3 (round 4) - `shadow` is not `standard`: it still consults the per-IP layer on
+  // R3 (review round 6) - `shadow` is not `standard`: it still consults the per-IP layer on
   // app sites, same as `strict` above.
   it('still flags an app-site rate-limit overflow in shadow mode', async () => {
     getSite.mockImplementation(async () => appSite());
@@ -2337,7 +2337,7 @@ describe('collector bot filtering - layer 4: visitor velocity', () => {
     }
   });
 
-  // R2 (round 4) - the drain test above pins the sliding window for a burst that stops.
+  // R2 (review round 6) - the drain test above pins the sliding window for a burst that stops.
   // This one pins the opposite case: a flood that never slows must not refill the window
   // it is currently failing, or a visitor over the line would get 60 clean pageviews in
   // every window for as long as it kept flooding.
