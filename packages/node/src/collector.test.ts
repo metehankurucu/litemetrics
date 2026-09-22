@@ -2319,6 +2319,42 @@ describe('collector bot filtering - layer 4: visitor velocity', () => {
     }
   });
 
+  // R2 (round 4) - the drain test above pins the sliding window for a burst that stops.
+  // This one pins the opposite case: a flood that never slows must not refill the window
+  // it is currently failing, or a visitor over the line would get 60 clean pageviews in
+  // every window for as long as it kept flooding.
+  it('keeps flagging a flood that never slows, and clears one window after it stops', async () => {
+    const base = Date.now();
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(base);
+    try {
+      const collector = await velocityCollector();
+      const handler = collector.handler();
+
+      await handler(makeBatch({ pageviews: 61 }), makeRes());
+      expect(insertEvents.mock.calls[0]![0][0]!.botFlag).toBe('velocity');
+
+      nowSpy.mockReturnValue(base + 5_000);
+      insertEvents.mockClear();
+      await handler(makeBatch({ pageviews: 61 }), makeRes());
+      expect(insertEvents.mock.calls[0]![0][0]!.botFlag).toBe('velocity');
+
+      // On the old code this was `undefined`, because the window had drained: a limited
+      // call left no trace, so the visitor refilled its budget while still flooding.
+      nowSpy.mockReturnValue(base + 10_500);
+      insertEvents.mockClear();
+      await handler(makeBatch({ pageviews: 1 }), makeRes());
+      expect(insertEvents.mock.calls[0]![0][0]!.botFlag).toBe('velocity');
+
+      // A full window with no further pageviews at all: the visitor clears.
+      nowSpy.mockReturnValue(base + 20_501);
+      insertEvents.mockClear();
+      await handler(makeBatch({ pageviews: 1 }), makeRes());
+      expect(insertEvents.mock.calls[0]![0][0]!.botFlag).toBeUndefined();
+    } finally {
+      nowSpy.mockRestore();
+    }
+  });
+
   /** One collect request carrying pageviews for several visitors, in order. */
   function makeMixedBatch(spec: Array<[string, number]>) {
     const req = makeBatch({ pageviews: 0 });

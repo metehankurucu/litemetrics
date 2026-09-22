@@ -127,6 +127,11 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
     windowMs: botCfg.visitorVelocityWindowMs ?? DEFAULT_VELOCITY_WINDOW_MS,
     maxEvents: velocityMaxPageviews,
     maxKeys: botCfg.visitorVelocityMaxKeys ?? DEFAULT_VELOCITY_MAX_KEYS,
+    // Without this, a visitor over the line gets 60 clean pageviews in every window for
+    // as long as it keeps flooding. With it, the verdict follows the current rate, and
+    // the visitor is clean again one window after it slows. The first 60 pageviews of a
+    // burst are still stored unflagged, because nothing has overflowed yet.
+    countLimited: true,
   });
 
   /** Does this event belong to one of the visitors layer 4 just put over the line? */

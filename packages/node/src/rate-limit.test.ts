@@ -113,6 +113,50 @@ describe('createRateLimiter', () => {
     // a re-enters fresh.
     expect(rl.check('a')).toEqual({ limited: false, count: 1 });
   });
+
+  it('by default, a limited call leaves no trace, so a sustained flood refills', () => {
+    const rl = createRateLimiter({ windowMs: 1000, maxEvents: 3 });
+    // T=0: 3 calls admitted, the 4th is limited.
+    rl.check('1.1.1.1');
+    rl.check('1.1.1.1');
+    rl.check('1.1.1.1');
+    expect(rl.check('1.1.1.1').limited).toBe(true);
+
+    // T=500: the window still holds the 3 admitted timestamps, so all 3 calls are limited.
+    vi.advanceTimersByTime(500);
+    expect(rl.check('1.1.1.1').limited).toBe(true);
+    expect(rl.check('1.1.1.1').limited).toBe(true);
+    expect(rl.check('1.1.1.1').limited).toBe(true);
+
+    // T=1001: the 3 admitted timestamps (all at T=0) have expired, and the limited
+    // calls left no trace, so the window is empty again and the flood refills.
+    vi.advanceTimersByTime(501);
+    expect(rl.check('1.1.1.1').limited).toBe(false);
+  });
+
+  it('countLimited keeps a sustained flood limited and clears one window after it stops', () => {
+    const rl = createRateLimiter({ windowMs: 1000, maxEvents: 3, countLimited: true });
+    // T=0: 3 calls admitted, the 4th is limited.
+    rl.check('1.1.1.1');
+    rl.check('1.1.1.1');
+    rl.check('1.1.1.1');
+    expect(rl.check('1.1.1.1').limited).toBe(true);
+
+    // T=500: still limited; each limited call now records its own timestamp.
+    vi.advanceTimersByTime(500);
+    expect(rl.check('1.1.1.1').limited).toBe(true);
+    expect(rl.check('1.1.1.1').limited).toBe(true);
+    expect(rl.check('1.1.1.1').limited).toBe(true);
+
+    // T=1001: the original T=0 timestamps expired, but the T=500 limited calls kept
+    // the window full, so the current rate is still over the line.
+    vi.advanceTimersByTime(501);
+    expect(rl.check('1.1.1.1').limited).toBe(true);
+
+    // T=2001: a full window with no calls at all, so the key clears.
+    vi.advanceTimersByTime(1000);
+    expect(rl.check('1.1.1.1').limited).toBe(false);
+  });
 });
 
 // Layer 4 reuses this limiter with a `siteId:visitorId` key instead of an IP, so the cap

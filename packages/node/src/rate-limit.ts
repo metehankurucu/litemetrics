@@ -8,6 +8,16 @@ export interface RateLimiterConfig {
    * keys by `siteId:visitorId` and calls it once per pageview in the batch.
    */
   maxEvents: number;
+  /**
+   * Also record calls that come back limited, keeping only the newest `maxEvents`
+   * timestamps. Off by default, which is layer 3's behaviour: a limited call leaves no
+   * trace, so a key refills as its admitted timestamps expire and a sustained flood gets
+   * `maxEvents` calls through per window, indefinitely. On, `limited` means "the last
+   * `maxEvents` calls all landed inside the window", i.e. the CURRENT rate is over the
+   * line: a sustained flood stays limited for as long as it runs, and the key clears one
+   * window after the rate drops. Memory is unchanged - the array never exceeds `maxEvents`.
+   */
+  countLimited?: boolean;
   /** Hard cap on tracked keys (LRU-evicts oldest). Default: 10_000. */
   maxKeys?: number;
   /** @deprecated Older name for {@link maxKeys}, kept working for existing callers. */
@@ -65,6 +75,11 @@ export function createRateLimiter(config: RateLimiterConfig): RateLimiter {
       if (currentCount >= maxEvents) {
         // Already at/over the limit. Don't grow the array under sustained attack;
         // the count we report is the post-push count for caller compatibility.
+        if (config.countLimited) {
+          // Keep the window at exactly maxEvents entries: newest in, oldest out.
+          entry.timestamps.push(now);
+          entry.timestamps.shift();
+        }
         return { limited: true, count: currentCount + 1 };
       }
 
