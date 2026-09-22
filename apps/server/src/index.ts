@@ -179,9 +179,12 @@ const collector = await createCollector({
     },
     onSiteTypeMismatch: (info) => {
       // This site sends app SDK events but is not typed as an app. Unless its mode is
-      // `off` it is still filtered as browser traffic and keeps losing its Android
-      // events; either way the dashboard shows it as a web site. Fix is one call:
-      // PUT /api/sites/<id> {"type":"app"}.
+      // `off` it is still filtered as browser traffic: an SDK build that predates the
+      // litemetrics-react-native User-Agent sends okhttp/<v> on Android and is dropped
+      // at Layer 1 (flagged under `shadow`); the current SDK UA escapes Layer 1 but
+      // trips Layer 2 on Android (iOS is unmeasured), so `standard` stores those events
+      // flagged (hidden from reports) and `strict` drops them. Either way the dashboard
+      // shows it as a web site. Fix is one call: PUT /api/sites/<id> {"type":"app"}.
       console.warn(formatSiteTypeMismatchLine(info));
     },
   },
