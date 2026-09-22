@@ -963,11 +963,14 @@ describe('collector bot filter - app-type sites', () => {
     );
   });
 
-  // R3: standard mode observes the rate-limit layer on an app site - it flags the
-  // overflow so `bot_flag` can fill, and still drops nothing. Before this change the
-  // layer was gated off entirely, which is why an app site's `bot_flag` could never
-  // be non-null in the default mode.
-  it('flags but does not drop an app-site rate-limit overflow in standard mode', async () => {
+  // R3 (round 4) - main required this ("R3: standard mode never ran the rate-limit
+  // layer and must not start now"), #25 flipped it, and this review restores it: an
+  // app SDK batches on a 5s timer (up to 12 requests/min per device) and the per-IP
+  // window is shared by every device behind one carrier CGNAT address. About 5 active
+  // devices sharing an address would have been enough to hit the 60/min default and
+  // hide real users' events in the default reports. `standard` relies on layer 4
+  // alone on app sites; `strict` and `shadow` still consult the per-IP layer.
+  it('does not run the per-IP layer on app sites in standard mode', async () => {
     getSite.mockImplementation(async () => appSite());
     const onBotDetected = vi.fn();
     const collector = await createCollector({
@@ -979,10 +982,25 @@ describe('collector bot filter - app-type sites', () => {
     await handler(makeReqFor('okhttp/4.12.0'), makeRes());
     expect(insertEvents).toHaveBeenCalledTimes(2);
     expect(insertEvents.mock.calls[0]![0][0]!.botFlag).toBeUndefined();
+    expect(insertEvents.mock.calls[1]![0][0]!.botFlag).toBeUndefined();
+    expect(onBotDetected).not.toHaveBeenCalled();
+  });
+
+  // R3 (round 4) - `shadow` is not `standard`: it still consults the per-IP layer on
+  // app sites, same as `strict` above.
+  it('still flags an app-site rate-limit overflow in shadow mode', async () => {
+    getSite.mockImplementation(async () => appSite());
+    const onBotDetected = vi.fn();
+    const collector = await createCollector({
+      db: { adapter: 'clickhouse', url: 'http://x' },
+      botFilter: { defaultMode: 'shadow', rateLimitMaxEvents: 1, onBotDetected },
+    });
+    const handler = collector.handler();
+    await handler(makeReqFor('okhttp/4.12.0'), makeRes());
+    await handler(makeReqFor('okhttp/4.12.0'), makeRes());
+    expect(insertEvents).toHaveBeenCalledTimes(2);
+    expect(insertEvents.mock.calls[0]![0][0]!.botFlag).toBeUndefined();
     expect(insertEvents.mock.calls[1]![0][0]!.botFlag).toBe('rate-limit');
-    expect(onBotDetected).toHaveBeenCalledWith(
-      expect.objectContaining({ layer: 'rate-limit', action: 'flagged', mode: 'standard' }),
-    );
   });
 
   // R3: layers 1 and 2 stay off on an app site in standard mode. A React Native

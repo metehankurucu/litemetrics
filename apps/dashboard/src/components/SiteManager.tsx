@@ -441,8 +441,11 @@ function BotFilterModeSetting({ mode, siteType, onUpdate, saving }: {
 }) {
   const current = mode ?? 'standard';
   // App SDK traffic carries no browser User-Agent, so the signature and heuristic
-  // layers never run on an app site - only the per-IP rate limit and the per-visitor
-  // velocity layer do. The hints must say what each mode actually does for *this* site,
+  // layers never run on an app site. Of the per-IP rate limit and the per-visitor
+  // velocity layer, standard mode runs velocity only - an app SDK's 5s send timer and
+  // carrier NAT put many devices on one address, so the per-IP layer would hide real
+  // users there. Strict and shadow run both. The hints must say what each mode actually
+  // does for *this* site,
   // including what `standard` FLAGS: a flagged event is stored but hidden from these
   // reports unless `Include bot traffic` is on, so a hint that only names the drops
   // understates what the mode removes.
@@ -450,8 +453,8 @@ function BotFilterModeSetting({ mode, siteType, onUpdate, saving }: {
   const options: Array<{ value: 'off' | 'standard' | 'strict' | 'shadow'; label: string; hint: string }> = isApp
     ? [
         { value: 'off',      label: 'Off',      hint: 'No bot filtering. Useful for testing.' },
-        { value: 'standard', label: 'Standard', hint: 'Flag per-IP rate-limit and per-visitor velocity hits: kept, but hidden from reports. Drops nothing. Signature/heuristic layers are browser-only. Default.' },
-        { value: 'strict',   label: 'Strict',   hint: 'Drop per-IP rate-limit and per-visitor velocity hits. The only two layers that apply to app traffic.' },
+        { value: 'standard', label: 'Standard', hint: 'Flag per-visitor velocity hits: kept, but hidden from reports. Drops nothing. Per-IP rate limit is off on app sites in this mode; signature/heuristic layers are browser-only. Default.' },
+        { value: 'strict',   label: 'Strict',   hint: 'Drop per-IP rate-limit and per-visitor velocity hits.' },
         { value: 'shadow',   label: 'Shadow',   hint: 'Flag rate-limit and velocity hits but drop nothing - for analysis.' },
       ]
     : [

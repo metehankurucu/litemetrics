@@ -544,8 +544,9 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
         // browser, engine, Accept-Language or Referer. An app SDK has none of those
         // by construction - on Android, React Native's fetch goes out through OkHttp
         // with `User-Agent: okhttp/<version>`, which isbot matches - so on an app
-        // site both layers only ever misfire. Rate limiting still applies: abuse of
-        // an app site id is a volume problem, not a User-Agent one.
+        // site both layers only ever misfire. Layer 3 (per-IP) still runs on app sites
+        // in `strict` and `shadow`; `standard` leaves it off there (see below) and
+        // relies on layer 4 for volume abuse of an app site id.
         const isAppSite = site?.type === 'app';
         if (site && !isAppSite) reportSiteTypeMismatch(site, payload.events, mode);
 
@@ -561,10 +562,18 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
         // opposite (README "Layer 1 drops the event; Layers 2, 3 and 4 flag it").
         if (mode !== 'off') {
           if (isAppSite) {
-            // Layer 4 is not a browser heuristic - it measures how fast one visitor
-            // moves - so unlike layers 1 and 2 it runs on app sites too. Layer 3 is
-            // consulted first, for the reason spelled out in the web branch below.
-            if (rateLimiter.check(ip).limited) {
+            // An app SDK batches on a timer - one collect request every 5s while it
+            // has queued events, up to 12 requests/min per active device. Mobile
+            // carriers put many subscribers behind one public address, and the
+            // per-IP window counts requests keyed on the address alone, so in the
+            // default mode the per-IP layer would hide real users once a handful of
+            // devices shared an address. `standard` therefore leaves it off here, as
+            // it always did on app sites, and relies on layer 4 alone, which keys on
+            // the visitor and does not pool an address. `strict` and `shadow` still
+            // consult it first, for the reason spelled out in the web branch below.
+            // Note that the round-4 bypass below does not apply in `standard` on app
+            // sites, because there is no layer 3 there to bypass.
+            if ((mode === 'strict' || mode === 'shadow') && rateLimiter.check(ip).limited) {
               bot = { layer: 'rate-limit', reason: 'rate-limit' };
             } else {
               velocityVisitors = checkVisitorVelocity(site, payload.events);

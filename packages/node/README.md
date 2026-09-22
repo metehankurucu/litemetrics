@@ -130,20 +130,22 @@ tunable per-site via the `botFilterMode` site field.
   window counts requests, so a batching client on a rotating address clears all three.
   Only pageviews count toward this one; custom events do not.
 
-**Sites with `type: 'app'` run Layers 3 and 4 only.** Layers 1 and 2 reason about browser
+**Sites with `type: 'app'` never run Layers 1 or 2.** Those reason about browser
 User-Agents, which an app SDK does not send (React Native on Android goes out as
 `okhttp/<version>`, which `isbot` matches), so on an app site they would only
-misfire. A site receiving app SDK traffic must therefore be typed `app`
+misfire. Of Layers 3 and 4, `standard` runs Layer 4 only: an app SDK's 5s send timer
+and carrier NAT put many devices on one address, so the per-IP layer is left off
+there to avoid hiding real users; `strict` and `shadow` run Layer 3 too. A site
+receiving app SDK traffic must therefore be typed `app`
 (`POST` / `PUT /api/sites` with `{"type":"app"}`); otherwise it keeps being
 filtered as browser traffic: the SDK User-Agent escapes Layer 1 but trips Layer 2,
-so `standard` hides its app traffic from reports and `strict` drops it. Layer 4 is a
-volume signal rather than a browser heuristic, so it applies to app sites unchanged. When app SDK payloads
+so `standard` hides its app traffic from reports and `strict` drops it. When app SDK payloads
 arrive at a non-app site the collector fires `onSiteTypeMismatch` once per site
 (reporting only — the payload never bypasses the filter).
 
 Modes: `off`, `standard` (the default: Layer 1 drops, Layers 2, 3 & 4 flag, meaning the
 event is stored with a `bot_flag` and hidden from queries rather than discarded;
-on an app site only Layers 3 and 4 run, and both flag), `strict` (every layer drops; app
+on an app site only Layer 4 runs, and it flags), `strict` (every layer drops; app
 site: rate limit and velocity only),
 `shadow` (every layer flags only). Every detection reports both the `layer` that
 fired and a finer `reason` — the signature layer fires for a missing User-Agent
