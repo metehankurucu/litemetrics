@@ -1,4 +1,4 @@
-import type { DBAdapter, EnrichedEvent, QueryParams, QueryResult, QueryDataPoint, Granularity, TimeSeriesParams, TimeSeriesResult, RetentionParams, RetentionResult, RetentionCohort, Site, CreateSiteRequest, UpdateSiteRequest, EventListParams, EventListResult, EventListItem, UserListParams, UserListResult, UserDetail, BotFilterMode } from '@litemetrics/core';
+import type { DBAdapter, EnrichedEvent, QueryParams, QueryResult, QueryDataPoint, Granularity, TimeSeriesParams, TimeSeriesResult, RetentionParams, RetentionResult, RetentionCohort, Site, CreateSiteRequest, UpdateSiteRequest, EventListParams, EventListResult, EventListItem, UserListParams, UserListResult, UserDetail, BotFilterMode, BotStats } from '@litemetrics/core';
 import { Pool } from 'pg';
 import { resolvePeriod, previousPeriodRange, autoGranularity, granularityToDateFormat, fillBuckets, getISOWeek, generateSiteId, generateSecretKey, capLimit, assertTimeseriesBudget } from './utils';
 import { normalizeReferrer } from '../normalize-referrer.js';
@@ -1239,7 +1239,7 @@ export class PostgresAdapter implements DBAdapter {
   async queryBotStats(
     siteId: string,
     range: { from: number; to: number },
-  ): Promise<{ total: number; bySignature: number; byHeuristic: number; byRateLimit: number; byVelocity: number }> {
+  ): Promise<BotStats> {
     const result = await this.pool.query<{ bot_flag: string | null; n: string }>(
       `SELECT bot_flag, COUNT(*)::bigint AS n
        FROM ${EVENTS_TABLE}

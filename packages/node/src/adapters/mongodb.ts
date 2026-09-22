@@ -1,4 +1,4 @@
-import type { DBAdapter, EnrichedEvent, QueryParams, QueryResult, QueryDataPoint, TimeSeriesParams, TimeSeriesResult, RetentionParams, RetentionResult, RetentionCohort, Site, CreateSiteRequest, UpdateSiteRequest, EventListParams, EventListResult, EventListItem, UserListParams, UserListResult, UserDetail, BotFilterMode } from '@litemetrics/core';
+import type { DBAdapter, EnrichedEvent, QueryParams, QueryResult, QueryDataPoint, TimeSeriesParams, TimeSeriesResult, RetentionParams, RetentionResult, RetentionCohort, Site, CreateSiteRequest, UpdateSiteRequest, EventListParams, EventListResult, EventListItem, UserListParams, UserListResult, UserDetail, BotFilterMode, BotStats } from '@litemetrics/core';
 import { MongoClient, type Collection, type Db } from 'mongodb';
 import { resolvePeriod, previousPeriodRange, autoGranularity, granularityToDateFormat, fillBuckets, getISOWeek, generateSiteId, generateSecretKey, capLimit, assertTimeseriesBudget } from './utils';
 import { normalizeReferrer } from '../normalize-referrer.js';
@@ -1244,7 +1244,7 @@ export class MongoDBAdapter implements DBAdapter {
   async queryBotStats(
     siteId: string,
     range: { from: number; to: number },
-  ): Promise<{ total: number; bySignature: number; byHeuristic: number; byRateLimit: number; byVelocity: number }> {
+  ): Promise<BotStats> {
     const docs = await this.collection.aggregate<{ _id: string | null; n: number }>([
       {
         $match: {

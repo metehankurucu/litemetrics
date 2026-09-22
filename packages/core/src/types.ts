@@ -162,7 +162,7 @@ export interface EnrichedEvent extends ClientContext {
   ip?: string;
   geo?: GeoInfo;
   device?: DeviceInfo;
-  botFlag?: 'signature' | 'heuristic' | 'rate-limit' | 'velocity';
+  botFlag?: BotLayer;
 }
 
 // ─── Collect Payload ────────────────────────────────────────
@@ -265,6 +265,23 @@ export interface SiteTypeMismatchInfo {
 }
 
 /**
+ * Which of the four bot-filter layers judged a request or event: signature match
+ * against the isbot list, scrubbed-UA heuristic, per-IP rate limit, or per-visitor
+ * pageview velocity.
+ */
+export type BotLayer = 'signature' | 'heuristic' | 'rate-limit' | 'velocity';
+
+/** Per-layer breakdown of bot-flagged events for a site within a time range. */
+export interface BotStats {
+  /** The four buckets below, summed. */
+  total: number;
+  bySignature: number;
+  byHeuristic: number;
+  byRateLimit: number;
+  byVelocity: number;
+}
+
+/**
  * Why a request tripped the bot filter. Finer-grained than `layer`: the signature
  * layer fires both for a missing User-Agent and for an isbot list match, and telling
  * those two apart is what makes a drop diagnosable from a log line alone.
@@ -285,7 +302,7 @@ export interface BotDetectedInfo {
   siteId: string;
   ip: string;
   userAgent: string;
-  layer: 'signature' | 'heuristic' | 'rate-limit' | 'velocity';
+  layer: BotLayer;
   reason: BotDropReason;
   action: 'dropped' | 'flagged';
   mode: BotFilterMode;
@@ -426,13 +443,7 @@ export interface DBAdapter {
   queryBotStats(
     siteId: string,
     range: { from: number; to: number },
-  ): Promise<{
-    total: number;
-    bySignature: number;
-    byHeuristic: number;
-    byRateLimit: number;
-    byVelocity: number;
-  }>;
+  ): Promise<BotStats>;
 
   // Identity mapping
   upsertIdentity(siteId: string, visitorId: string, userId: string): Promise<void>;

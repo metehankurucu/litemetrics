@@ -1,4 +1,4 @@
-import type { DBAdapter, EnrichedEvent, QueryParams, QueryResult, QueryDataPoint, Granularity, TimeSeriesParams, TimeSeriesResult, RetentionParams, RetentionResult, RetentionCohort, Site, CreateSiteRequest, UpdateSiteRequest, EventListParams, EventListResult, EventListItem, UserListParams, UserListResult, UserDetail, BotFilterMode } from '@litemetrics/core';
+import type { DBAdapter, EnrichedEvent, QueryParams, QueryResult, QueryDataPoint, Granularity, TimeSeriesParams, TimeSeriesResult, RetentionParams, RetentionResult, RetentionCohort, Site, CreateSiteRequest, UpdateSiteRequest, EventListParams, EventListResult, EventListItem, UserListParams, UserListResult, UserDetail, BotFilterMode, BotStats } from '@litemetrics/core';
 import { createClient, type ClickHouseClient } from '@clickhouse/client';
 import { resolvePeriod, previousPeriodRange, autoGranularity, fillBuckets, granularityToDateFormat, getISOWeek, generateSiteId, generateSecretKey, toUTCDate, capLimit, assertTimeseriesBudget } from './utils';
 import { isValidTimezone, aggregateBotStats } from '../query-helpers.js';
@@ -1362,7 +1362,7 @@ export class ClickHouseAdapter implements DBAdapter {
   async queryBotStats(
     siteId: string,
     range: { from: number; to: number },
-  ): Promise<{ total: number; bySignature: number; byHeuristic: number; byRateLimit: number; byVelocity: number }> {
+  ): Promise<BotStats> {
     const rows = await this.queryRows<{ bot_flag: string | null; n: string | number }>(
       `SELECT bot_flag, count() AS n
        FROM ${EVENTS_TABLE}

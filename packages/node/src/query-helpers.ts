@@ -1,13 +1,8 @@
-import type { QueryParams } from '@litemetrics/core';
+import type { QueryParams, BotStats } from '@litemetrics/core';
 import { validateDateRange } from './query-validation';
 
-export interface BotStatsResult {
-  total: number;
-  bySignature: number;
-  byHeuristic: number;
-  byRateLimit: number;
-  byVelocity: number;
-}
+/** Kept as the name existing importers use; the shape now lives in `@litemetrics/core`. */
+export type BotStatsResult = BotStats;
 
 /**
  * Aggregate raw `(bot_flag, n)` rows into the dashboard-shaped bot stats result.

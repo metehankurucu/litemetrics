@@ -28,7 +28,7 @@ import { classifyUserAgent } from './botfilter';
 import { classifyHeuristicBot } from './heuristic-bot';
 import { createRateLimiter } from './rate-limit';
 import { MAX_VISITOR_KEY_LEN, velocityKey } from './velocity-key';
-import type { BotFilterMode, BotDetectedInfo, BotDropReason } from '@litemetrics/core';
+import type { BotFilterMode, BotDetectedInfo, BotDropReason, BotLayer } from '@litemetrics/core';
 import { resolveTimestampSanity, sanitizeEventTimestamp } from './timestamp-sanity';
 import { normalizeReferrer } from './normalize-referrer';
 import { redactUrlCredentials } from './redact';
@@ -299,7 +299,7 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
     events: ClientEvent[],
     ip: string,
     userAgent: string,
-    botFlag?: 'signature' | 'heuristic' | 'rate-limit' | 'velocity',
+    botFlag?: BotLayer,
     velocityVisitors?: Set<string>,
   ): EnrichedEvent[] {
     const uaDevice = parseUserAgent(userAgent);
@@ -533,7 +533,7 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
 
         // Layer and reason are one value so they cannot drift apart: a layer without a
         // reason would fall through the guard below and silently skip the drop.
-        let bot: { layer: 'signature' | 'heuristic' | 'rate-limit' | 'velocity'; reason: BotDropReason } | undefined;
+        let bot: { layer: BotLayer; reason: BotDropReason } | undefined;
         // The visitors layer 4 put over the line, empty until it runs. Layer 4 is the only
         // layer that names WHO tripped it, and both the flag and the drop below act on
         // that set rather than on the whole request.
