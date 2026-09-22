@@ -14,6 +14,7 @@ import type {
   UserListParams,
   UserListResult,
   UserDetail,
+  UserDetailOptions,
   Site,
   CreateSiteRequest,
   UpdateSiteRequest,
@@ -44,7 +45,7 @@ export interface Collector {
   query(params: QueryParams): Promise<QueryResult>;
   listEvents(params: EventListParams): Promise<EventListResult>;
   listUsers(params: UserListParams): Promise<UserListResult>;
-  getUserDetail(siteId: string, identifier: string): Promise<UserDetail | null>;
+  getUserDetail(siteId: string, identifier: string, options?: UserDetailOptions): Promise<UserDetail | null>;
   getUserEvents(siteId: string, identifier: string, params: EventListParams): Promise<EventListResult>;
   track(siteId: string, name: string, properties?: Record<string, unknown>, options?: { userId?: string; ip?: string }): Promise<void>;
   identify(siteId: string, userId: string, traits?: Record<string, unknown>, options?: { ip?: string }): Promise<void>;
@@ -802,7 +803,9 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
 
         // GET /api/users/:visitorId
         if (visitorId) {
-          const user = await db.getUserDetail(siteId, visitorId);
+          const user = await db.getUserDetail(siteId, visitorId, {
+            includeBots: q.includeBots === 'true' || q.includeBots === '1',
+          });
           if (!user) {
             sendJson(res, 404, { ok: false, error: 'User not found' });
             return;
@@ -850,8 +853,8 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
       return db.listUsers(params);
     },
 
-    async getUserDetail(siteId: string, identifier: string): Promise<UserDetail | null> {
-      return db.getUserDetail(siteId, identifier);
+    async getUserDetail(siteId: string, identifier: string, options?: UserDetailOptions): Promise<UserDetail | null> {
+      return db.getUserDetail(siteId, identifier, options);
     },
 
     async getUserEvents(siteId: string, identifier: string, params: EventListParams): Promise<EventListResult> {

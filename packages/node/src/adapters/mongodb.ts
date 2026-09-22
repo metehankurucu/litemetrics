@@ -1,4 +1,4 @@
-import type { DBAdapter, EnrichedEvent, QueryParams, QueryResult, QueryDataPoint, TimeSeriesParams, TimeSeriesResult, RetentionParams, RetentionResult, RetentionCohort, Site, CreateSiteRequest, UpdateSiteRequest, EventListParams, EventListResult, EventListItem, UserListParams, UserListResult, UserDetail, BotFilterMode } from '@litemetrics/core';
+import type { DBAdapter, EnrichedEvent, QueryParams, QueryResult, QueryDataPoint, TimeSeriesParams, TimeSeriesResult, RetentionParams, RetentionResult, RetentionCohort, Site, CreateSiteRequest, UpdateSiteRequest, EventListParams, EventListResult, EventListItem, UserListParams, UserListResult, UserDetail, UserDetailOptions, BotFilterMode } from '@litemetrics/core';
 import { MongoClient, type Collection, type Db } from 'mongodb';
 import { resolvePeriod, previousPeriodRange, autoGranularity, granularityToDateFormat, fillBuckets, getISOWeek, generateSiteId, generateSecretKey, capLimit, assertTimeseriesBudget } from './utils';
 import { normalizeReferrer } from '../normalize-referrer.js';
@@ -1202,20 +1202,20 @@ export class MongoDBAdapter implements DBAdapter {
     };
   }
 
-  async getUserDetail(siteId: string, identifier: string): Promise<UserDetail | null> {
+  async getUserDetail(siteId: string, identifier: string, options?: UserDetailOptions): Promise<UserDetail | null> {
     // Try as userId first — find all linked visitorIds
     const visitorIds = await this.getVisitorIdsForUser(siteId, identifier);
     if (visitorIds.length > 0) {
-      return this.getMergedUserDetail(siteId, identifier, visitorIds);
+      return this.getMergedUserDetail(siteId, identifier, visitorIds, options?.includeBots);
     }
     // Try as visitorId — resolve to userId
     const userId = await this.getUserIdForVisitor(siteId, identifier);
     if (userId) {
       const allVisitorIds = await this.getVisitorIdsForUser(siteId, userId);
-      return this.getMergedUserDetail(siteId, userId, allVisitorIds);
+      return this.getMergedUserDetail(siteId, userId, allVisitorIds, options?.includeBots);
     }
     // Pure anonymous — single visitorId
-    return this.getMergedUserDetail(siteId, undefined, [identifier]);
+    return this.getMergedUserDetail(siteId, undefined, [identifier], options?.includeBots);
   }
 
   async getUserEvents(siteId: string, identifier: string, params: EventListParams): Promise<EventListResult> {
@@ -1258,9 +1258,9 @@ export class MongoDBAdapter implements DBAdapter {
     return aggregateBotStats(docs.map((d) => ({ bot_flag: d._id, n: d.n })));
   }
 
-  private async getMergedUserDetail(siteId: string, userId: string | undefined, visitorIds: string[]): Promise<UserDetail | null> {
+  private async getMergedUserDetail(siteId: string, userId: string | undefined, visitorIds: string[], includeBots?: boolean): Promise<UserDetail | null> {
     const pipeline: object[] = [
-      { $match: { site_id: siteId, visitor_id: { $in: visitorIds } } },
+      { $match: applyBotFilter({ site_id: siteId, visitor_id: { $in: visitorIds } }, includeBots) },
       { $sort: { timestamp: 1 } },
       {
         $group: {

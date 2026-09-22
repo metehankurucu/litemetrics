@@ -255,6 +255,13 @@ Get a single user's profile and summary stats. `identifier` can be either a
 `visitorId` (anonymous) or a `userId` (identified). If the user has multiple
 linked visitor IDs, the response is merged.
 
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `siteId` | string | -- | Site identifier |
+| `includeBots` | boolean | `false` | Count bot-flagged events in the totals. By default they are excluded, as in every other report. |
+
 ## GET /api/users/:identifier/events
 
 Get a user's event history. `identifier` can be either a `visitorId` or `userId`.

@@ -367,7 +367,7 @@ export interface DBAdapter {
   // Event & user listing
   listEvents(params: EventListParams): Promise<EventListResult>;
   listUsers(params: UserListParams): Promise<UserListResult>;
-  getUserDetail(siteId: string, identifier: string): Promise<UserDetail | null>;
+  getUserDetail(siteId: string, identifier: string, options?: UserDetailOptions): Promise<UserDetail | null>;
   getUserEvents(siteId: string, identifier: string, params: EventListParams): Promise<EventListResult>;
 
   /**
@@ -562,6 +562,11 @@ export interface UserListParams {
   limit?: number;
   offset?: number;
   /** Include events flagged by the bot filter when aggregating user data. Defaults to false. */
+  includeBots?: boolean;
+}
+
+export interface UserDetailOptions {
+  /** Count events the bot filter flagged. Default false: flagged events are excluded, as in every other report. */
   includeBots?: boolean;
 }
 

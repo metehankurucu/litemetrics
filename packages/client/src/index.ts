@@ -21,6 +21,7 @@ export type {
   UserListParams,
   UserListResult,
   UserDetail,
+  UserDetailOptions,
   Granularity,
   TimeSeriesParams,
   TimeSeriesResult,

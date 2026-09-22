@@ -32,6 +32,7 @@ export type {
   UserListParams,
   UserListResult,
   UserDetail,
+  UserDetailOptions,
   BotFilterMode,
   BotFilterConfig,
   BotDetectedInfo,

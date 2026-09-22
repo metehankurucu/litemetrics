@@ -9,6 +9,7 @@ const {
   queryTimeSeries,
   listEvents,
   listUsers,
+  getUserDetail,
   getUserEvents,
   deleteUserEvents,
   getUserIdForVisitor,
@@ -20,6 +21,9 @@ const {
   queryTimeSeries: vi.fn<(params: any) => Promise<any>>(async () => ({})),
   listEvents: vi.fn<(params: any) => Promise<any>>(async () => ({})),
   listUsers: vi.fn<(params: any) => Promise<any>>(async () => ({})),
+  getUserDetail: vi.fn<(siteId: string, identifier: string, options?: { includeBots?: boolean }) => Promise<any>>(
+    async () => null,
+  ),
   getUserEvents: vi.fn<(siteId: string, identifier: string, params: any) => Promise<any>>(
     async () => ({}),
   ),
@@ -42,7 +46,7 @@ vi.mock('./adapters/clickhouse', () => {
     close = async () => {};
     listEvents = listEvents;
     listUsers = listUsers;
-    getUserDetail = async () => null;
+    getUserDetail = getUserDetail;
     getUserEvents = getUserEvents;
     upsertIdentity = async () => {};
     getVisitorIdsForUser = async () => [];
@@ -114,6 +118,8 @@ function resetAdapterMocks() {
   listEvents.mockImplementation(async () => ({}));
   listUsers.mockClear();
   listUsers.mockImplementation(async () => ({}));
+  getUserDetail.mockClear();
+  getUserDetail.mockImplementation(async () => null);
   getUserEvents.mockClear();
   getUserEvents.mockImplementation(async () => ({}));
   deleteUserEvents.mockClear();
@@ -1401,6 +1407,18 @@ describe('collector includeBots query param plumbing', () => {
     expect(siteId).toBe('site_test');
     expect(identifier).toBe('visitor-abc');
     expect(params).toMatchObject({ includeBots: true });
+  });
+
+  it("getUserDetail: ?includeBots=true reaches adapter", async () => {
+    const collector = await makeAuthedCollector();
+    await collector.usersHandler()(makeAuthedGet('/api/users/visitor-abc?siteId=site_test&includeBots=true'), makeRes());
+    expect(getUserDetail).toHaveBeenCalledWith('site_test', 'visitor-abc', { includeBots: true });
+  });
+
+  it("getUserDetail: missing includeBots reaches adapter as false", async () => {
+    const collector = await makeAuthedCollector();
+    await collector.usersHandler()(makeAuthedGet('/api/users/visitor-abc?siteId=site_test'), makeRes());
+    expect(getUserDetail).toHaveBeenCalledWith('site_test', 'visitor-abc', { includeBots: false });
   });
 });
 
