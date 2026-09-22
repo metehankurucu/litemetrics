@@ -246,10 +246,12 @@ export interface BotFilterConfig {
   /**
    * Fired once per site when app-SDK events arrive at a site that is not typed as
    * `app`. Unless its bot-filter mode is `off`, such a site is filtered as browser
-   * traffic: the SDK's User-Agent escapes the signature layer but trips the heuristic
-   * layer, so `standard` stores its app events with a `bot_flag` and hides them from
-   * every report, and `strict` drops them. Either way the dashboard shows it as a web
-   * site. Reporting only - the request is filtered exactly as before.
+   * traffic: the SDK's User-Agent escapes the signature layer, but on Android it trips
+   * the heuristic layer, so `standard` stores those events with a `bot_flag` and hides
+   * them from every report, and `strict` drops them. iOS is unmeasured: `NSURLSession`
+   * may add `Accept-Language` on its own, which keeps iOS requests unflagged. Either way
+   * the dashboard shows it as a web site. Reporting only - the request is filtered
+   * exactly as before.
    */
   onSiteTypeMismatch?: (info: SiteTypeMismatchInfo) => void;
 }
@@ -426,7 +428,7 @@ export interface DBAdapter {
   // Event & user listing
   listEvents(params: EventListParams): Promise<EventListResult>;
   listUsers(params: UserListParams): Promise<UserListResult>;
-  getUserDetail(siteId: string, identifier: string): Promise<UserDetail | null>;
+  getUserDetail(siteId: string, identifier: string, options?: UserDetailOptions): Promise<UserDetail | null>;
   getUserEvents(siteId: string, identifier: string, params: EventListParams): Promise<EventListResult>;
 
   /**
@@ -616,6 +618,11 @@ export interface UserListParams {
   limit?: number;
   offset?: number;
   /** Include events flagged by the bot filter when aggregating user data. Defaults to false. */
+  includeBots?: boolean;
+}
+
+export interface UserDetailOptions {
+  /** Count events the bot filter flagged. Default false: flagged events are excluded, as in every other report. */
   includeBots?: boolean;
 }
 

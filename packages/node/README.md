@@ -138,8 +138,9 @@ and carrier NAT put many devices on one address, so the per-IP layer is left off
 there to avoid hiding real users; `strict` and `shadow` run Layer 3 too. A site
 receiving app SDK traffic must therefore be typed `app`
 (`POST` / `PUT /api/sites` with `{"type":"app"}`); otherwise it keeps being
-filtered as browser traffic: the SDK User-Agent escapes Layer 1 but trips Layer 2,
-so `standard` hides its app traffic from reports and `strict` drops it. When app SDK payloads
+filtered as browser traffic: the SDK User-Agent escapes Layer 1, but on Android it trips
+Layer 2, so `standard` hides that traffic from reports and `strict` drops it (iOS is
+unmeasured: `NSURLSession` may add the `Accept-Language` that keeps it unflagged). When app SDK payloads
 arrive at a non-app site the collector fires `onSiteTypeMismatch` once per site
 (reporting only — the payload never bypasses the filter).
 

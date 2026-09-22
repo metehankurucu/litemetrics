@@ -177,6 +177,26 @@ describe('LitemetricsClient', () => {
     });
   });
 
+  // ─── getUserDetail ───
+
+  describe('getUserDetail', () => {
+    it('sends includeBots=true when requested', async () => {
+      const client = new LitemetricsClient({ baseUrl: 'https://x.com', siteId: 'site_a' });
+      mockGet.mockResolvedValueOnce({ data: { user: {} } });
+      await client.getUserDetail('u1', { includeBots: true });
+
+      expect(mockGet).toHaveBeenCalledWith('/api/users/u1', { params: { siteId: 'site_a', includeBots: 'true' } });
+    });
+
+    it('omits includeBots by default', async () => {
+      const client = new LitemetricsClient({ baseUrl: 'https://x.com', siteId: 'site_a' });
+      mockGet.mockResolvedValueOnce({ data: { user: {} } });
+      await client.getUserDetail('u1');
+
+      expect(mockGet).toHaveBeenCalledWith('/api/users/u1', { params: { siteId: 'site_a' } });
+    });
+  });
+
   // ─── setSiteId ───
 
   describe('setSiteId', () => {

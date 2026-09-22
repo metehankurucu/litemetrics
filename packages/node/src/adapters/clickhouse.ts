@@ -1,4 +1,4 @@
-import type { DBAdapter, EnrichedEvent, QueryParams, QueryResult, QueryDataPoint, Granularity, TimeSeriesParams, TimeSeriesResult, RetentionParams, RetentionResult, RetentionCohort, Site, CreateSiteRequest, UpdateSiteRequest, EventListParams, EventListResult, EventListItem, UserListParams, UserListResult, UserDetail, BotFilterMode, BotStats } from '@litemetrics/core';
+import type { DBAdapter, EnrichedEvent, QueryParams, QueryResult, QueryDataPoint, Granularity, TimeSeriesParams, TimeSeriesResult, RetentionParams, RetentionResult, RetentionCohort, Site, CreateSiteRequest, UpdateSiteRequest, EventListParams, EventListResult, EventListItem, UserListParams, UserListResult, UserDetail, BotFilterMode, BotStats, UserDetailOptions } from '@litemetrics/core';
 import { createClient, type ClickHouseClient } from '@clickhouse/client';
 import { resolvePeriod, previousPeriodRange, autoGranularity, fillBuckets, granularityToDateFormat, getISOWeek, generateSiteId, generateSecretKey, toUTCDate, capLimit, assertTimeseriesBudget } from './utils';
 import { isValidTimezone, aggregateBotStats } from '../query-helpers.js';
@@ -1298,22 +1298,20 @@ export class ClickHouseAdapter implements DBAdapter {
     };
   }
 
-  async getUserDetail(siteId: string, identifier: string): Promise<UserDetail | null> {
-    // Note: getUserDetail does not take per-call bot filter options.
-    // The list-level bot filter is applied by listUsers and getUserEvents.
+  async getUserDetail(siteId: string, identifier: string, options?: UserDetailOptions): Promise<UserDetail | null> {
     // Try as userId first (check identity map)
     const visitorIds = await this.getVisitorIdsForUser(siteId, identifier);
     if (visitorIds.length > 0) {
-      return this.getMergedUserDetail(siteId, identifier, visitorIds);
+      return this.getMergedUserDetail(siteId, identifier, visitorIds, options?.includeBots);
     }
     // Try as visitorId — check if it has a known userId
     const userId = await this.getUserIdForVisitor(siteId, identifier);
     if (userId) {
       const allVisitorIds = await this.getVisitorIdsForUser(siteId, userId);
-      return this.getMergedUserDetail(siteId, userId, allVisitorIds.length > 0 ? allVisitorIds : [identifier]);
+      return this.getMergedUserDetail(siteId, userId, allVisitorIds.length > 0 ? allVisitorIds : [identifier], options?.includeBots);
     }
     // Pure anonymous — single visitorId
-    const result = await this.listUsers({ siteId, search: identifier, limit: 1 });
+    const result = await this.listUsers({ siteId, search: identifier, limit: 1, includeBots: options?.includeBots });
     const user = result.users.find((u) => u.visitorId === identifier);
     return user ?? null;
   }
@@ -1414,7 +1412,7 @@ export class ClickHouseAdapter implements DBAdapter {
     return rows.length > 0 ? rows[0].user_id : null;
   }
 
-  private async getMergedUserDetail(siteId: string, userId: string, visitorIds: string[]): Promise<UserDetail | null> {
+  private async getMergedUserDetail(siteId: string, userId: string, visitorIds: string[], includeBots?: boolean): Promise<UserDetail | null> {
     const rows = await this.queryRows<Record<string, unknown>>(
       `SELECT
         anyLast(visitor_id) AS last_visitor_id,
@@ -1443,10 +1441,10 @@ export class ClickHouseAdapter implements DBAdapter {
         anyLast(utm_content) AS utm_content
       FROM ${EVENTS_TABLE}
       WHERE site_id = {siteId:String}
-        AND visitor_id IN {visitorIds:Array(String)}`,
+        AND visitor_id IN {visitorIds:Array(String)}${botFilterClickhouseSql(includeBots)}`,
       { siteId, visitorIds },
     );
-    if (rows.length === 0) return null;
+    if (rows.length === 0 || Number(rows[0].totalEvents) === 0) return null;
     const u = rows[0];
     return {
       visitorId: String(u.last_visitor_id),

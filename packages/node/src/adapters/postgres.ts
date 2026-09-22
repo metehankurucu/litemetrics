@@ -1,4 +1,4 @@
-import type { DBAdapter, EnrichedEvent, QueryParams, QueryResult, QueryDataPoint, Granularity, TimeSeriesParams, TimeSeriesResult, RetentionParams, RetentionResult, RetentionCohort, Site, CreateSiteRequest, UpdateSiteRequest, EventListParams, EventListResult, EventListItem, UserListParams, UserListResult, UserDetail, BotFilterMode, BotStats } from '@litemetrics/core';
+import type { DBAdapter, EnrichedEvent, QueryParams, QueryResult, QueryDataPoint, Granularity, TimeSeriesParams, TimeSeriesResult, RetentionParams, RetentionResult, RetentionCohort, Site, CreateSiteRequest, UpdateSiteRequest, EventListParams, EventListResult, EventListItem, UserListParams, UserListResult, UserDetail, BotFilterMode, BotStats, UserDetailOptions } from '@litemetrics/core';
 import { Pool } from 'pg';
 import { resolvePeriod, previousPeriodRange, autoGranularity, granularityToDateFormat, fillBuckets, getISOWeek, generateSiteId, generateSecretKey, capLimit, assertTimeseriesBudget } from './utils';
 import { normalizeReferrer } from '../normalize-referrer.js';
@@ -1197,17 +1197,17 @@ export class PostgresAdapter implements DBAdapter {
     };
   }
 
-  async getUserDetail(siteId: string, identifier: string): Promise<UserDetail | null> {
+  async getUserDetail(siteId: string, identifier: string, options?: UserDetailOptions): Promise<UserDetail | null> {
     const visitorIds = await this.getVisitorIdsForUser(siteId, identifier);
     if (visitorIds.length > 0) {
-      return this.getMergedUserDetail(siteId, identifier, visitorIds);
+      return this.getMergedUserDetail(siteId, identifier, visitorIds, options?.includeBots);
     }
     const userId = await this.getUserIdForVisitor(siteId, identifier);
     if (userId) {
       const allVisitorIds = await this.getVisitorIdsForUser(siteId, userId);
-      return this.getMergedUserDetail(siteId, userId, allVisitorIds.length > 0 ? allVisitorIds : [identifier]);
+      return this.getMergedUserDetail(siteId, userId, allVisitorIds.length > 0 ? allVisitorIds : [identifier], options?.includeBots);
     }
-    const result = await this.listUsers({ siteId, search: identifier, limit: 1 });
+    const result = await this.listUsers({ siteId, search: identifier, limit: 1, includeBots: options?.includeBots });
     const user = result.users.find((u) => u.visitorId === identifier);
     return user ?? null;
   }
@@ -1253,7 +1253,7 @@ export class PostgresAdapter implements DBAdapter {
     return aggregateBotStats(result.rows);
   }
 
-  private async getMergedUserDetail(siteId: string, userId: string, visitorIds: string[]): Promise<UserDetail | null> {
+  private async getMergedUserDetail(siteId: string, userId: string, visitorIds: string[], includeBots?: boolean): Promise<UserDetail | null> {
     const r = await this.pool.query<Record<string, unknown>>(
       `SELECT
          (array_agg(visitor_id ORDER BY timestamp DESC))[1] AS visitor_id,
@@ -1281,7 +1281,7 @@ export class PostgresAdapter implements DBAdapter {
          (array_agg(utm_term ORDER BY timestamp DESC) FILTER (WHERE utm_term IS NOT NULL))[1] AS utm_term,
          (array_agg(utm_content ORDER BY timestamp DESC) FILTER (WHERE utm_content IS NOT NULL))[1] AS utm_content
        FROM ${EVENTS_TABLE}
-       WHERE site_id = $1 AND visitor_id = ANY($2::text[])`,
+       WHERE site_id = $1 AND visitor_id = ANY($2::text[])${botFilterPgSql(includeBots)}`,
       [siteId, visitorIds],
     );
     if (r.rows.length === 0 || r.rows[0].first_seen === null) return null;

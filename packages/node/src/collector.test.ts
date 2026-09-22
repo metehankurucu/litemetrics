@@ -9,6 +9,7 @@ const {
   queryTimeSeries,
   listEvents,
   listUsers,
+  getUserDetail,
   getUserEvents,
   deleteUserEvents,
   getUserIdForVisitor,
@@ -20,6 +21,9 @@ const {
   queryTimeSeries: vi.fn<(params: any) => Promise<any>>(async () => ({})),
   listEvents: vi.fn<(params: any) => Promise<any>>(async () => ({})),
   listUsers: vi.fn<(params: any) => Promise<any>>(async () => ({})),
+  getUserDetail: vi.fn<(siteId: string, identifier: string, options?: { includeBots?: boolean }) => Promise<any>>(
+    async () => null,
+  ),
   getUserEvents: vi.fn<(siteId: string, identifier: string, params: any) => Promise<any>>(
     async () => ({}),
   ),
@@ -42,7 +46,7 @@ vi.mock('./adapters/clickhouse', () => {
     close = async () => {};
     listEvents = listEvents;
     listUsers = listUsers;
-    getUserDetail = async () => null;
+    getUserDetail = getUserDetail;
     getUserEvents = getUserEvents;
     upsertIdentity = async () => {};
     getVisitorIdsForUser = async () => [];
@@ -114,6 +118,8 @@ function resetAdapterMocks() {
   listEvents.mockImplementation(async () => ({}));
   listUsers.mockClear();
   listUsers.mockImplementation(async () => ({}));
+  getUserDetail.mockClear();
+  getUserDetail.mockImplementation(async () => null);
   getUserEvents.mockClear();
   getUserEvents.mockImplementation(async () => ({}));
   deleteUserEvents.mockClear();
@@ -1061,8 +1067,10 @@ describe('collector bot filter - app payload on a non-app site', () => {
   // left to be discovered. The RN SDK sends its own `litemetrics-react-native/<v>
   // (<platform>)` User-Agent (packages/react-native/src/user-agent.ts) precisely so
   // isbot's bare-token rule stops matching it - but ua-parser resolves neither a
-  // browser nor an engine from it, and the SDK sends no Accept-Language and no
-  // Referer, so on a site that is NOT typed `app` the heuristic layer now fires.
+  // browser nor an engine from it, and an Android SDK request carries no Accept-Language
+  // and no Referer (OkHttp adds neither), so on a site that is NOT typed `app` the
+  // heuristic layer now fires. iOS is not pinned here: NSURLSession may add
+  // Accept-Language.
   //
   // Before this change `standard` never ran that layer, so the events were counted as
   // real traffic. They are now stored with `bot_flag` and hidden from the default
@@ -1480,6 +1488,18 @@ describe('collector includeBots query param plumbing', () => {
     expect(siteId).toBe('site_test');
     expect(identifier).toBe('visitor-abc');
     expect(params).toMatchObject({ includeBots: true });
+  });
+
+  it("getUserDetail: ?includeBots=true reaches adapter", async () => {
+    const collector = await makeAuthedCollector();
+    await collector.usersHandler()(makeAuthedGet('/api/users/visitor-abc?siteId=site_test&includeBots=true'), makeRes());
+    expect(getUserDetail).toHaveBeenCalledWith('site_test', 'visitor-abc', { includeBots: true });
+  });
+
+  it("getUserDetail: missing includeBots reaches adapter as false", async () => {
+    const collector = await makeAuthedCollector();
+    await collector.usersHandler()(makeAuthedGet('/api/users/visitor-abc?siteId=site_test'), makeRes());
+    expect(getUserDetail).toHaveBeenCalledWith('site_test', 'visitor-abc', { includeBots: false });
   });
 });
 

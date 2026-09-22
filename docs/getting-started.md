@@ -98,7 +98,7 @@ function App() {
 bun add @litemetrics/react-native
 ```
 
-> Create the site with `type: 'app'` (`litemetrics sites create -n "My App" --type app`, or `POST /api/sites` with `{"type":"app"}`). On a `web` site the bot filter treats the SDK's traffic as browser traffic: the SDK's `litemetrics-react-native/<version> (<platform>)` User-Agent escapes Layer 1 but trips Layer 2 (no browser, no engine, no `Accept-Language`, no `Referer`), so `standard` hides that traffic from every report and `strict` drops it. See [Self-Hosting → Bot Filtering](./self-hosting.md#bot-filtering).
+> Create the site with `type: 'app'` (`litemetrics sites create -n "My App" --type app`, or `POST /api/sites` with `{"type":"app"}`). On a `web` site the bot filter treats the SDK's traffic as browser traffic: the SDK's `litemetrics-react-native/<version> (<platform>)` User-Agent escapes Layer 1, but on Android the request trips Layer 2 (no browser, no engine, no `Accept-Language`, no `Referer`), so `standard` hides that Android traffic from every report and `strict` drops it. iOS is unmeasured: `NSURLSession` may add `Accept-Language` itself, which would leave iOS traffic unflagged and make a mis-typed site show iOS but not Android. See [Self-Hosting → Bot Filtering](./self-hosting.md#bot-filtering).
 
 ```tsx
 import { LitemetricsProvider } from '@litemetrics/react-native';
