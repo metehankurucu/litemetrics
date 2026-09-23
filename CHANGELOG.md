@@ -1,5 +1,30 @@
 # Changelog
 
+## Unreleased
+
+**`standard` bot-filter mode now runs layers 2 and 3, and a new layer 4 flags visitors moving faster than a person can read.** The default mode used to evaluate only the signature layer, so `bot_flag` was never set on a stored event and `litemetrics bots` always reported 0. Layers 1-3 each judge one request, so a browser-shaped client that batches and rotates addresses cleared all of them; layer 4 counts pageviews per visitor instead.
+
+### `@litemetrics/node`
+
+- **Layers 2 and 3 flag in `standard`.** Layer 1 (signature) still drops. A heuristic or per-IP rate-limit hit is now stored with `bot_flag` and hidden from default reports. On `app` sites `standard` still leaves the per-IP layer off, because an app SDK's 5 s send timer and carrier NAT put many devices on one address; it runs layer 4 there instead, and still drops nothing. `strict` and `shadow` run both on app sites.
+- **Data note: default counts go down on upgrade.** Traffic that layers 2, 3 and 4 now flag stops appearing in default reports. Nothing is deleted: `?includeBots=true` returns the previous totals and `litemetrics bots` counts what was hidden. `BOT_RATE_MAX` counts collect requests (not events) per IP, and one window is shared by every site on the process.
+- **Operators: a site that receives React Native SDK traffic must be typed `app`.** On a mis-typed site the SDK's Android requests now trip the heuristic layer, so `standard` hides them and `strict` drops them (iOS unmeasured). Fix with `PUT /api/sites/:id {"type":"app"}`; the `[site-type-mismatch]` log line names the affected sites.
+- **Layer 4: per-visitor pageview velocity.** A `siteId:visitorId` that sends more than `BOT_VELOCITY_MAX_PAGEVIEWS` (default 60) pageviews inside `BOT_VELOCITY_WINDOW_MS` (default 10 s) is flagged `bot_flag='velocity'` (dropped in `strict`) and counted as `byVelocity` in `?metric=botStats`. Only pageviews count, only the over-limit visitor's events are acted on, and it runs on web and app sites. Each burst's first 60 pageviews are stored unflagged; a visitor over the line stays flagged while it keeps above the rate and clears one window after it slows. `BOT_VELOCITY_MAX_PAGEVIEWS=0` switches it off; `BOT_VELOCITY_MAX_KEYS` (default 50 000) caps tracked visitors.
+- **`onBotDetected` reports `events`**, how many events of the batch the action covered, and the `[bot-filter]` log line carries it as `events=`: a layer-4 drop can take part of a batch.
+- **The per-IP key ignores an `X-Forwarded-For` or `X-Real-IP` longer than 45 characters** and falls back to the socket address, so caller-supplied header text cannot become an unbounded rate-limit key.
+- `createRateLimiter` takes `maxKeys` (`maxIps` still works) and `countLimited`.
+- **User detail honours the bot filter.** `GET /api/users/:identifier` and `getUserDetail` counted bot-flagged events that the user list and event history hid. They now exclude them by default and accept `includeBots`.
+
+### `@litemetrics/core`
+
+- `DBAdapter.getUserDetail` takes an optional `UserDetailOptions` (`{ includeBots?: boolean }`).
+- `'velocity'` joins `EnrichedEvent.botFlag`, `BotDetectedInfo.layer` and `BotDropReason`; new `BotLayer` and `BotStats` types; `BotDetectedInfo.events`; `BotFilterConfig` gains `visitorVelocityWindowMs`, `visitorVelocityMaxPageviews` and `visitorVelocityMaxKeys`. `DBAdapter.queryBotStats` returns `byVelocity`.
+
+### `@litemetrics/client`
+
+- `getUserDetail(identifier, { includeBots })`.
+- `BotStatsResult.byVelocity` (optional: a host predating layer 4 omits it).
+
 ## 0.9.0 - Ad click IDs, link click identity, one event per labelled click
 
 **Ad click IDs are captured at landing and stored as first-class columns.** A click ID (`gclid`, `gbraid`, `wbraid`, `fbclid`) not recorded at click time cannot be backfilled later; server-side conversion upload APIs key on them and do not accept UTM values as a substitute.

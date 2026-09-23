@@ -113,4 +113,87 @@ describe('createRateLimiter', () => {
     // a re-enters fresh.
     expect(rl.check('a')).toEqual({ limited: false, count: 1 });
   });
+
+  it('by default, a limited call leaves no trace, so a sustained flood refills', () => {
+    const rl = createRateLimiter({ windowMs: 1000, maxEvents: 3 });
+    // T=0: 3 calls admitted, the 4th is limited.
+    rl.check('1.1.1.1');
+    rl.check('1.1.1.1');
+    rl.check('1.1.1.1');
+    expect(rl.check('1.1.1.1').limited).toBe(true);
+
+    // T=500: the window still holds the 3 admitted timestamps, so all 3 calls are limited.
+    vi.advanceTimersByTime(500);
+    expect(rl.check('1.1.1.1').limited).toBe(true);
+    expect(rl.check('1.1.1.1').limited).toBe(true);
+    expect(rl.check('1.1.1.1').limited).toBe(true);
+
+    // T=1001: the 3 admitted timestamps (all at T=0) have expired, and the limited
+    // calls left no trace, so the window is empty again and the flood refills.
+    vi.advanceTimersByTime(501);
+    expect(rl.check('1.1.1.1').limited).toBe(false);
+  });
+
+  it('countLimited keeps a sustained flood limited and clears one window after it stops', () => {
+    const rl = createRateLimiter({ windowMs: 1000, maxEvents: 3, countLimited: true });
+    // T=0: 3 calls admitted, the 4th is limited.
+    rl.check('1.1.1.1');
+    rl.check('1.1.1.1');
+    rl.check('1.1.1.1');
+    expect(rl.check('1.1.1.1').limited).toBe(true);
+
+    // T=500: still limited; each limited call now records its own timestamp.
+    vi.advanceTimersByTime(500);
+    expect(rl.check('1.1.1.1').limited).toBe(true);
+    expect(rl.check('1.1.1.1').limited).toBe(true);
+    expect(rl.check('1.1.1.1').limited).toBe(true);
+
+    // T=1001: the original T=0 timestamps expired, but the T=500 limited calls kept
+    // the window full, so the current rate is still over the line.
+    vi.advanceTimersByTime(501);
+    expect(rl.check('1.1.1.1').limited).toBe(true);
+
+    // T=2001: a full window with no calls at all, so the key clears.
+    vi.advanceTimersByTime(1000);
+    expect(rl.check('1.1.1.1').limited).toBe(false);
+  });
+});
+
+// Layer 4 reuses this limiter with a `siteId:visitorId` key instead of an IP, so the cap
+// on tracked keys had to stop being called `maxIps`. The old name stays a working alias:
+// it is exported from @litemetrics/node and renaming it outright would break callers.
+describe('createRateLimiter key cap', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-10T00:00:00Z'));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('caps tracked keys at maxKeys, LRU-evicting the oldest', () => {
+    const rl = createRateLimiter({ windowMs: 60_000, maxEvents: 1, maxKeys: 2 });
+    rl.check('site_a:v1');
+    rl.check('site_a:v2');
+    rl.check('site_a:v3');
+    expect(rl.size()).toBe(2);
+    // v1 was evicted, so its window starts over instead of reporting limited.
+    expect(rl.check('site_a:v1')).toEqual({ limited: false, count: 1 });
+  });
+
+  it('still honours the legacy maxIps name', () => {
+    const rl = createRateLimiter({ windowMs: 60_000, maxEvents: 1, maxIps: 2 });
+    rl.check('a');
+    rl.check('b');
+    rl.check('c');
+    expect(rl.size()).toBe(2);
+  });
+
+  it('prefers maxKeys when both names are given', () => {
+    const rl = createRateLimiter({ windowMs: 60_000, maxEvents: 1, maxKeys: 3, maxIps: 1 });
+    rl.check('a');
+    rl.check('b');
+    rl.check('c');
+    expect(rl.size()).toBe(3);
+  });
 });

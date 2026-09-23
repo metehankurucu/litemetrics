@@ -12,7 +12,14 @@ export { SDK_VERSION };
  * React Native's fetch sets no User-Agent of its own, so the platform fills one in:
  * on Android that is OkHttp's `okhttp/<version>`, which the server's bot filter
  * matches, silently dropping the event. Sending our own identifies the traffic and
- * stops it landing in a filter meant for browsers.
+ * keeps it off the signature layer's list.
+ *
+ * That is Layer 1 only, and it is not enough on its own: this UA resolves to no
+ * browser and no engine, and the SDK sets no `Accept-Language` or `Referer`. On
+ * Android nothing below the SDK adds them, so a site that is not typed `app` still
+ * trips the server's heuristic layer; on iOS `NSURLSession` may add
+ * `Accept-Language` itself (unmeasured). Typing the site `app` is what actually
+ * exempts the traffic on both platforms - see packages/node's README.
  *
  * The parenthetical is load-bearing, not decoration. isbot flags any bare
  * `name/version` token that carries no parenthetical - that rule, not a crawler

@@ -93,10 +93,28 @@ describe('formatBotFilterLine', () => {
       siteId: 'site_5dv1pv4y3714',
       ip: '172.71.150.31',
       userAgent: 'okhttp/4.12.0',
+      events: 10,
     });
     expect(line).toBe(
-      '[bot-filter] dropped layer=signature reason=ua-signature mode=standard site=site_5dv1pv4y3714 ip=172.71.150.31 ua="okhttp/4.12.0"',
+      '[bot-filter] dropped layer=signature reason=ua-signature mode=standard events=10 site=site_5dv1pv4y3714 ip=172.71.150.31 ua="okhttp/4.12.0"',
     );
+  });
+
+  // Layer 4 acts on visitors, so a `dropped` line has to say how much of the batch went:
+  // 5 of a 6-event batch is a partial drop, and without the field it reads as a full one.
+  it('says how many events a partial velocity drop covered', () => {
+    const line = formatBotFilterLine({
+      action: 'dropped',
+      layer: 'velocity',
+      reason: 'velocity',
+      mode: 'strict',
+      siteId: 'site_x',
+      ip: '203.0.113.7',
+      userAgent: 'Mozilla/5.0',
+      events: 5,
+    });
+    expect(line).toContain('layer=velocity');
+    expect(line).toContain('events=5');
   });
 
   it('shows a missing UA as a dash rather than an empty field', () => {
@@ -108,6 +126,7 @@ describe('formatBotFilterLine', () => {
       siteId: 'site_x',
       ip: '1.2.3.4',
       userAgent: '',
+      events: 1,
     });
     expect(line).toContain('reason=empty-ua');
     expect(line).toContain('ua="-"');
@@ -122,6 +141,7 @@ describe('formatBotFilterLine', () => {
       siteId: 'site\nfake',
       ip: '1.1.1.1\nfake',
       userAgent: 'ua\nfake',
+      events: 2,
     });
     expect(line.split('\n')).toHaveLength(1);
   });

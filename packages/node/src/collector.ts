@@ -14,6 +14,7 @@ import type {
   UserListParams,
   UserListResult,
   UserDetail,
+  UserDetailOptions,
   Site,
   CreateSiteRequest,
   UpdateSiteRequest,
@@ -27,13 +28,56 @@ import { parseUserAgent } from './useragent';
 import { classifyUserAgent } from './botfilter';
 import { classifyHeuristicBot } from './heuristic-bot';
 import { createRateLimiter } from './rate-limit';
-import type { BotFilterMode, BotDetectedInfo, BotDropReason } from '@litemetrics/core';
+import { MAX_VISITOR_KEY_LEN, velocityKey } from './velocity-key';
+import type { BotFilterMode, BotDetectedInfo, BotDropReason, BotLayer } from '@litemetrics/core';
 import { resolveTimestampSanity, sanitizeEventTimestamp } from './timestamp-sanity';
 import { normalizeReferrer } from './normalize-referrer';
 import { redactUrlCredentials } from './redact';
 
 /** Cap on the message carried out of a collect failure (log-line budget). */
 const MAX_COLLECT_ERROR_MESSAGE = 160;
+
+/**
+ * Layer 4 defaults: 60 pageviews per visitor per 10s, i.e. 6 pageviews a second.
+ *
+ * The window is 10s rather than something shorter because the server measures ARRIVAL
+ * time, and the tracker batches (`flushInterval` 5s), so a client that generated its
+ * pageviews over five seconds delivers them in a few bursts milliseconds apart. A short
+ * window would read that clustering as a flood.
+ *
+ * 60 rather than 30 because 30 is exactly where a legitimate pattern sits: `autoSpa` is
+ * on by default and `AutoTracker` de-dupes on the full href, so a UI that mirrors its
+ * state into the URL (search-as-you-type, filter chips) emits one pageview per URL
+ * write, and an average 180-CPM typist in such a field produces 3 a second. 60 leaves 2x
+ * headroom over that and is still 3.3x to 11.8x under the 20-71 pageviews a second the
+ * recorded case ran at.
+ */
+const DEFAULT_VELOCITY_WINDOW_MS = 10_000;
+const DEFAULT_VELOCITY_MAX_PAGEVIEWS = 60;
+
+/**
+ * Cap on tracked `siteId:visitorId` windows. Higher than the per-IP limiter's 10k
+ * default because layer 4 admits up to one new key per pageview (100 per request)
+ * against the IP layer's one per request, and eviction is what an attacker with
+ * rotating visitor ids would aim for: evict every real window and the layer goes blind
+ * for the whole process. Raising the cap raises the cost of that; it does not remove it.
+ */
+const DEFAULT_VELOCITY_MAX_KEYS = 50_000;
+
+/**
+ * The sentinel `track()` and `identify()` stamp on programmatic, server-side events.
+ * `processIdentity` already skips it, and so does layer 4: it is one shared string, not a
+ * visitor, so a host that forwards its server-side events through /api/collect would pool
+ * all of them into a single window and flag them together once it overflowed.
+ */
+const SERVER_VISITOR_ID = 'server';
+
+/**
+ * Longest string layer 3 will key a window on. 45 characters is the longest textual
+ * IPv6 address (an IPv4-mapped one, `0000:...:255.255.255.255`), which is also the cap
+ * the server's own audit line already applies to this field.
+ */
+const MAX_IP_LEN = 45;
 
 export interface Collector {
   handler(): (req: any, res: any) => void | Promise<void>;
@@ -44,7 +88,7 @@ export interface Collector {
   query(params: QueryParams): Promise<QueryResult>;
   listEvents(params: EventListParams): Promise<EventListResult>;
   listUsers(params: UserListParams): Promise<UserListResult>;
-  getUserDetail(siteId: string, identifier: string): Promise<UserDetail | null>;
+  getUserDetail(siteId: string, identifier: string, options?: UserDetailOptions): Promise<UserDetail | null>;
   getUserEvents(siteId: string, identifier: string, params: EventListParams): Promise<EventListResult>;
   track(siteId: string, name: string, properties?: Record<string, unknown>, options?: { userId?: string; ip?: string }): Promise<void>;
   identify(siteId: string, userId: string, traits?: Record<string, unknown>, options?: { ip?: string }): Promise<void>;
@@ -74,6 +118,76 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
     windowMs: botCfg.rateLimitWindowMs ?? 60_000,
     maxEvents: botCfg.rateLimitMaxEvents ?? 60,
   });
+
+  // Layer 4 reuses the same sliding-window limiter, as a SEPARATE instance keyed by
+  // `siteId:visitorId` instead of by IP, so the two layers never spend each other's
+  // budget. Same structure, different question: layer 3 asks how loud one address is,
+  // layer 4 asks how fast one visitor moves.
+  const velocityMaxPageviews = botCfg.visitorVelocityMaxPageviews ?? DEFAULT_VELOCITY_MAX_PAGEVIEWS;
+  const velocityLimiter = createRateLimiter({
+    windowMs: botCfg.visitorVelocityWindowMs ?? DEFAULT_VELOCITY_WINDOW_MS,
+    maxEvents: velocityMaxPageviews,
+    maxKeys: botCfg.visitorVelocityMaxKeys ?? DEFAULT_VELOCITY_MAX_KEYS,
+    // Without this, a visitor over the line gets 60 clean pageviews in every window for
+    // as long as it keeps flooding. With it, the verdict follows the current rate, and
+    // the visitor is clean again one window after it slows. The first 60 pageviews of a
+    // burst are still stored unflagged, because nothing has overflowed yet.
+    countLimited: true,
+  });
+
+  /** Does this event belong to one of the visitors layer 4 just put over the line? */
+  function isOverLimitVisitor(event: ClientEvent, overLimit: Set<string> | undefined): boolean {
+    if (!overLimit || overLimit.size === 0) return false;
+    const visitorId = velocityVisitorOf(event);
+    return visitorId !== undefined && overLimit.has(visitorId);
+  }
+
+  /** The window key's visitor half, or `undefined` when this event gets no window. */
+  function velocityVisitorOf(event: ClientEvent): string | undefined {
+    const rawVisitorId = typeof event?.visitorId === 'string' ? event.visitorId : '';
+    // Length before trim, deliberately: trimming a multi-megabyte string allocates a
+    // copy of it, so the check has to come first to be worth anything.
+    if (rawVisitorId.length > MAX_VISITOR_KEY_LEN) return undefined;
+    const visitorId = rawVisitorId.trim();
+    // No visitor id, no window: bucketing every anonymous event under one empty key
+    // would flag unrelated traffic as soon as that shared bucket overflowed. Same for
+    // the `server` sentinel, which is one shared string rather than a visitor.
+    if (!visitorId || visitorId === SERVER_VISITOR_ID) return undefined;
+    return visitorId;
+  }
+
+  /**
+   * Layer 4. Counts the PAGEVIEWS in this batch against each visitor's window and returns
+   * the visitors that overflowed, so the caller can act on THOSE visitors rather than on
+   * the request that happened to carry them.
+   *
+   * Three deliberate choices:
+   *  - the resolved `site` is required, not the request's `siteId`. `siteId` is
+   *    unvalidated body text with no length cap, an unknown one resolves to `null` and
+   *    skips the hostname filter (`if (site?.allowedOrigins ...)`) without stopping the
+   *    request, so keying on it would put an attacker-shaped string in a retained Map key.
+   *    `reportedTypeMismatches` takes the same gate for the same reason;
+   *  - every pageview is checked, with no early exit on the first overflow, because
+   *    stopping early would leave the rest of a large batch uncounted and let a flood
+   *    stay just under the line by arriving in one call;
+   *  - only `pageview` events count. Custom events (rage clicks, scroll depth) fire
+   *    dozens of times a minute by design, so counting them would make the layer fire
+   *    on the tracker's own features.
+   */
+  function checkVisitorVelocity(site: Site | null, events: ClientEvent[]): Set<string> {
+    const overLimit = new Set<string>();
+    if (!site) return overLimit;
+    if (velocityMaxPageviews <= 0) return overLimit;
+    for (const event of events) {
+      if (event?.type !== 'pageview') continue;
+      const visitorId = velocityVisitorOf(event);
+      if (!visitorId) continue;
+      if (velocityLimiter.check(velocityKey(site.siteId, visitorId)).limited) {
+        overLimit.add(visitorId);
+      }
+    }
+    return overLimit;
+  }
 
   function reportBot(info: BotDetectedInfo): void {
     botCfg.onBotDetected?.(info);
@@ -186,7 +300,8 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
     events: ClientEvent[],
     ip: string,
     userAgent: string,
-    botFlag?: 'signature' | 'heuristic' | 'rate-limit',
+    botFlag?: BotLayer,
+    velocityVisitors?: Set<string>,
   ): EnrichedEvent[] {
     const uaDevice = parseUserAgent(userAgent);
     const now = Date.now();
@@ -217,7 +332,12 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
       }
 
       const enrichedEvent: EnrichedEvent = { ...event, timestamp, ip, geo, device };
-      if (botFlag) enrichedEvent.botFlag = botFlag;
+      // Layers 1-3 judge the request, so their flag lands on all of it. Layer 4 judged one
+      // visitor, so it lands on that visitor's events only: a bystander that shared a
+      // proxied batch with a noisy visitor keeps its pageviews in the default reports.
+      if (botFlag && (botFlag !== 'velocity' || isOverLimitVisitor(event, velocityVisitors))) {
+        enrichedEvent.botFlag = botFlag;
+      }
       if (event.type === 'pageview') {
         enrichedEvent.referrer = normalizeReferrer(event.referrer);
       }
@@ -257,7 +377,7 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
   async function processIdentity(events: EnrichedEvent[]): Promise<void> {
     for (const event of events) {
       // Skip sentinel visitorId used by server-side programmatic calls
-      if (!event.visitorId || event.visitorId === 'server') continue;
+      if (!event.visitorId || event.visitorId === SERVER_VISITOR_ID) continue;
 
       if (event.type === 'identify' && event.userId) {
         // Identify event → upsert identity map and cache
@@ -283,16 +403,37 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
     }
   }
 
+  /** The address the connection actually came from, itself length-checked. */
+  function directIp(req: any): string {
+    const raw = req.ip || req.socket?.remoteAddress || req.connection?.remoteAddress || '';
+    return typeof raw === 'string' && raw.length <= MAX_IP_LEN ? raw : '';
+  }
+
+  /**
+   * The layer-3 key. With `trustProxy` on (the default) it is caller-supplied header
+   * text, and it becomes a Map key the limiter retains until eviction, so an
+   * implausible value is not keyed on: anything past `MAX_IP_LEN` falls through to the
+   * socket address instead. Rejected rather than truncated, for the reason layer 4
+   * skips an oversized `visitorId` rather than cutting it: truncation would collapse
+   * distinct callers onto one shared window.
+   */
   function extractIp(req: any): string {
     if (config.trustProxy ?? true) {
       const forwarded = req.headers?.['x-forwarded-for'];
       if (forwarded) {
         const first = typeof forwarded === 'string' ? forwarded.split(',')[0] : forwarded[0];
-        return first.trim();
+        const candidate = typeof first === 'string' ? first.trim() : '';
+        if (candidate && candidate.length <= MAX_IP_LEN) return candidate;
+        return directIp(req);
       }
-      if (req.headers?.['x-real-ip']) return req.headers['x-real-ip'];
+      const realIp = typeof req.headers?.['x-real-ip'] === 'string'
+        ? (req.headers['x-real-ip'] as string).trim()
+        : '';
+      // Trimmed like the forwarded branch above, or one client's padded and unpadded
+      // headers would be two retained windows instead of one.
+      if (realIp && realIp.length <= MAX_IP_LEN) return realIp;
     }
-    return req.ip || req.socket?.remoteAddress || req.connection?.remoteAddress || '';
+    return directIp(req);
   }
 
   function extractRequestHostname(req: any): string | undefined {
@@ -393,60 +534,143 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
 
         // Layer and reason are one value so they cannot drift apart: a layer without a
         // reason would fall through the guard below and silently skip the drop.
-        let bot: { layer: 'signature' | 'heuristic' | 'rate-limit'; reason: BotDropReason } | undefined;
+        let bot: { layer: BotLayer; reason: BotDropReason } | undefined;
+        // The visitors layer 4 put over the line, empty until it runs. Layer 4 is the only
+        // layer that names WHO tripped it, and both the flag and the drop below act on
+        // that set rather than on the whole request.
+        let velocityVisitors = new Set<string>();
 
         // The signature and heuristic layers are browser heuristics: one matches a
         // User-Agent against a crawler list, the other flags a request with no
         // browser, engine, Accept-Language or Referer. An app SDK has none of those
         // by construction - on Android, React Native's fetch goes out through OkHttp
         // with `User-Agent: okhttp/<version>`, which isbot matches - so on an app
-        // site both layers only ever misfire. Rate limiting still applies: abuse of
-        // an app site id is a volume problem, not a User-Agent one.
+        // site both layers only ever misfire. Layer 3 (per-IP) still runs on app sites
+        // in `strict` and `shadow`; `standard` leaves it off there (see below) and
+        // relies on layer 4 for volume abuse of an app site id.
         const isAppSite = site?.type === 'app';
         if (site && !isAppSite) reportSiteTypeMismatch(site, payload.events, mode);
 
+        // Every mode except `off` evaluates every layer the site type runs. What the
+        // mode decides is the ACTION (see shouldDrop below), not whether a layer is
+        // consulted at all: `standard` enforces layer 1 and observes the rest.
+        //
+        // Gating the evaluation on the mode - which is what this used to do - made
+        // `bot` unreachable for anything but a signature hit in `standard`, and a
+        // signature hit is always dropped before the insert. So in the shipped default
+        // mode `botFlag` was never set on a stored event, `bot_flag` was a structural
+        // NULL, and queryBotStats was structurally empty. Four docs promised the
+        // opposite (README "Layer 1 drops the event; Layers 2, 3 and 4 flag it").
         if (mode !== 'off') {
           if (isAppSite) {
+            // An app SDK batches on a timer - one collect request every 5s while it
+            // has queued events, up to 12 requests/min per active device. Mobile
+            // carriers put many subscribers behind one public address, and the
+            // per-IP window counts requests keyed on the address alone, so in the
+            // default mode the per-IP layer would hide real users once a handful of
+            // devices shared an address. `standard` therefore leaves it off here, as
+            // it always did on app sites, and relies on layer 4 alone, which keys on
+            // the visitor and does not pool an address. `strict` and `shadow` still
+            // consult it first, for the reason spelled out in the web branch below.
+            // Note that the round-4 bypass below does not apply in `standard` on app
+            // sites, because there is no layer 3 there to bypass.
             if ((mode === 'strict' || mode === 'shadow') && rateLimiter.check(ip).limited) {
               bot = { layer: 'rate-limit', reason: 'rate-limit' };
+            } else {
+              velocityVisitors = checkVisitorVelocity(site, payload.events);
+              if (velocityVisitors.size > 0) bot = { layer: 'velocity', reason: 'velocity' };
             }
           } else {
             const signature = classifyUserAgent(userAgent);
             if (signature) {
               bot = { layer: 'signature', reason: signature };
-            } else if (mode === 'strict' || mode === 'shadow') {
-              // Same short-circuit the original else-if chain already had: when the
-              // heuristic layer fires, rateLimiter.check is never reached, so a
-              // heuristic hit consumes no rate-limit slot.
+            } else {
+              // Layers 1 and 2 short-circuit: when one of them fires, rateLimiter.check
+              // is never reached, so the hit consumes no rate-limit slot. What entitles
+              // them to that is not that they always drop - in `standard` a heuristic hit
+              // does not - it is that they never admit an UNFLAGGED row. Either the
+              // request returns and nothing is stored, or the whole batch is stored
+              // carrying the flag. Nothing rides in unaccounted, so charging the address
+              // would only spend a shared NAT's budget on traffic already marked.
+              //
+              // Layer 4 may NOT do that, and this ordering is the fix for a hole where
+              // it did. Layer 4 judges a visitor, so it flags (or drops) only that
+              // visitor's events and the rest of the batch is still stored - in
+              // `standard` stored unflagged and visible in every report. While layer 4
+              // came first, a client bought complete immunity from layer 3 for one
+              // pageview a request: hold one burner `visitorId` over the line so layer 4
+              // always fires, and up to 99 further events per call rode in clean on
+              // rotating fresh ids, forever, with the address never accounted for.
+              //
+              // So the per-request layer is asked first, and layer 4 refines what is
+              // left. The cost is the honest one: a fast visitor's requests now count
+              // against its address like any other client's.
               const heuristic = classifyHeuristicBot({ userAgent, acceptLanguage, referer });
               if (heuristic) {
                 bot = { layer: 'heuristic', reason: heuristic };
               } else if (rateLimiter.check(ip).limited) {
                 bot = { layer: 'rate-limit', reason: 'rate-limit' };
+              } else {
+                velocityVisitors = checkVisitorVelocity(site, payload.events);
+                if (velocityVisitors.size > 0) {
+                  bot = { layer: 'velocity', reason: 'velocity' };
+                }
               }
             }
           }
         }
 
+        // What survives the drop below. Layers 1-3 judge the request, so a drop takes all
+        // of it; layer 4 judged named visitors, so a drop takes only their events.
+        let eventsToStore: ClientEvent[] = payload.events;
+
         if (bot) {
+          // The mode decides the action, and only the action. `standard` drops the one
+          // layer that carries a self-declared identity (the UA matched a crawler list)
+          // and flags the three that are inferences, so a false positive costs visibility
+          // in the default query, never the row.
           const shouldDrop =
             mode === 'standard' ? bot.layer === 'signature' :
             mode === 'strict'   ? true :
-            /* shadow / off */    false;
+            /* shadow, and any
+               unrecognised mode */ false;
+
+          // Layers 1 to 3 act on the request, layer 4 on named visitors, so the report
+          // is assembled AFTER the split below rather than before it: a
+          // `dropped layer=velocity` line that did not say how many events it covered
+          // would read as a whole-request drop, and the host's drop counter with it.
+          if (shouldDrop) {
+            // Layers 1 to 3 drop the request. Layer 4 drops the visitors that overflowed
+            // and keeps the rest: dropping a proxied batch because one of its visitors
+            // was too fast would throw away a bystander's pageviews, and `strict` has no
+            // `?includeBots=true` to recover them from.
+            eventsToStore =
+              bot.layer === 'velocity'
+                ? payload.events.filter((e) => !isOverLimitVisitor(e, velocityVisitors))
+                : [];
+          }
+          const covered =
+            bot.layer === 'velocity'
+              ? payload.events.filter((e) => isOverLimitVisitor(e, velocityVisitors)).length
+              : payload.events.length;
 
           reportBot({
             siteId, ip, userAgent, layer: bot.layer, reason: bot.reason,
-            action: shouldDrop ? 'dropped' : 'flagged', mode,
+            action: shouldDrop ? 'dropped' : 'flagged', mode, events: covered,
           });
 
           if (shouldDrop) {
-            sendJson(res, 200, { ok: true });
-            return;
+            if (eventsToStore.length === 0) {
+              sendJson(res, 200, { ok: true });
+              return;
+            }
+            // Nothing that is left tripped a layer, so nothing that is left is flagged.
+            bot = undefined;
           }
         }
 
         stage = 'identity';
-        const enriched = enrichEvents(payload.events, ip, userAgent, bot?.layer);
+        const enriched = enrichEvents(eventsToStore, ip, userAgent, bot?.layer, velocityVisitors);
 
         await processIdentity(enriched);
         stage = 'insert';
@@ -786,7 +1010,9 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
 
         // GET /api/users/:visitorId
         if (visitorId) {
-          const user = await db.getUserDetail(siteId, visitorId);
+          const user = await db.getUserDetail(siteId, visitorId, {
+            includeBots: q.includeBots === 'true' || q.includeBots === '1',
+          });
           if (!user) {
             sendJson(res, 404, { ok: false, error: 'User not found' });
             return;
@@ -834,8 +1060,8 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
       return db.listUsers(params);
     },
 
-    async getUserDetail(siteId: string, identifier: string): Promise<UserDetail | null> {
-      return db.getUserDetail(siteId, identifier);
+    async getUserDetail(siteId: string, identifier: string, options?: UserDetailOptions): Promise<UserDetail | null> {
+      return db.getUserDetail(siteId, identifier, options);
     },
 
     async getUserEvents(siteId: string, identifier: string, params: EventListParams): Promise<EventListResult> {
