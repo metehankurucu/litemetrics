@@ -371,6 +371,8 @@ export interface TimestampSanityConfig {
 export interface DBConfig {
   adapter?: 'clickhouse' | 'mongodb' | 'postgres';
   url: string;
+  /** ClickHouse only: shared KeeperMap path. Required for aggregate page capability. */
+  aggregateSnapshotKeeperPath?: string;
 }
 
 export interface GeoIPConfig {
@@ -421,6 +423,10 @@ export interface DBAdapter {
   init(): Promise<void>;
   insertEvents(events: EnrichedEvent[]): Promise<void>;
   query(q: QueryParams): Promise<QueryResult>;
+  queryPage?(q: QueryPageParams, options?: QueryPageOptions): Promise<QueryPageResult>;
+  /** Fresh page-only site reads may share the adapter's bounded snapshot admission. */
+  getSiteForPage?(siteId: string, deadline?: number): Promise<Site | null>;
+  getSiteBySecretForPage?(secretKey: string, deadline?: number): Promise<Site | null>;
   queryTimeSeries(params: TimeSeriesParams): Promise<TimeSeriesResult>;
   queryRetention(params: RetentionParams): Promise<RetentionResult>;
   close(): Promise<void>;
@@ -527,6 +533,50 @@ export interface QueryDataPoint {
   key: string;
   value: number;
   change?: number;
+}
+
+export type QueryPageMetric = 'top_pages' | 'top_referrers' | 'top_countries' |
+  'top_os' | 'top_app_versions' | 'top_devices';
+
+export interface QueryPageParams {
+  siteId: string;
+  metric: QueryPageMetric;
+  period?: Period;
+  dateFrom?: string;
+  dateTo?: string;
+  timezone?: string;
+  filters?: Record<string, string>;
+  includeBots?: boolean;
+  search?: string;
+  keys?: string[];
+  minCount?: number;
+  limit?: number;
+  cursor?: string;
+  snapshot?: string;
+}
+
+export interface QueryPageOptions {
+  /** Server-side absolute epoch-ms deadline; excluded from HTTP filters and cursor scope. */
+  deadline?: number;
+}
+
+export interface QueryPageDataPoint { key: string; value: number; share: number }
+
+export interface QueryPageResult {
+  metric: QueryPageMetric;
+  measure: 'pageviews' | 'visitors';
+  data: QueryPageDataPoint[];
+  limit: number;
+  rowCount: number;
+  valueSum: number;
+  denominatorValue: number;
+  denominatorKind: 'bucket_sum';
+  snapshot: {
+    id: string; createdAt: string; expiresAt: string; from: string; to: string;
+    period: Period; timezone: string;
+  };
+  nextCursor: string | null;
+  previousCursor: string | null;
 }
 
 // ─── Time Series ────────────────────────────────────────────

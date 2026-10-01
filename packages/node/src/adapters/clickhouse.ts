@@ -3,6 +3,9 @@ import { createClient, type ClickHouseClient } from '@clickhouse/client';
 import { resolvePeriod, previousPeriodRange, autoGranularity, fillBuckets, granularityToDateFormat, getISOWeek, generateSiteId, generateSecretKey, toUTCDate, capLimit, assertTimeseriesBudget } from './utils';
 import { isValidTimezone, aggregateBotStats } from '../query-helpers.js';
 import { normalizeReferrer } from '../normalize-referrer.js';
+import { AggregatePager } from '../aggregate-page.js';
+import { ClickHouseAggregateBackend } from './aggregate-clickhouse.js';
+import type { QueryPageParams, QueryPageResult } from '@litemetrics/core';
 
 const EVENTS_TABLE = 'litemetrics_events';
 const SITES_TABLE = 'litemetrics_sites';
@@ -271,14 +274,23 @@ function buildFilterConditionsInner(filters?: Record<string, string>): { conditi
 
 export class ClickHouseAdapter implements DBAdapter {
   private client: ClickHouseClient;
+  private aggregatePager?: AggregatePager;
+  private aggregateSnapshotKeeperPath?: string;
 
-  constructor(url: string) {
+  constructor(url: string, options: { aggregateSnapshotKeeperPath?: string } = {}) {
+    this.aggregateSnapshotKeeperPath = options.aggregateSnapshotKeeperPath;
     this.client = createClient({
       url,
       clickhouse_settings: {
         wait_end_of_query: 1,
       },
     });
+  }
+
+  async queryPage(params: QueryPageParams): Promise<QueryPageResult> {
+    this.aggregatePager ??= new AggregatePager(new ClickHouseAggregateBackend(this.client,
+      this.aggregateSnapshotKeeperPath, normalizedReferrerExpr, channelClassificationExpr), (id) => this.getSite(id));
+    return this.aggregatePager.page(params);
   }
 
   async init(): Promise<void> {

@@ -3,6 +3,9 @@ import { MongoClient, type Collection, type Db } from 'mongodb';
 import { resolvePeriod, previousPeriodRange, autoGranularity, granularityToDateFormat, fillBuckets, getISOWeek, generateSiteId, generateSecretKey, capLimit, assertTimeseriesBudget } from './utils';
 import { normalizeReferrer } from '../normalize-referrer.js';
 import { aggregateBotStats } from '../query-helpers.js';
+import { AggregatePager } from '../aggregate-page.js';
+import { MongoAggregateBackend } from './aggregate-mongodb.js';
+import type { QueryPageParams, QueryPageResult } from '@litemetrics/core';
 
 /**
  * MongoDB aggregation expression that normalizes the `referrer` field on a
@@ -308,6 +311,13 @@ function buildFilterMatch(filters?: Record<string, string>): Record<string, unkn
 }
 
 export class MongoDBAdapter implements DBAdapter {
+  private aggregatePager?: AggregatePager;
+
+  async queryPage(params: QueryPageParams): Promise<QueryPageResult> {
+    this.aggregatePager ??= new AggregatePager(new MongoAggregateBackend(this.client, this.db, EVENTS_COLLECTION,
+      normalizedReferrerMongoExpr, channelClassificationSwitch), (id) => this.getSite(id));
+    return this.aggregatePager.page(params);
+  }
   private client: MongoClient;
   private db!: Db;
   private collection!: Collection<EventDocument>;

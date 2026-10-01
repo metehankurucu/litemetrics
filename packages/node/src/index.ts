@@ -2,6 +2,8 @@ export { createCollector } from './collector';
 export type { Collector } from './collector';
 export { ClickHouseAdapter } from './adapters/clickhouse';
 export { MongoDBAdapter } from './adapters/mongodb';
+export { PostgresAdapter } from './adapters/postgres';
+export { AggregatePageError } from './aggregate-page';
 export { isBot, isSignatureBot, classifyUserAgent, type SignatureBotReason } from './botfilter';
 export {
   isHeuristicBot,
@@ -20,6 +22,10 @@ export type {
   DBAdapter,
   QueryParams,
   QueryResult,
+  QueryPageMetric,
+  QueryPageParams,
+  QueryPageDataPoint,
+  QueryPageResult,
   EnrichedEvent,
   Metric,
   Period,

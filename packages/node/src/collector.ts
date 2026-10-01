@@ -7,6 +7,9 @@ import type {
   CollectPayload,
   QueryParams,
   QueryResult,
+  QueryPageParams,
+  QueryPageOptions,
+  QueryPageResult,
   TimeSeriesParams,
   RetentionParams,
   EventListParams,
@@ -33,6 +36,7 @@ import type { BotFilterMode, BotDetectedInfo, BotDropReason, BotLayer } from '@l
 import { resolveTimestampSanity, sanitizeEventTimestamp } from './timestamp-sanity';
 import { normalizeReferrer } from './normalize-referrer';
 import { redactUrlCredentials } from './redact';
+import { AggregatePageError, SNAPSHOT_BUILD_TIMEOUT, extractPageParams, normalizePageParams, unavailable } from './aggregate-page';
 
 /** Cap on the message carried out of a collect failure (log-line budget). */
 const MAX_COLLECT_ERROR_MESSAGE = 160;
@@ -82,10 +86,13 @@ const MAX_IP_LEN = 45;
 export interface Collector {
   handler(): (req: any, res: any) => void | Promise<void>;
   queryHandler(): (req: any, res: any) => void | Promise<void>;
+  queryPageHandler(): (req: any, res: any) => void | Promise<void>;
+  getStatsPageHandler(): (req: any, res: any) => void | Promise<void>;
   eventsHandler(): (req: any, res: any) => void | Promise<void>;
   usersHandler(): (req: any, res: any) => void | Promise<void>;
   sitesHandler(): (req: any, res: any) => void | Promise<void>;
   query(params: QueryParams): Promise<QueryResult>;
+  queryPage(params: QueryPageParams, options?: QueryPageOptions): Promise<QueryPageResult>;
   listEvents(params: EventListParams): Promise<EventListResult>;
   listUsers(params: UserListParams): Promise<UserListResult>;
   getUserDetail(siteId: string, identifier: string, options?: UserDetailOptions): Promise<UserDetail | null>;
@@ -263,13 +270,15 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
     return req.headers?.['x-litemetrics-admin-secret'] === config.adminSecret;
   }
 
-  async function isAuthorizedForSite(req: any, siteId: string): Promise<boolean> {
+  async function isAuthorizedForSite(req: any, siteId: string, pageDeadline?: number): Promise<boolean> {
     // Admin can access everything
     if (isAdmin(req)) return true;
     // Check site secret
     const secret = req.headers?.['x-litemetrics-secret'];
     if (!secret) return false;
-    const site = await db.getSiteBySecret(secret);
+    const site = pageDeadline !== undefined && db.getSiteBySecretForPage
+      ? await db.getSiteBySecretForPage(secret, pageDeadline)
+      : await db.getSiteBySecret(secret);
     return site !== null && site.siteId === siteId;
   }
 
@@ -683,6 +692,33 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
     };
   }
 
+  async function queryPage(params: QueryPageParams, options?: QueryPageOptions): Promise<QueryPageResult> {
+    const deadline = Math.min(options?.deadline ?? Infinity, Date.now() + SNAPSHOT_BUILD_TIMEOUT);
+    const normalized = normalizePageParams(params);
+    if (!db.queryPage) throw unavailable();
+    return db.queryPage(normalized, { deadline });
+  }
+
+  function queryPageHandler(): (req: any, res: any) => void | Promise<void> {
+    return async (req: any, res: any) => {
+      if (setCors(req, res, 'GET, OPTIONS', 'X-Litemetrics-Secret, X-Litemetrics-Admin-Secret')) return;
+      try {
+        const deadline = Date.now() + SNAPSHOT_BUILD_TIMEOUT;
+        const params = extractPageParams(req);
+        if (!await isAuthorizedForSite(req, params.siteId, deadline)) {
+          sendJson(res, 401, { error: 'unauthorized' });
+          return;
+        }
+        sendJson(res, 200, await queryPage(params, { deadline }));
+      } catch (error) {
+        if (error instanceof AggregatePageError) {
+          sendJson(res, error.status, { error: error.code, ...(error.field ? { field: error.field } : {}),
+            ...(error.retryAfterMs !== undefined ? { retryAfterMs: error.retryAfterMs } : {}) });
+        } else sendJson(res, 500, { error: 'internal' });
+      }
+    };
+  }
+
   function queryHandler(): (req: any, res: any) => void | Promise<void> {
     return async (req: any, res: any) => {
       if (setCors(req, res, 'GET, OPTIONS', 'X-Litemetrics-Secret, X-Litemetrics-Admin-Secret')) return;
@@ -1044,6 +1080,9 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
   return {
     handler,
     queryHandler,
+    queryPageHandler,
+    getStatsPageHandler: queryPageHandler,
+    queryPage,
     eventsHandler,
     usersHandler,
     sitesHandler,
@@ -1104,7 +1143,7 @@ function createAdapter(config: CollectorConfig['db']): DBAdapter {
   const adapter = config.adapter ?? 'clickhouse';
   switch (adapter) {
     case 'clickhouse':
-      return new ClickHouseAdapter(config.url);
+      return new ClickHouseAdapter(config.url, { aggregateSnapshotKeeperPath: config.aggregateSnapshotKeeperPath });
     case 'mongodb':
       return new MongoDBAdapter(config.url);
     case 'postgres':

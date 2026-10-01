@@ -1,5 +1,5 @@
 export { LitemetricsClient, createClient } from './client';
-export type { LitemetricsClientConfig, StatsOptions, TimeSeriesOptions, EventsListOptions, UsersListOptions, RetentionOptions } from './client';
+export type { LitemetricsClientConfig, StatsOptions, StatsPageOptions, TimeSeriesOptions, EventsListOptions, UsersListOptions, RetentionOptions } from './client';
 
 export { SitesClient, createSitesClient } from './sites';
 export type { SitesClientConfig } from './sites';
@@ -10,6 +10,10 @@ export type {
   Period,
   QueryResult,
   QueryDataPoint,
+  QueryPageParams,
+  QueryPageMetric,
+  QueryPageDataPoint,
+  QueryPageResult,
   Site,
   SiteType,
   CreateSiteRequest,

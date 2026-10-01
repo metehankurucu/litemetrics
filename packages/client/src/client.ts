@@ -1,5 +1,5 @@
 import axios, { type AxiosInstance } from 'axios';
-import type { Metric, Period, Granularity, QueryResult, TimeSeriesResult, RetentionResult, EventListResult, UserListResult, UserDetail, UserDetailOptions, EventType } from '@litemetrics/core';
+import type { Metric, Period, Granularity, QueryResult, QueryPageParams, QueryPageMetric, QueryPageResult, TimeSeriesResult, RetentionResult, EventListResult, UserListResult, UserDetail, UserDetailOptions, EventType } from '@litemetrics/core';
 
 export interface LitemetricsClientConfig {
   /** Base URL of the Litemetrics server (e.g. "https://analytics.myapp.com") */
@@ -10,9 +10,13 @@ export interface LitemetricsClientConfig {
   secretKey?: string;
   /** Query endpoint path (default: "/api/stats") */
   endpoint?: string;
+  /** Aggregate paging path (default: `${endpoint}/page`). */
+  pageEndpoint?: string;
   /** Custom headers to include in requests */
   headers?: Record<string, string>;
 }
+
+export type StatsPageOptions = Omit<QueryPageParams, 'siteId' | 'metric'>;
 
 export interface StatsOptions {
   period?: Period;
@@ -92,11 +96,13 @@ export interface BotStatsResult {
 export class LitemetricsClient {
   private siteId: string;
   private endpoint: string;
+  private pageEndpoint: string;
   private http: AxiosInstance;
 
   constructor(config: LitemetricsClientConfig) {
     this.siteId = config.siteId;
     this.endpoint = config.endpoint ?? '/api/stats';
+    this.pageEndpoint = config.pageEndpoint ?? `${this.endpoint}/page`;
 
     const headers: Record<string, string> = { ...config.headers };
     if (config.secretKey) {
@@ -135,6 +141,20 @@ export class LitemetricsClient {
   }
 
   // ─── Convenience methods ──────────────────────────────────
+
+  async getStatsPage(metric: QueryPageMetric, options?: StatsPageOptions): Promise<QueryPageResult> {
+    const params: Record<string, string> = { siteId: this.siteId, metric };
+    for (const name of ['period', 'dateFrom', 'dateTo', 'timezone', 'search', 'cursor', 'snapshot'] as const) {
+      if (options?.[name] !== undefined) params[name] = options[name]!;
+    }
+    for (const name of ['limit', 'minCount', 'includeBots'] as const) {
+      if (options?.[name] !== undefined) params[name] = String(options[name]);
+    }
+    if (options?.filters !== undefined) params.filters = JSON.stringify(options.filters);
+    if (options?.keys !== undefined) params.keys = JSON.stringify(options.keys);
+    const { data } = await this.http.get<QueryPageResult>(this.pageEndpoint, { params });
+    return data;
+  }
 
   async getPageviews(options?: StatsOptions) { return this.getStats('pageviews', options); }
   async getVisitors(options?: StatsOptions) { return this.getStats('visitors', options); }
