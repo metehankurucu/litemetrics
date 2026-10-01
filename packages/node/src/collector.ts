@@ -7,6 +7,8 @@ import type {
   CollectPayload,
   QueryParams,
   QueryResult,
+  QueryPageParams,
+  QueryPageResult,
   TimeSeriesParams,
   RetentionParams,
   EventListParams,
@@ -33,6 +35,7 @@ import type { BotFilterMode, BotDetectedInfo, BotDropReason, BotLayer } from '@l
 import { resolveTimestampSanity, sanitizeEventTimestamp } from './timestamp-sanity';
 import { normalizeReferrer } from './normalize-referrer';
 import { redactUrlCredentials } from './redact';
+import { AggregatePageError, extractPageParams, normalizePageParams, unavailable } from './aggregate-page';
 
 /** Cap on the message carried out of a collect failure (log-line budget). */
 const MAX_COLLECT_ERROR_MESSAGE = 160;
@@ -82,10 +85,13 @@ const MAX_IP_LEN = 45;
 export interface Collector {
   handler(): (req: any, res: any) => void | Promise<void>;
   queryHandler(): (req: any, res: any) => void | Promise<void>;
+  queryPageHandler(): (req: any, res: any) => void | Promise<void>;
+  getStatsPageHandler(): (req: any, res: any) => void | Promise<void>;
   eventsHandler(): (req: any, res: any) => void | Promise<void>;
   usersHandler(): (req: any, res: any) => void | Promise<void>;
   sitesHandler(): (req: any, res: any) => void | Promise<void>;
   query(params: QueryParams): Promise<QueryResult>;
+  queryPage(params: QueryPageParams): Promise<QueryPageResult>;
   listEvents(params: EventListParams): Promise<EventListResult>;
   listUsers(params: UserListParams): Promise<UserListResult>;
   getUserDetail(siteId: string, identifier: string, options?: UserDetailOptions): Promise<UserDetail | null>;
@@ -683,6 +689,31 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
     };
   }
 
+  async function queryPage(params: QueryPageParams): Promise<QueryPageResult> {
+    const normalized = normalizePageParams(params);
+    if (!db.queryPage) throw unavailable();
+    return db.queryPage(normalized);
+  }
+
+  function queryPageHandler(): (req: any, res: any) => void | Promise<void> {
+    return async (req: any, res: any) => {
+      if (setCors(req, res, 'GET, OPTIONS', 'X-Litemetrics-Secret, X-Litemetrics-Admin-Secret')) return;
+      try {
+        const params = extractPageParams(req);
+        if (!await isAuthorizedForSite(req, params.siteId)) {
+          sendJson(res, 401, { error: 'unauthorized' });
+          return;
+        }
+        sendJson(res, 200, await queryPage(params));
+      } catch (error) {
+        if (error instanceof AggregatePageError) {
+          sendJson(res, error.status, { error: error.code, ...(error.field ? { field: error.field } : {}),
+            ...(error.retryAfterMs !== undefined ? { retryAfterMs: error.retryAfterMs } : {}) });
+        } else sendJson(res, 500, { error: 'internal' });
+      }
+    };
+  }
+
   function queryHandler(): (req: any, res: any) => void | Promise<void> {
     return async (req: any, res: any) => {
       if (setCors(req, res, 'GET, OPTIONS', 'X-Litemetrics-Secret, X-Litemetrics-Admin-Secret')) return;
@@ -1044,6 +1075,9 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
   return {
     handler,
     queryHandler,
+    queryPageHandler,
+    getStatsPageHandler: queryPageHandler,
+    queryPage,
     eventsHandler,
     usersHandler,
     sitesHandler,
@@ -1104,7 +1138,7 @@ function createAdapter(config: CollectorConfig['db']): DBAdapter {
   const adapter = config.adapter ?? 'clickhouse';
   switch (adapter) {
     case 'clickhouse':
-      return new ClickHouseAdapter(config.url);
+      return new ClickHouseAdapter(config.url, { aggregateSnapshotKeeperPath: config.aggregateSnapshotKeeperPath });
     case 'mongodb':
       return new MongoDBAdapter(config.url);
     case 'postgres':

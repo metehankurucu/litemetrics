@@ -7,6 +7,27 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DATABASE_URL_TEST: postgresql://litemetrics:litemetrics_ci@127.0.0.1:5432/litemetrics_test
+      MONGODB_URL_TEST: mongodb://127.0.0.1:27017/litemetrics_test?directConnection=true&replicaSet=aggregateCI
+      CLICKHOUSE_URL_TEST: http://litemetrics:litemetrics_ci@127.0.0.1:8123/litemetrics_test
+      LITEMETRICS_AGGREGATE_KEEPER_PATH: /litemetrics/aggregate-ci/v1
+      NODE_OPTIONS: --no-experimental-webstorage
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: litemetrics
+          POSTGRES_PASSWORD: litemetrics_ci
+          POSTGRES_DB: litemetrics_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U litemetrics -d litemetrics_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
 
     steps:
       - uses: actions/checkout@v4
@@ -15,14 +36,44 @@ jobs:
         with:
           bun-version: latest
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
       - name: Install dependencies
         run: bun install
+
+      - name: Start isolated snapshot databases
+        run: |
+          docker run -d --name aggregate-mongo -p 127.0.0.1:27017:27017 mongo:7 mongod --replSet aggregateCI --bind_ip_all
+          for attempt in $(seq 1 30); do
+            if docker exec aggregate-mongo mongosh --quiet --eval 'db.runCommand({ping:1}).ok' | grep -qx 1; then break; fi
+            sleep 1
+          done
+          docker exec aggregate-mongo mongosh --quiet --eval 'rs.initiate({_id:"aggregateCI",members:[{_id:0,host:"127.0.0.1:27017"}]})'
+          for attempt in $(seq 1 30); do
+            if docker exec aggregate-mongo mongosh --quiet --eval 'db.hello().isWritablePrimary' | grep -qx true; then break; fi
+            sleep 1
+          done
+          docker exec aggregate-mongo mongosh --quiet --eval 'if(!db.hello().isWritablePrimary)quit(1)'
+          docker run -d --name aggregate-clickhouse -p 127.0.0.1:8123:8123 \
+            -e CLICKHOUSE_USER=litemetrics -e CLICKHOUSE_PASSWORD=litemetrics_ci \
+            -e CLICKHOUSE_DB=litemetrics_test -e CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1 \
+            -v "${PWD}/.github/ci/clickhouse-keeper.xml:/etc/clickhouse-server/config.d/aggregate-keeper.xml:ro" \
+            clickhouse/clickhouse-server:25.6-alpine
+          for attempt in $(seq 1 60); do
+            if docker exec aggregate-clickhouse clickhouse-client --user litemetrics --password litemetrics_ci \
+              --query "SELECT count() FROM system.zookeeper WHERE path='/'"; then exit 0; fi
+            sleep 1
+          done
+          docker logs --tail 100 aggregate-clickhouse
+          exit 1
 
       - name: Typecheck
         run: bun run typecheck
 
       - name: Test
-        run: bun run test
+        run: bun run test --concurrency=2 --env-mode=loose -- --no-file-parallelism
 
       - name: Build
         run: bun run build

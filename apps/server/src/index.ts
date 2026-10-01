@@ -145,7 +145,8 @@ app.use(express.json());
 
 // ─── Initialize collector ────────────────────────────────
 const collector = await createCollector({
-  db: { adapter: DB_ADAPTER, url: DATABASE_URL },
+  db: { adapter: DB_ADAPTER, url: DATABASE_URL,
+    aggregateSnapshotKeeperPath: process.env.LITEMETRICS_AGGREGATE_KEEPER_PATH },
   adminSecret: ADMIN_SECRET,
   geoip: GEOIP,
   trustProxy: TRUST_PROXY,
@@ -190,6 +191,7 @@ const collector = await createCollector({
 // ─── API Routes ──────────────────────────────────────────
 const collectHandler = collector.handler();
 const queryHandler = collector.queryHandler();
+const queryPageHandler = collector.queryPageHandler();
 const eventsHandler = collector.eventsHandler();
 const usersHandler = collector.usersHandler();
 const sitesHandler = collector.sitesHandler();
@@ -197,6 +199,7 @@ const sitesHandler = collector.sitesHandler();
 app.get('/health', (_req, res) => { res.json({ ok: true, adapter: DB_ADAPTER }); });
 
 app.all('/api/collect', async (req, res) => { await collectHandler(req, res); });
+app.get('/api/stats/page', async (req, res) => { await queryPageHandler(req, res); });
 app.all('/api/stats', async (req, res) => { await queryHandler(req, res); });
 app.all('/api/events', async (req, res) => { await eventsHandler(req, res); });
 app.all('/api/users', async (req, res) => { await usersHandler(req, res); });

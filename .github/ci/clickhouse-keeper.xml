@@ -1,0 +1,20 @@
+<clickhouse>
+  <logger><level>warning</level></logger>
+  <max_server_memory_usage>1500000000</max_server_memory_usage>
+  <mark_cache_size>67108864</mark_cache_size>
+  <uncompressed_cache_size>33554432</uncompressed_cache_size>
+  <keeper_map_path_prefix>/keeper_map_tables</keeper_map_path_prefix>
+  <keeper_server>
+    <tcp_port>9181</tcp_port>
+    <server_id>1</server_id>
+    <log_storage_path>/var/lib/clickhouse/coordination/log</log_storage_path>
+    <snapshot_storage_path>/var/lib/clickhouse/coordination/snapshots</snapshot_storage_path>
+    <coordination_settings>
+      <operation_timeout_ms>10000</operation_timeout_ms>
+      <session_timeout_ms>30000</session_timeout_ms>
+      <raft_logs_level>warning</raft_logs_level>
+    </coordination_settings>
+    <raft_configuration><server><id>1</id><hostname>127.0.0.1</hostname><port>9234</port></server></raft_configuration>
+  </keeper_server>
+  <zookeeper><node><host>127.0.0.1</host><port>9181</port></node></zookeeper>
+</clickhouse>

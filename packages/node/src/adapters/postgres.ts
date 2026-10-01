@@ -2,6 +2,9 @@ import type { DBAdapter, EnrichedEvent, QueryParams, QueryResult, QueryDataPoint
 import { Pool } from 'pg';
 import { resolvePeriod, previousPeriodRange, autoGranularity, granularityToDateFormat, fillBuckets, getISOWeek, generateSiteId, generateSecretKey, capLimit, assertTimeseriesBudget } from './utils';
 import { normalizeReferrer } from '../normalize-referrer.js';
+import { AggregatePager, SNAPSHOT_BUILD_TIMEOUT } from '../aggregate-page.js';
+import { PostgresAggregateBackend } from './aggregate-postgres.js';
+import type { QueryPageParams, QueryPageResult } from '@litemetrics/core';
 import { isValidTimezone, aggregateBotStats } from '../query-helpers.js';
 
 const EVENTS_TABLE = 'litemetrics_events';
@@ -421,12 +424,26 @@ interface SiteRow {
 
 export class PostgresAdapter implements DBAdapter {
   private pool: Pool;
+  private aggregatePager?: AggregatePager;
+  private aggregateBackend?: PostgresAggregateBackend;
+
+  private getAggregateBackend(): PostgresAggregateBackend {
+    return this.aggregateBackend ??= new PostgresAggregateBackend(this.pool, pgNormalizedReferrerExpr, pgChannelClassificationExpr);
+  }
+
+  async queryPage(params: QueryPageParams): Promise<QueryPageResult> {
+    this.aggregatePager ??= new AggregatePager(this.getAggregateBackend(), (id) => this.getSite(id));
+    return this.aggregatePager.page(params);
+  }
 
   constructor(url: string) {
     const max = Number(process.env.LITEMETRICS_PG_POOL_MAX ?? 10);
     this.pool = new Pool({
       connectionString: url,
       max: Number.isFinite(max) && max > 0 ? max : 10,
+      // Bound driver handshakes and queued checkouts, including pool shutdown.
+      // Aggregate leases additionally enforce their remaining absolute budget.
+      connectionTimeoutMillis: SNAPSHOT_BUILD_TIMEOUT,
     });
   }
 
@@ -452,9 +469,13 @@ export class PostgresAdapter implements DBAdapter {
     } finally {
       client.release();
     }
+    // Aggregate paging is additive: unavailable capability must not break
+    // legacy collection. Successful initialization owns the idle expiry task.
+    await this.getAggregateBackend().ensure().catch(() => {});
   }
 
   async close(): Promise<void> {
+    await this.aggregateBackend?.close();
     await this.pool.end();
   }
 
