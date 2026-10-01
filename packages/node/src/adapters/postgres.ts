@@ -4,7 +4,7 @@ import { resolvePeriod, previousPeriodRange, autoGranularity, granularityToDateF
 import { normalizeReferrer } from '../normalize-referrer.js';
 import { AggregatePager, SNAPSHOT_BUILD_TIMEOUT } from '../aggregate-page.js';
 import { PostgresAggregateBackend } from './aggregate-postgres.js';
-import type { QueryPageParams, QueryPageResult } from '@litemetrics/core';
+import type { QueryPageOptions, QueryPageParams, QueryPageResult } from '@litemetrics/core';
 import { isValidTimezone, aggregateBotStats } from '../query-helpers.js';
 
 const EVENTS_TABLE = 'litemetrics_events';
@@ -431,9 +431,20 @@ export class PostgresAdapter implements DBAdapter {
     return this.aggregateBackend ??= new PostgresAggregateBackend(this.pool, pgNormalizedReferrerExpr, pgChannelClassificationExpr);
   }
 
-  async queryPage(params: QueryPageParams): Promise<QueryPageResult> {
-    this.aggregatePager ??= new AggregatePager(this.getAggregateBackend(), (id) => this.getSite(id));
-    return this.aggregatePager.page(params);
+  async queryPage(params: QueryPageParams, options?: QueryPageOptions): Promise<QueryPageResult> {
+    const deadline = Math.min(options?.deadline ?? Infinity, Date.now() + SNAPSHOT_BUILD_TIMEOUT);
+    this.aggregatePager ??= new AggregatePager(this.getAggregateBackend(), (id, siteDeadline) => this.getSiteForPage(id, siteDeadline));
+    return this.aggregatePager.page(params, { deadline });
+  }
+
+  async getSiteForPage(siteId: string, deadline = Date.now() + SNAPSHOT_BUILD_TIMEOUT): Promise<Site | null> {
+    const row = await this.getAggregateBackend().siteRow<SiteRow>('site_id', siteId, deadline);
+    return row ? this.toSite(row) : null;
+  }
+
+  async getSiteBySecretForPage(secretKey: string, deadline = Date.now() + SNAPSHOT_BUILD_TIMEOUT): Promise<Site | null> {
+    const row = await this.getAggregateBackend().siteRow<SiteRow>('secret_key', secretKey, deadline);
+    return row ? this.toSite(row) : null;
   }
 
   constructor(url: string) {

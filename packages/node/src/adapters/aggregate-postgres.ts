@@ -1,4 +1,4 @@
-import type { Pool, PoolClient, QueryResult } from 'pg';
+import type { Pool, PoolClient, QueryResult, QueryResultRow } from 'pg';
 import {
   AggregatePageError, FILTER_COLUMNS, METRIC_COLUMNS, SNAPSHOT_BUILD_TIMEOUT, SNAPSHOT_QUOTA,
   SNAPSHOT_ROW_CAP, capacity, safeCount, unavailable,
@@ -23,8 +23,8 @@ export class PostgresAggregateBackend implements AggregateBackend {
   private queuedCheckouts = new Set<() => void>();
   constructor(private pool: Pool, private referrer: () => string, private channel: () => string) {}
 
-  private deadline(s: AggregateSnapshot): number {
-    return Date.parse(s.createdAt) + SNAPSHOT_BUILD_TIMEOUT;
+  private deadline(s: AggregateSnapshot, requestDeadline?: number): number {
+    return Math.min(requestDeadline ?? Infinity, Date.parse(s.createdAt) + SNAPSHOT_BUILD_TIMEOUT);
   }
 
   /** Dispatch FIFO while bounding unresolved driver callbacks separately from readers. */
@@ -102,10 +102,20 @@ export class PostgresAggregateBackend implements AggregateBackend {
     });
   }
 
-  async ensure(): Promise<void> {
+  /** Fresh authorization/existence reads use the same FIFO and owned lease as page SQL. */
+  async siteRow<Row extends QueryResultRow>(column: 'site_id' | 'secret_key', value: string,
+    deadline = Date.now() + SNAPSHOT_BUILD_TIMEOUT): Promise<Row | null> {
+    return this.transaction(Math.min(deadline, Date.now() + SNAPSHOT_BUILD_TIMEOUT), async query => {
+      const result = await query(`SELECT * FROM litemetrics_sites WHERE ${column}=$1 AND deleted_at IS NULL`, [value]);
+      return (result.rows[0] as Row | undefined) ?? null;
+    });
+  }
+
+  async ensure(deadline = Date.now() + SNAPSHOT_BUILD_TIMEOUT): Promise<void> {
+    deadline = Math.min(deadline, Date.now() + SNAPSHOT_BUILD_TIMEOUT);
     this.initialization ??= (async () => {
       try {
-        await this.transaction(Date.now() + SNAPSHOT_BUILD_TIMEOUT, async query => {
+        await this.transaction(deadline, async query => {
           await query(`CREATE TABLE IF NOT EXISTS ${META} (
             id text PRIMARY KEY, site_id text NOT NULL, scope_hash text NOT NULL, state text NOT NULL,
             created_at timestamptz NOT NULL, expires_at timestamptz NOT NULL, metadata jsonb NOT NULL)`);
@@ -159,8 +169,8 @@ export class PostgresAggregateBackend implements AggregateBackend {
     await this.cleanupTask?.catch(() => {});
   }
 
-  async reserve(snapshot: AggregateSnapshot): Promise<{ snapshot: AggregateSnapshot; owned: boolean }> {
-    return this.transaction(this.deadline(snapshot), async query => {
+  async reserve(snapshot: AggregateSnapshot, deadline?: number): Promise<{ snapshot: AggregateSnapshot; owned: boolean }> {
+    return this.transaction(this.deadline(snapshot, deadline), async query => {
       await query(`INSERT INTO ${QUOTA}(site_id) VALUES($1) ON CONFLICT DO NOTHING`, [snapshot.siteId]);
       await query(`SELECT site_id FROM ${QUOTA} WHERE site_id=$1 FOR UPDATE`, [snapshot.siteId]);
       const pending = await query(`SELECT metadata FROM ${META}
@@ -179,7 +189,7 @@ export class PostgresAggregateBackend implements AggregateBackend {
     });
   }
 
-  async materialize(s: AggregateSnapshot, q: NormalizedPageParams): Promise<{ rowCount: number; valueSum: number }> {
+  async materialize(s: AggregateSnapshot, q: NormalizedPageParams, deadline?: number): Promise<{ rowCount: number; valueSum: number }> {
     const values: unknown[] = [];
     const add = (value: unknown) => { values.push(value); return `$${values.length}`; };
     const column = METRIC_COLUMNS[q.metric];
@@ -204,7 +214,7 @@ export class PostgresAggregateBackend implements AggregateBackend {
         ${pageviews ? 'COUNT(*)' : 'COUNT(DISTINCT visitor_id)'}::bigint AS value
         FROM litemetrics_events WHERE ${where.join(' AND ')} GROUP BY ${key}) grouped
         WHERE ${eligible.join(' AND ')} ORDER BY value DESC,key COLLATE "C" ASC LIMIT ${SNAPSHOT_ROW_CAP + 1}) eligible`;
-    return this.transaction(this.deadline(s), async query => {
+    return this.transaction(this.deadline(s, deadline), async query => {
       await query(sql, values);
       const totals = await query(`SELECT COUNT(*) AS count,COALESCE(SUM(value),0)::text AS sum FROM ${ROWS} WHERE snapshot_id=$1`, [s.id]);
       const rowCount = safeCount(totals.rows[0]?.count), valueSum = safeCount(totals.rows[0]?.sum);
@@ -213,16 +223,16 @@ export class PostgresAggregateBackend implements AggregateBackend {
     });
   }
 
-  async publish(s: AggregateSnapshot): Promise<void> {
-    await this.transaction(this.deadline(s), async query => {
+  async publish(s: AggregateSnapshot, deadline?: number): Promise<void> {
+    await this.transaction(this.deadline(s, deadline), async query => {
       const result = await query(`UPDATE ${META} SET state='ready',metadata=$2::jsonb
         WHERE id=$1 AND state='building' AND expires_at>now()`, [s.id, JSON.stringify(s)]);
       if (result.rowCount !== 1) throw new AggregatePageError('snapshot_expired', 409);
     });
   }
-  async fail(s: AggregateSnapshot): Promise<void> {
-    if (this.deadline(s) <= Date.now()) { void this.sweep().catch(() => {}); return; }
-    await this.transaction(Math.min(this.deadline(s), Date.now() + MAINTENANCE_TIMEOUT), async query => {
+  async fail(s: AggregateSnapshot, deadline?: number): Promise<void> {
+    if (this.deadline(s, deadline) <= Date.now()) { void this.sweep().catch(() => {}); return; }
+    await this.transaction(Math.min(this.deadline(s, deadline), Date.now() + MAINTENANCE_TIMEOUT), async query => {
       await query(`DELETE FROM ${ROWS} WHERE snapshot_id=$1`, [s.id]);
       await query(`DELETE FROM ${META} WHERE id=$1`, [s.id]);
     });
@@ -233,8 +243,9 @@ export class PostgresAggregateBackend implements AggregateBackend {
       return result.rows[0]?.metadata ?? null;
     });
   }
-  async rows(id: string, boundary: number, direction: 'forward' | 'back', limit: number): Promise<AggregateRow[]> {
-    return this.transaction(Date.now() + SNAPSHOT_BUILD_TIMEOUT, async query => {
+  async rows(id: string, boundary: number, direction: 'forward' | 'back', limit: number,
+    deadline = Date.now() + SNAPSHOT_BUILD_TIMEOUT): Promise<AggregateRow[]> {
+    return this.transaction(Math.min(deadline, Date.now() + SNAPSHOT_BUILD_TIMEOUT), async query => {
       const result = await query(`SELECT position,key,value FROM ${ROWS}
         WHERE snapshot_id=$1 AND position${direction === 'back' ? '<' : '>'}$2
         ORDER BY position ${direction === 'back' ? 'DESC' : 'ASC'} LIMIT $3`, [id, boundary, limit]);

@@ -423,7 +423,10 @@ export interface DBAdapter {
   init(): Promise<void>;
   insertEvents(events: EnrichedEvent[]): Promise<void>;
   query(q: QueryParams): Promise<QueryResult>;
-  queryPage?(q: QueryPageParams): Promise<QueryPageResult>;
+  queryPage?(q: QueryPageParams, options?: QueryPageOptions): Promise<QueryPageResult>;
+  /** Fresh page-only site reads may share the adapter's bounded snapshot admission. */
+  getSiteForPage?(siteId: string, deadline?: number): Promise<Site | null>;
+  getSiteBySecretForPage?(secretKey: string, deadline?: number): Promise<Site | null>;
   queryTimeSeries(params: TimeSeriesParams): Promise<TimeSeriesResult>;
   queryRetention(params: RetentionParams): Promise<RetentionResult>;
   close(): Promise<void>;
@@ -550,6 +553,11 @@ export interface QueryPageParams {
   limit?: number;
   cursor?: string;
   snapshot?: string;
+}
+
+export interface QueryPageOptions {
+  /** Server-side absolute epoch-ms deadline; excluded from HTTP filters and cursor scope. */
+  deadline?: number;
 }
 
 export interface QueryPageDataPoint { key: string; value: number; share: number }

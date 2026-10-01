@@ -1,6 +1,6 @@
 import { createHash, createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import { FILTER_KEY_IDS } from '@litemetrics/core';
-import type { Period, QueryPageMetric, QueryPageParams, QueryPageResult, Site } from '@litemetrics/core';
+import type { Period, QueryPageMetric, QueryPageOptions, QueryPageParams, QueryPageResult, Site } from '@litemetrics/core';
 import { normalizeReferrer } from './normalize-referrer.js';
 
 export class AggregatePageError extends Error {
@@ -145,13 +145,13 @@ export interface AggregateSnapshot {
 }
 export interface AggregateRow { position: number; key: string; value: number }
 export interface AggregateBackend {
-  ensure(): Promise<void>;
-  reserve(snapshot: AggregateSnapshot): Promise<{ snapshot: AggregateSnapshot; owned: boolean }>;
-  materialize(snapshot: AggregateSnapshot, q: NormalizedPageParams): Promise<{ rowCount: number; valueSum: number }>;
-  publish(snapshot: AggregateSnapshot): Promise<void>;
-  fail(snapshot: AggregateSnapshot): Promise<void>;
+  ensure(deadline?: number): Promise<void>;
+  reserve(snapshot: AggregateSnapshot, deadline?: number): Promise<{ snapshot: AggregateSnapshot; owned: boolean }>;
+  materialize(snapshot: AggregateSnapshot, q: NormalizedPageParams, deadline?: number): Promise<{ rowCount: number; valueSum: number }>;
+  publish(snapshot: AggregateSnapshot, deadline?: number): Promise<void>;
+  fail(snapshot: AggregateSnapshot, deadline?: number): Promise<void>;
   get(id: string, siteId: string, deadline?: number): Promise<AggregateSnapshot | null>;
-  rows(id: string, boundary: number, direction: 'forward' | 'back', limit: number): Promise<AggregateRow[]>;
+  rows(id: string, boundary: number, direction: 'forward' | 'back', limit: number, deadline?: number): Promise<AggregateRow[]>;
   cleanup(now: number, siteId: string): Promise<void>;
 }
 export function safeCount(value: unknown): number {
@@ -184,9 +184,9 @@ function readCursor(token: string, secret: string): Cursor {
 export class AggregatePager {
   private inflight = new Map<string, Promise<AggregateSnapshot>>();
   private constructions = 0;
-  constructor(private backend: AggregateBackend, private getSite: (id: string) => Promise<Site | null>) {}
+  constructor(private backend: AggregateBackend, private getSite: (id: string, deadline?: number) => Promise<Site | null>) {}
 
-  private async create(q: NormalizedPageParams, scopeHash: string): Promise<AggregateSnapshot> {
+  private async create(q: NormalizedPageParams, scopeHash: string, requestDeadline?: number): Promise<AggregateSnapshot> {
     const existing = this.inflight.get(scopeHash);
     if (existing) return existing;
     if (this.constructions >= 2) throw capacity();
@@ -201,10 +201,10 @@ export class AggregatePager {
         period: q.period, timezone: q.timezone, rowCount: 0, valueSum: 0,
       };
       await this.backend.cleanup(now, q.siteId);
-      const reservation = await this.backend.reserve(snapshot);
+      const reservation = await this.backend.reserve(snapshot, requestDeadline);
       snapshot = reservation.snapshot;
       if (!reservation.owned) {
-        const deadline = Math.min(now + SNAPSHOT_BUILD_TIMEOUT,
+        const deadline = Math.min(requestDeadline ?? Infinity, now + SNAPSHOT_BUILD_TIMEOUT,
           Date.parse(snapshot.createdAt) + SNAPSHOT_BUILD_TIMEOUT, Date.parse(snapshot.expiresAt));
         while (Date.now() < deadline) {
           const current = await this.backend.get(snapshot.id, q.siteId, deadline);
@@ -215,16 +215,16 @@ export class AggregatePager {
         throw unavailable();
       }
       try {
-        const totals = await this.backend.materialize(snapshot, q);
-        if (Date.now() >= Date.parse(snapshot.createdAt) + SNAPSHOT_BUILD_TIMEOUT) throw unavailable();
+        const totals = await this.backend.materialize(snapshot, q, requestDeadline);
+        if (Date.now() >= Math.min(requestDeadline ?? Infinity, Date.parse(snapshot.createdAt) + SNAPSHOT_BUILD_TIMEOUT)) throw unavailable();
         snapshot.rowCount = safeCount(totals.rowCount); snapshot.valueSum = safeCount(totals.valueSum);
         if (snapshot.rowCount > SNAPSHOT_ROW_CAP) throw capacity();
         if (Date.now() >= Date.parse(snapshot.expiresAt)) throw new AggregatePageError('snapshot_expired', 409);
         snapshot.state = 'ready';
-        await this.backend.publish(snapshot);
+        await this.backend.publish(snapshot, requestDeadline);
         return snapshot;
       } catch (error) {
-        await this.backend.fail(snapshot).catch(() => {});
+        await this.backend.fail(snapshot, requestDeadline).catch(() => {});
         throw error;
       }
     })();
@@ -232,20 +232,35 @@ export class AggregatePager {
     try { return await task; } finally { this.inflight.delete(scopeHash); this.constructions--; }
   }
 
-  async page(input: QueryPageParams): Promise<QueryPageResult> {
-    try { return await this.readPage(input); }
-    catch (error) {
+  async page(input: QueryPageParams, options?: QueryPageOptions): Promise<QueryPageResult> {
+    const deadline = options?.deadline === undefined ? undefined : Math.min(options.deadline, Date.now() + SNAPSHOT_BUILD_TIMEOUT);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      if (deadline !== undefined && (!Number.isFinite(deadline) || deadline <= Date.now())) throw unavailable();
+      const task = this.readPage(input, deadline);
+      if (deadline === undefined) return await task;
+      // A waiter may share schema initialization/construction owned by another
+      // request. Its response still expires on its own original deadline; PG
+      // operations owned by this request receive the same deadline below.
+      return await new Promise<QueryPageResult>((resolve, reject) => {
+        timer = setTimeout(() => reject(unavailable()), Math.max(1, deadline - Date.now()));
+        void task.then(value => {
+          if (Date.now() >= deadline) reject(unavailable());
+          else resolve(value);
+        }, reject);
+      });
+    } catch (error) {
       if (error instanceof AggregatePageError) throw error;
       const provider = error as { code?: unknown; name?: string };
       if (typeof provider.code === 'string' && /^(?:[0-9A-Z]{5}|ECONN\w*|ETIMEDOUT|ENOTFOUND|EHOSTUNREACH|EPIPE)$/.test(provider.code) ||
         provider.name?.startsWith('Mongo') || provider.name === 'ClickHouseError') throw unavailable();
       throw new AggregatePageError('internal', 500);
-    }
+    } finally { if (timer !== undefined) clearTimeout(timer); }
   }
 
-  private async readPage(input: QueryPageParams): Promise<QueryPageResult> {
+  private async readPage(input: QueryPageParams, deadline?: number): Promise<QueryPageResult> {
     const q = normalizePageParams(input);
-    const site = await this.getSite(q.siteId);
+    const site = await this.getSite(q.siteId, deadline);
     if (!site) throw new AggregatePageError('site_not_found', 404);
     if (!site.secretKey) throw unavailable();
     const scopeHash = pageScopeHash(q);
@@ -253,9 +268,10 @@ export class AggregatePager {
     if (cursor && cursor.hash !== scopeHash) throw new AggregatePageError('cursor_query_mismatch', 400);
     if (cursor && q.snapshot && cursor.id !== q.snapshot) throw new AggregatePageError('invalid_cursor', 400, 'snapshot');
     if (cursor && cursor.exp <= Date.now()) throw new AggregatePageError('snapshot_expired', 409);
-    await this.backend.ensure();
+    await this.backend.ensure(deadline);
+    if (deadline !== undefined && Date.now() >= deadline) throw unavailable();
     const id = cursor?.id ?? q.snapshot;
-    const snapshot = id ? await this.backend.get(id, q.siteId) : await this.create(q, scopeHash);
+    const snapshot = id ? await this.backend.get(id, q.siteId, deadline) : await this.create(q, scopeHash, deadline);
     if (!snapshot || snapshot.state !== 'ready' || Date.parse(snapshot.expiresAt) <= Date.now()) throw new AggregatePageError('snapshot_expired', 409);
     if (![snapshot.createdAt, snapshot.expiresAt, snapshot.from, snapshot.to].every((date) => typeof date === 'string' && Number.isFinite(Date.parse(date))) ||
       Date.parse(snapshot.expiresAt) !== Date.parse(snapshot.createdAt) + SNAPSHOT_TTL || Date.parse(snapshot.from) >= Date.parse(snapshot.to) ||
@@ -265,7 +281,7 @@ export class AggregatePager {
     const rowCount = safeCount(snapshot.rowCount), valueSum = safeCount(snapshot.valueSum);
     if (cursor && cursor.boundary > rowCount) throw new AggregatePageError('invalid_cursor', 400);
     const direction = cursor?.direction ?? 'forward';
-    let rows = await this.backend.rows(snapshot.id, cursor?.boundary ?? 0, direction, q.limit + 1);
+    let rows = await this.backend.rows(snapshot.id, cursor?.boundary ?? 0, direction, q.limit + 1, deadline);
     if (rows.length > q.limit + 1) throw unavailable();
     rows = rows.slice(0, q.limit);
     if (direction === 'back') rows.reverse();

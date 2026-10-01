@@ -41,13 +41,42 @@ The DB role needs additive CREATE TABLE/INDEX, SELECT, INSERT, UPDATE and DELETE
 permissions. No event column or `EVENT_BASE_COLUMNS` ordering changes are needed.
 
 Aggregate transactions dispatch pool checkouts in FIFO order, with at most four
-unresolved driver callbacks and 128 queued operations per backend. Queue waiting
+unresolved driver callbacks and 128 queued operations per backend. Fresh site
+existence/current-secret reads for the pager and HTTP page authorization share
+this same FIFO and transaction lease; they do not submit legacy `pool.query`
+checkouts or use an additional connection budget. Queue waiting
 uses the operation's original absolute deadline; it does not add another time
 budget. Readers of a shared completed snapshot can queue independently of the
 two-construction limit. Excess queued work, deadline expiry and shutdown fail
 `503 aggregate_snapshot_unavailable`; queued work is removed on timeout/close,
 and a client acquired after its deadline is released without issuing SQL. The
 driver's 60-second connection timeout still bounds unresolved late checkouts.
+
+`DBAdapter` additively permits
+`getSiteForPage?(siteId:string,deadline?:number):Promise<Site|null>` and
+`getSiteBySecretForPage?(secretKey:string,deadline?:number):Promise<Site|null>`.
+PostgreSQL implements both with a default absolute epoch-ms deadline captured
+before admission (`Date.now()+60000`); an explicit deadline is retained while
+waiting and clamped to at most 60000 ms from the call. The pager uses the first
+method and the HTTP page handler uses the second before querying a page.
+Lookup overload, timeout and shutdown propagate
+`503 aggregate_snapshot_unavailable` through the page handler. Every lookup
+queries undeleted current site rows, without caching secrets. Other/custom
+adapters may omit these methods and retain their existing site lookup behavior.
+Legacy site/stat handlers continue to use the original site methods.
+
+`QueryPageOptions` is `{deadline?:number}`. `DBAdapter.queryPage`,
+`collector.queryPage` and `PostgresAdapter.queryPage` accept this optional second
+argument. It carries a server-side absolute deadline and is never serialized
+into HTTP query parameters, filter fingerprints or signed cursors. The HTTP
+page handler captures one 60000 ms deadline before authorization; PostgreSQL
+uses its remaining budget for current-site reads, schema initialization,
+snapshot reservation/construction and snapshot/row reads. The existing
+construction deadline can only shrink. Waiting for initialization or a shared
+construction also ends at the waiting request's own deadline. Lifecycle
+maintenance retains its independently bounded background budget. The overall
+request guarantee described here is PostgreSQL-specific; ClickHouse and MongoDB
+retain their existing behavior and may ignore the optional internal context.
 
 ## MongoDB
 
