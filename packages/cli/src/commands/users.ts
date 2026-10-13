@@ -3,14 +3,15 @@ import { loadConfig, resolveSiteIds } from '../config.js';
 import { makeAnalyticsClient } from '../client.js';
 import { resolveFormat, handleError, validatePeriod } from '../output.js';
 import { runPerSite } from '../multisite.js';
+import { parseIntOption } from '../int-option.js';
 
 export function registerUsersCommand(program: Command) {
   const users = program
     .command('users')
     .description('List users or get user details')
     .option('-s, --search <query>', 'Search by visitor/user ID')
-    .option('-l, --limit <n>', 'Limit results', parseInt, 30)
-    .option('--offset <n>', 'Offset for pagination', parseInt)
+    .option('-l, --limit <n>', 'Limit results', parseIntOption, 30)
+    .option('--offset <n>', 'Offset for pagination', parseIntOption)
     .option('--include-bots', 'Include events flagged by the bot filter')
     .action(async (opts) => {
       const globalOpts = program.opts();
@@ -112,8 +113,8 @@ export function registerUsersCommand(program: Command) {
     .option('-t, --type <type>', 'Event type: pageview, event, identify')
     .option('-n, --name <name>', 'Filter by event name')
     .option('-p, --period <period>', 'Period', '30d')
-    .option('-l, --limit <n>', 'Limit results', parseInt, 30)
-    .option('--offset <n>', 'Offset for pagination', parseInt)
+    .option('-l, --limit <n>', 'Limit results', parseIntOption, 30)
+    .option('--offset <n>', 'Offset for pagination', parseIntOption)
     .option('--include-bots', 'Include events flagged by the bot filter')
     .action(async (identifier: string, opts) => {
       const globalOpts = program.opts();

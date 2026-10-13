@@ -5,6 +5,7 @@ import { loadConfig, resolveSiteIds } from '../config.js';
 import { makeAnalyticsClient } from '../client.js';
 import { resolveFormat, parseFilters, handleError, invalidMetric, validatePeriod } from '../output.js';
 import { runPerSite } from '../multisite.js';
+import { parseIntOption } from '../int-option.js';
 
 export function registerStatsCommand(program: Command) {
   program
@@ -13,7 +14,7 @@ export function registerStatsCommand(program: Command) {
     .option('-p, --period <period>', 'Period: 1h, 24h, 7d, 30d, 90d, custom', '24h')
     .option('--from <date>', 'Start date (ISO)')
     .option('--to <date>', 'End date (ISO)')
-    .option('-l, --limit <n>', 'Limit results', parseInt)
+    .option('-l, --limit <n>', 'Limit results', parseIntOption)
     .option('--filter <kv...>', 'Filters (key=value, repeatable). See `litemetrics filters`')
     .option('-c, --compare', 'Compare with previous period')
     .option('--timezone <tz>', 'IANA timezone (e.g. Europe/Istanbul)')

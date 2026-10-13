@@ -3,13 +3,14 @@ import { loadConfig, resolveSiteIds } from '../config.js';
 import { makeAnalyticsClient } from '../client.js';
 import { resolveFormat, handleError, validatePeriod } from '../output.js';
 import { runPerSite } from '../multisite.js';
+import { parseIntOption } from '../int-option.js';
 
 export function registerRetentionCommand(program: Command) {
   program
     .command('retention')
     .description('Query cohort retention data')
     .option('-p, --period <period>', 'Period: 7d, 30d, 90d', '90d')
-    .option('-w, --weeks <n>', 'Number of weeks', parseInt, 8)
+    .option('-w, --weeks <n>', 'Number of weeks', parseIntOption, 8)
     .option('--include-bots', 'Include events flagged by the bot filter')
     .action(async (opts) => {
       const globalOpts = program.opts();

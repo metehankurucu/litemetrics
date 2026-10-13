@@ -25,6 +25,10 @@
 - `getUserDetail(identifier, { includeBots })`.
 - `BotStatsResult.byVelocity` (optional: a host predating layer 4 omits it).
 
+### `@litemetrics/cli`
+
+- **`--limit`, `--offset` and `--weeks` are read in base 10.** Commander passes an option's default to its parser as a second argument, and a bare `parseInt` took it as the radix: `events -l 200` was `parseInt('200', 50)` = NaN, so every `events` call returned the server default of 50; `users -l 10` asked for 30 rows (base 30); `retention -w 12` asked for 10 weeks (base 8) and `-w 8` for none. A value that is not a whole number now exits 1 instead of being dropped. `base analytics` forwards these flags to this CLI, so it had the same bug.
+
 ## 0.9.0 - Ad click IDs, link click identity, one event per labelled click
 
 **Ad click IDs are captured at landing and stored as first-class columns.** A click ID (`gclid`, `gbraid`, `wbraid`, `fbclid`) not recorded at click time cannot be backfilled later; server-side conversion upload APIs key on them and do not accept UTM values as a substitute.
