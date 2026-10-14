@@ -25,10 +25,19 @@ export function describeDatabaseUrl(url: string | null | undefined): string {
 
   // An unencoded `/`, `?` or `#` inside the password ends the authority early: the
   // username then parses as the host, the start of the password as the port, and the
-  // `@` that closed the credentials is left behind in the path, query or fragment. An
-  // `@` there means the "host" may be the credentials, so none of it is shown.
-  const rest = parsed.pathname + parsed.search + parsed.hash;
-  if (!parsed.host || rest.includes('@')) return '<unparseable url>';
+  // `@` that closed the credentials is left behind after the authority. An `@` there
+  // means the "host" may be the credentials, so none of it is shown.
+  //
+  // It is looked for in the input, not in `pathname`: the parser folds `..` segments
+  // (`%2e%2e` too), so `/s3cret@db.internal/..` comes back as `/` with the `@` gone.
+  // Tab and newline go first because the parser drops them before it parses. `\` ends
+  // the authority here for every scheme, though the parser does that for http(s) only,
+  // so a postgres password with a `\` in it gets the placeholder too: less detail,
+  // never a guess.
+  const afterScheme = raw.replace(/[\t\n\r]/g, '').replace(/^[^:]*:[/\\]*/, '');
+  const authorityEnd = afterScheme.search(/[/\\?#]/);
+  const strayAt = authorityEnd !== -1 && afterScheme.includes('@', authorityEnd);
+  if (!parsed.host || strayAt) return '<unparseable url>';
 
   const path = parsed.pathname === '/' ? '' : parsed.pathname;
   return `${parsed.host}${path}`;

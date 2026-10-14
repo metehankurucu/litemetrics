@@ -60,6 +60,9 @@ describe('describeDatabaseUrl', () => {
     'postgres://lm_user:12?s3cret@db.internal:5432/litemetrics',
     'postgres://lm_user:12#s3cret@db.internal:5432/litemetrics',
     'http://lm_user:12\\s3cret@ch.internal:8123/litemetrics',
+    // The parser folds `..` segments, which can take the left-behind `@` out of the path.
+    'postgres://lm_user:12/s3cret@db.internal:5432/../litemetrics',
+    'postgres://lm_user:12/s3cret@db.internal:5432/%2e%2e/litemetrics',
   ])('does not mistake the credentials for the host in %s', (raw) => {
     const out = describeDatabaseUrl(raw);
     expect(out).toBe('<unparseable url>');
