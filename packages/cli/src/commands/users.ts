@@ -1,7 +1,7 @@
 import type { Command } from 'commander';
 import { loadConfig, resolveSiteIds } from '../config.js';
 import { makeAnalyticsClient } from '../client.js';
-import { resolveFormat, handleError, validatePeriod } from '../output.js';
+import { resolveFormat, handleError, validatePeriod, intFlag } from '../output.js';
 import { runPerSite } from '../multisite.js';
 
 export function registerUsersCommand(program: Command) {
@@ -9,12 +9,14 @@ export function registerUsersCommand(program: Command) {
     .command('users')
     .description('List users or get user details')
     .option('-s, --search <query>', 'Search by visitor/user ID')
-    .option('-l, --limit <n>', 'Limit results', parseInt, 30)
-    .option('--offset <n>', 'Offset for pagination', parseInt)
+    .option('-l, --limit <n>', 'Limit results', '30')
+    .option('--offset <n>', 'Offset for pagination')
     .option('--include-bots', 'Include events flagged by the bot filter')
     .action(async (opts) => {
       const globalOpts = program.opts();
       const format = resolveFormat(globalOpts.format);
+      const limit = intFlag('--limit', opts.limit, format, 1);
+      const offset = intFlag('--offset', opts.offset, format);
       try {
         const config = loadConfig({ url: globalOpts.url, adminSecret: globalOpts.secret, siteId: globalOpts.site }, format);
         const siteIds = await resolveSiteIds(config, format);
@@ -25,8 +27,8 @@ export function registerUsersCommand(program: Command) {
             client.setSiteId(siteId);
             return client.getUsers({
               search: opts.search,
-              limit: opts.limit,
-              offset: opts.offset,
+              limit,
+              offset,
               includeBots: opts.includeBots,
             });
           },
@@ -112,13 +114,21 @@ export function registerUsersCommand(program: Command) {
     .option('-t, --type <type>', 'Event type: pageview, event, identify')
     .option('-n, --name <name>', 'Filter by event name')
     .option('-p, --period <period>', 'Period', '30d')
-    .option('-l, --limit <n>', 'Limit results', parseInt, 30)
-    .option('--offset <n>', 'Offset for pagination', parseInt)
+    // Declared again so `users events --help` lists them, but never read here:
+    // the parent `users` command declares the same three flags, and Commander
+    // hands a flag to the first command in the chain that knows it, so
+    // `users events <id> -l 50` sets users.limit and leaves this one at its default.
+    .option('-l, --limit <n>', 'Limit results', '30')
+    .option('--offset <n>', 'Offset for pagination')
     .option('--include-bots', 'Include events flagged by the bot filter')
     .action(async (identifier: string, opts) => {
       const globalOpts = program.opts();
       const format = resolveFormat(globalOpts.format);
       validatePeriod(opts.period, undefined, undefined, format);
+      const parent = users.opts();
+      const limit = intFlag('--limit', parent.limit, format, 1);
+      const offset = intFlag('--offset', parent.offset, format);
+      const includeBots = parent.includeBots;
       try {
         const config = loadConfig({ url: globalOpts.url, adminSecret: globalOpts.secret, siteId: globalOpts.site }, format);
         const siteIds = await resolveSiteIds(config, format);
@@ -131,9 +141,9 @@ export function registerUsersCommand(program: Command) {
               type: opts.type,
               eventName: opts.name,
               period: opts.period,
-              limit: opts.limit,
-              offset: opts.offset,
-              includeBots: opts.includeBots,
+              limit,
+              offset,
+              includeBots,
             });
           },
           table: (result) => {

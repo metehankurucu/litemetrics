@@ -1,7 +1,7 @@
 import type { Command } from 'commander';
 import { loadConfig, resolveSiteIds } from '../config.js';
 import { makeAnalyticsClient } from '../client.js';
-import { resolveFormat, handleError, validatePeriod } from '../output.js';
+import { resolveFormat, handleError, validatePeriod, intFlag } from '../output.js';
 import { runPerSite } from '../multisite.js';
 
 export function registerEventsCommand(program: Command) {
@@ -17,13 +17,15 @@ export function registerEventsCommand(program: Command) {
     .option('-p, --period <period>', 'Period: 1h, 24h, 7d, 30d, 90d, custom', '24h')
     .option('--from <date>', 'Start date (ISO)')
     .option('--to <date>', 'End date (ISO)')
-    .option('-l, --limit <n>', 'Limit results', parseInt, 50)
-    .option('--offset <n>', 'Offset for pagination', parseInt)
+    .option('-l, --limit <n>', 'Limit results', '50')
+    .option('--offset <n>', 'Offset for pagination')
     .option('--include-bots', 'Include events flagged by the bot filter')
     .action(async (opts) => {
       const globalOpts = program.opts();
       const format = resolveFormat(globalOpts.format);
       validatePeriod(opts.period, opts.from, opts.to, format);
+      const limit = intFlag('--limit', opts.limit, format, 1);
+      const offset = intFlag('--offset', opts.offset, format);
       try {
         const config = loadConfig({ url: globalOpts.url, adminSecret: globalOpts.secret, siteId: globalOpts.site }, format);
         const siteIds = await resolveSiteIds(config, format);
@@ -42,8 +44,8 @@ export function registerEventsCommand(program: Command) {
               period: opts.period,
               dateFrom: opts.from,
               dateTo: opts.to,
-              limit: opts.limit,
-              offset: opts.offset,
+              limit,
+              offset,
               includeBots: opts.includeBots,
             });
           },
