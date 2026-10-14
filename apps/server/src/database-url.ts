@@ -19,7 +19,8 @@ export function describeDatabaseUrl(url: string | null | undefined): string {
   try {
     parsed = new URL(raw);
   } catch {
-    // Includes a multi-host mongodb:// list, which the URL parser does not take.
+    // Includes a multi-host mongodb:// list with ports (`h1:27017,h2:27017`), which the
+    // URL parser does not take. Without ports the list parses and prints as `h1,h2/db`.
     return '<unparseable url>';
   }
 

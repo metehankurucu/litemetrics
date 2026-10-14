@@ -45,11 +45,18 @@ describe('describeDatabaseUrl', () => {
     ['plain text', 'lm_user s3cret db.internal:5432'],
     ['a URL with a non-numeric port', 'postgres://lm_user:s3cret@db.internal:port/litemetrics'],
     ['a scheme-like prefix with no host', 'lm:s3cret'],
-    ['a multi-host mongodb URL', 'mongodb://lm_user:s3cret@db.internal:27017,db2.internal:27017/litemetrics'],
+    ['a multi-host mongodb URL with ports', 'mongodb://lm_user:s3cret@db.internal:27017,db2.internal:27017/litemetrics'],
   ])('does not echo %s', (_label, raw) => {
     const out = describeDatabaseUrl(raw);
     expect(out).toBe('<unparseable url>');
     expectNoneOf(out, 'lm_user', 's3cret', 'db.internal');
+  });
+
+  // Without ports the URL parser takes the whole list as one opaque host.
+  it('keeps a multi-host mongodb list without ports as it is', () => {
+    const out = describeDatabaseUrl('mongodb://lm_user:s3cret@db.internal,db2.internal/litemetrics');
+    expect(out).toBe('db.internal,db2.internal/litemetrics');
+    expectNoneOf(out, 'lm_user', 's3cret');
   });
 
   // An unencoded `/`, `?` or `#` (or `\` in an http URL) inside the password ends the
