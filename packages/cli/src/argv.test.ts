@@ -101,6 +101,7 @@ describe('integer flags are read in base 10', () => {
     ['events -l 200', ['events', '-l', '200'], 'getEventsList', { limit: 200 }],
     ['events -l 10', ['events', '-l', '10'], 'getEventsList', { limit: 10 }],
     ['events --offset 100', ['events', '--offset', '100'], 'getEventsList', { limit: 50, offset: 100 }],
+    ['events --offset 0', ['events', '--offset', '0'], 'getEventsList', { offset: 0 }],
     ['events, a repeated -l', ['events', '-l', '10', '-l', '20'], 'getEventsList', { limit: 20 }],
     ['events, no flags', ['events'], 'getEventsList', { limit: 50, offset: undefined }],
     ['users -l 10', ['users', '-l', '10'], 'getUsers', { limit: 10 }],
@@ -132,11 +133,16 @@ describe('integer flags are read in base 10', () => {
 
 describe('a value that is not a whole number', () => {
   const bad: [string[], string][] = [
-    [['events', '-l', 'abc'], '--limit must be a whole number, got "abc".'],
+    [['events', '-l', 'abc'], '--limit must be a whole number of at least 1, got "abc".'],
     [['users', '--offset', '1.5'], '--offset must be a whole number, got "1.5".'],
-    [['users', 'events', 'abc', '-l', '12abc'], '--limit must be a whole number, got "12abc".'],
-    [['retention', '-w', 'x'], '--weeks must be a whole number, got "x".'],
-    [['stats', 'top_pages', '-l', 'NaN'], '--limit must be a whole number, got "NaN".'],
+    [['users', 'events', 'abc', '-l', '12abc'], '--limit must be a whole number of at least 1, got "12abc".'],
+    [['retention', '-w', 'x'], '--weeks must be a whole number of at least 1, got "x".'],
+    [['stats', 'top_pages', '-l', 'NaN'], '--limit must be a whole number of at least 1, got "NaN".'],
+    // 0 used to be dropped by the client, so the server silently used its default.
+    [['events', '-l', '0'], '--limit must be a whole number of at least 1, got "0".'],
+    [['users', 'events', 'abc', '-l', '0'], '--limit must be a whole number of at least 1, got "0".'],
+    [['retention', '-w', '0'], '--weeks must be a whole number of at least 1, got "0".'],
+    [['stats', 'top_pages', '-l', '0'], '--limit must be a whole number of at least 1, got "0".'],
   ];
 
   it.each(bad)('%j exits 1 with the JSON envelope and sends nothing', async (args, message) => {

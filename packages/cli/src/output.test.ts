@@ -632,4 +632,23 @@ describe('intFlag', () => {
     expect(() => intFlag('--weeks', 'abc', 'table')).toThrow('exit');
     expect(errSpy.mock.calls[0][0]).toBe('Error: --weeks must be a whole number, got "abc".');
   });
+
+  // The client sends only truthy values, so a 0 limit or week count was dropped
+  // and the server silently used its default.
+  it('rejects a value below min, and names the bound', () => {
+    const errSpy = mockExit();
+    expect(intFlag('--limit', '1', 'json', 1)).toBe(1);
+    expect(() => intFlag('--limit', '0', 'json', 1)).toThrow('exit');
+    expect(JSON.parse(errSpy.mock.calls[0][0] as string)).toEqual({
+      error: '--limit must be a whole number of at least 1, got "0".',
+    });
+  });
+
+  it('names the bound for a value that is not a whole number too', () => {
+    const errSpy = mockExit();
+    expect(() => intFlag('--weeks', '-1', 'json', 1)).toThrow('exit');
+    expect(JSON.parse(errSpy.mock.calls[0][0] as string).error).toBe(
+      '--weeks must be a whole number of at least 1, got "-1".',
+    );
+  });
 });

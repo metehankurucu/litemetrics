@@ -15,7 +15,7 @@ export function registerRetentionCommand(program: Command) {
       const globalOpts = program.opts();
       const format = resolveFormat(globalOpts.format);
       validatePeriod(opts.period, undefined, undefined, format);
-      const weeks = intFlag('--weeks', opts.weeks, format);
+      const weeks = intFlag('--weeks', opts.weeks, format, 1);
       try {
         const config = loadConfig({ url: globalOpts.url, adminSecret: globalOpts.secret, siteId: globalOpts.site }, format);
         const siteIds = await resolveSiteIds(config, format);

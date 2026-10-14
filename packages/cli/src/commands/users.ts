@@ -15,7 +15,7 @@ export function registerUsersCommand(program: Command) {
     .action(async (opts) => {
       const globalOpts = program.opts();
       const format = resolveFormat(globalOpts.format);
-      const limit = intFlag('--limit', opts.limit, format);
+      const limit = intFlag('--limit', opts.limit, format, 1);
       const offset = intFlag('--offset', opts.offset, format);
       try {
         const config = loadConfig({ url: globalOpts.url, adminSecret: globalOpts.secret, siteId: globalOpts.site }, format);
@@ -126,7 +126,7 @@ export function registerUsersCommand(program: Command) {
       const format = resolveFormat(globalOpts.format);
       validatePeriod(opts.period, undefined, undefined, format);
       const parent = users.opts();
-      const limit = intFlag('--limit', parent.limit, format);
+      const limit = intFlag('--limit', parent.limit, format, 1);
       const offset = intFlag('--offset', parent.offset, format);
       const includeBots = parent.includeBots;
       try {

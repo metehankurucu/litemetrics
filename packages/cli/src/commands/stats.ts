@@ -25,7 +25,7 @@ export function registerStatsCommand(program: Command) {
         invalidMetric(metric, METRIC_IDS, format, 'litemetrics metrics');
       }
       validatePeriod(opts.period, opts.from, opts.to, format);
-      const limit = intFlag('--limit', opts.limit, format);
+      const limit = intFlag('--limit', opts.limit, format, 1);
       try {
         const config = loadConfig({ url: globalOpts.url, adminSecret: globalOpts.secret, siteId: globalOpts.site }, format);
         const siteIds = await resolveSiteIds(config, format);

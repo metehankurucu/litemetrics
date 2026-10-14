@@ -24,7 +24,7 @@ export function registerEventsCommand(program: Command) {
       const globalOpts = program.opts();
       const format = resolveFormat(globalOpts.format);
       validatePeriod(opts.period, opts.from, opts.to, format);
-      const limit = intFlag('--limit', opts.limit, format);
+      const limit = intFlag('--limit', opts.limit, format, 1);
       const offset = intFlag('--offset', opts.offset, format);
       try {
         const config = loadConfig({ url: globalOpts.url, adminSecret: globalOpts.secret, siteId: globalOpts.site }, format);

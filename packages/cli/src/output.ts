@@ -78,14 +78,25 @@ export function assertDateFlag(
  * parseInt('200', 50) = NaN, the client dropped it, and the server used its
  * default. A parser's error is also printed by Commander as prose, before the
  * output format is known, so JSON consumers would get no envelope.
+ *
+ * `min` is 1 for `--limit` and `--weeks`: the client sends only truthy values,
+ * so a 0 would be dropped and the server would use its default, the same silent
+ * fallback. `--offset 0` is the default anyway and stays valid.
  */
-export function intFlag(flag: string, raw: string | undefined, format: Format): number | undefined {
+export function intFlag(
+  flag: string,
+  raw: string | undefined,
+  format: Format,
+  min = 0,
+): number | undefined {
   if (raw === undefined) return undefined;
   const trimmed = raw.trim();
-  if (!/^\d+$/.test(trimmed)) {
-    errorEnvelope(`${flag} must be a whole number, got "${raw}".`, format);
+  const value = /^\d+$/.test(trimmed) ? Number.parseInt(trimmed, 10) : Number.NaN;
+  if (!(value >= min)) {
+    const expected = min > 0 ? `a whole number of at least ${min}` : 'a whole number';
+    errorEnvelope(`${flag} must be ${expected}, got "${raw}".`, format);
   }
-  return Number.parseInt(trimmed, 10);
+  return value;
 }
 
 /**
