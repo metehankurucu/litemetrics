@@ -28,6 +28,7 @@
 ### `@litemetrics/cli`
 
 - **`--limit`, `--offset` and `--weeks` are read in base 10.** Commander passes an option's default to its parser as a second argument, and a bare `parseInt` took it as the radix: `events -l 200` was `parseInt('200', 50)` = NaN, so every `events` call returned the server default of 50; `users -l 10` asked for 30 rows (base 30); `retention -w 12` asked for 10 weeks (base 8) and `-w 8` for none. A value that is not a whole number now exits 1 instead of being dropped. `base analytics` forwards these flags to this CLI, so it had the same bug.
+- **`users events` honours `-l`, `--offset` and `--include-bots`.** The parent `users` command declares the same three flags, and Commander hands a flag to the first command in the chain that knows it, so `users events <id> -l 50` set the user list's limit and the events call always asked for its defaults: 30 rows from the start, bot-flagged events hidden. Paging a user's events past the first 30 was impossible, from this CLI and from `base analytics`.
 
 ## 0.9.0 - Ad click IDs, link click identity, one event per labelled click
 

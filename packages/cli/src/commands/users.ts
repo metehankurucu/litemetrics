@@ -113,6 +113,10 @@ export function registerUsersCommand(program: Command) {
     .option('-t, --type <type>', 'Event type: pageview, event, identify')
     .option('-n, --name <name>', 'Filter by event name')
     .option('-p, --period <period>', 'Period', '30d')
+    // Declared again so `users events --help` lists them, but never read here:
+    // the parent `users` command declares the same three flags, and Commander
+    // hands a flag to the first command in the chain that knows it, so
+    // `users events <id> -l 50` sets users.limit and leaves this one at its default.
     .option('-l, --limit <n>', 'Limit results', parseIntOption, 30)
     .option('--offset <n>', 'Offset for pagination', parseIntOption)
     .option('--include-bots', 'Include events flagged by the bot filter')
@@ -120,6 +124,7 @@ export function registerUsersCommand(program: Command) {
       const globalOpts = program.opts();
       const format = resolveFormat(globalOpts.format);
       validatePeriod(opts.period, undefined, undefined, format);
+      const { limit, offset, includeBots } = users.opts();
       try {
         const config = loadConfig({ url: globalOpts.url, adminSecret: globalOpts.secret, siteId: globalOpts.site }, format);
         const siteIds = await resolveSiteIds(config, format);
@@ -132,9 +137,9 @@ export function registerUsersCommand(program: Command) {
               type: opts.type,
               eventName: opts.name,
               period: opts.period,
-              limit: opts.limit,
-              offset: opts.offset,
-              includeBots: opts.includeBots,
+              limit,
+              offset,
+              includeBots,
             });
           },
           table: (result) => {
