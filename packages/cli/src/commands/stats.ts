@@ -3,9 +3,8 @@ import type { Metric } from '@litemetrics/core';
 import { METRIC_IDS } from '@litemetrics/core';
 import { loadConfig, resolveSiteIds } from '../config.js';
 import { makeAnalyticsClient } from '../client.js';
-import { resolveFormat, parseFilters, handleError, invalidMetric, validatePeriod } from '../output.js';
+import { resolveFormat, parseFilters, handleError, invalidMetric, validatePeriod, intFlag } from '../output.js';
 import { runPerSite } from '../multisite.js';
-import { parseIntOption } from '../int-option.js';
 
 export function registerStatsCommand(program: Command) {
   program
@@ -14,7 +13,7 @@ export function registerStatsCommand(program: Command) {
     .option('-p, --period <period>', 'Period: 1h, 24h, 7d, 30d, 90d, custom', '24h')
     .option('--from <date>', 'Start date (ISO)')
     .option('--to <date>', 'End date (ISO)')
-    .option('-l, --limit <n>', 'Limit results', parseIntOption)
+    .option('-l, --limit <n>', 'Limit results')
     .option('--filter <kv...>', 'Filters (key=value, repeatable). See `litemetrics filters`')
     .option('-c, --compare', 'Compare with previous period')
     .option('--timezone <tz>', 'IANA timezone (e.g. Europe/Istanbul)')
@@ -26,6 +25,7 @@ export function registerStatsCommand(program: Command) {
         invalidMetric(metric, METRIC_IDS, format, 'litemetrics metrics');
       }
       validatePeriod(opts.period, opts.from, opts.to, format);
+      const limit = intFlag('--limit', opts.limit, format);
       try {
         const config = loadConfig({ url: globalOpts.url, adminSecret: globalOpts.secret, siteId: globalOpts.site }, format);
         const siteIds = await resolveSiteIds(config, format);
@@ -39,7 +39,7 @@ export function registerStatsCommand(program: Command) {
               period: opts.period,
               dateFrom: opts.from,
               dateTo: opts.to,
-              limit: opts.limit,
+              limit,
               filters: parseFilters(opts.filter),
               compare: opts.compare,
               timezone: opts.timezone,

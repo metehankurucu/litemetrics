@@ -68,6 +68,27 @@ export function assertDateFlag(
 }
 
 /**
+ * Read a whole-number flag (`--limit`, `--offset`, `--weeks`) in base 10, or
+ * exit 1 through the error envelope. Returns undefined when the flag was not
+ * supplied and has no default.
+ *
+ * Validated in the action rather than as a Commander option parser. Commander
+ * calls a parser as parser(value, previous), with the option's default as
+ * `previous`, and a bare `parseInt` took that as the radix: `events -l 200` was
+ * parseInt('200', 50) = NaN, the client dropped it, and the server used its
+ * default. A parser's error is also printed by Commander as prose, before the
+ * output format is known, so JSON consumers would get no envelope.
+ */
+export function intFlag(flag: string, raw: string | undefined, format: Format): number | undefined {
+  if (raw === undefined) return undefined;
+  const trimmed = raw.trim();
+  if (!/^\d+$/.test(trimmed)) {
+    errorEnvelope(`${flag} must be a whole number, got "${raw}".`, format);
+  }
+  return Number.parseInt(trimmed, 10);
+}
+
+/**
  * R1: reject any `--period` outside the enum (with did-you-mean suggestions),
  * and reject `custom` unless both `--from` and `--to` are supplied. The date flags
  * are checked first: a value that is not a date is wrong whichever period asked for

@@ -8,6 +8,7 @@ import {
   invalidMetric,
   validatePeriod,
   assertDateFlag,
+  intFlag,
   errorEnvelope,
   handleError,
   resolveCompact,
@@ -581,5 +582,54 @@ describe('validatePeriod date flags', () => {
     const errSpy = mockExit();
     expect(() => validatePeriod('custom', '2026-08-11', undefined, 'json')).toThrow('exit');
     expect(JSON.parse(errSpy.mock.calls[0][0] as string).error).toContain('--to');
+  });
+});
+
+// ─── --limit / --offset / --weeks are whole numbers ──
+// Commander passed an option's default to a bare `parseInt` parser as the radix
+// (`events -l 200` was parseInt('200', 50) = NaN), and a parser's error skipped
+// the envelope. intFlag reads the raw string in the action instead.
+describe('intFlag', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const mockExit = () => {
+    vi.spyOn(process, 'exit').mockImplementation((() => {
+      throw new Error('exit');
+    }) as never);
+    return vi.spyOn(console, 'error').mockImplementation(() => {});
+  };
+
+  it('reads base 10, whatever the digits look like in another radix', () => {
+    mockExit();
+    expect(intFlag('--limit', '200', 'json')).toBe(200);
+    expect(intFlag('--weeks', '8', 'json')).toBe(8);
+    expect(intFlag('--weeks', '08', 'json')).toBe(8);
+    expect(intFlag('--offset', ' 12 ', 'json')).toBe(12);
+    expect(intFlag('--offset', '0', 'json')).toBe(0);
+  });
+
+  it('returns undefined for an omitted flag', () => {
+    mockExit();
+    expect(intFlag('--offset', undefined, 'json')).toBeUndefined();
+  });
+
+  it.each(['abc', '', '12abc', '-5', '1.5', '0x10', '1e3'])(
+    'rejects %j through the JSON envelope',
+    (bad) => {
+      const errSpy = mockExit();
+      expect(() => intFlag('--limit', bad, 'json')).toThrow('exit');
+      expect(process.exit).toHaveBeenCalledWith(1);
+      expect(JSON.parse(errSpy.mock.calls[0][0] as string)).toEqual({
+        error: `--limit must be a whole number, got "${bad}".`,
+      });
+    },
+  );
+
+  it('reports in prose when the format is not json', () => {
+    const errSpy = mockExit();
+    expect(() => intFlag('--weeks', 'abc', 'table')).toThrow('exit');
+    expect(errSpy.mock.calls[0][0]).toBe('Error: --weeks must be a whole number, got "abc".');
   });
 });

@@ -12,7 +12,10 @@ vi.mock('./client.js', () => ({
   makeAnalyticsClient: vi.fn(),
 }));
 
+import { registerEventsCommand } from './commands/events';
 import { registerUsersCommand } from './commands/users';
+import { registerRetentionCommand } from './commands/retention';
+import { registerStatsCommand } from './commands/stats';
 import { makeAnalyticsClient } from './client.js';
 
 const asMock = makeAnalyticsClient as unknown as ReturnType<typeof vi.fn>;
@@ -20,8 +23,11 @@ const asMock = makeAnalyticsClient as unknown as ReturnType<typeof vi.fn>;
 function mockClient() {
   const client = {
     setSiteId: vi.fn(),
+    getEventsList: vi.fn(async () => ({ events: [], total: 0, offset: 0, limit: 0 })),
     getUsers: vi.fn(async () => ({ users: [], total: 0, offset: 0, limit: 0 })),
     getUserEvents: vi.fn(async () => ({ events: [], total: 0, offset: 0, limit: 0 })),
+    getRetention: vi.fn(async () => ({ cohorts: [] })),
+    getStats: vi.fn(async () => ({ data: [], total: 0 })),
   };
   asMock.mockReturnValue(client);
   return client;
@@ -34,7 +40,10 @@ function buildProgram(): Command {
     .option('--url <url>', 'URL')
     .option('--secret <secret>', 'Secret')
     .option('--site <siteId>', 'Site');
+  registerEventsCommand(program);
   registerUsersCommand(program);
+  registerRetentionCommand(program);
+  registerStatsCommand(program);
   return program;
 }
 
@@ -80,5 +89,67 @@ describe('users events pagination flags', () => {
     const client = mockClient();
     await run('users', '-l', '10', '--offset', '20');
     expect(client.getUsers).toHaveBeenCalledWith(expect.objectContaining({ limit: 10, offset: 20 }));
+  });
+});
+
+describe('integer flags are read in base 10', () => {
+  // A bare `parseInt` option parser took the option's default as the radix:
+  // events -l 200 = parseInt('200', 50) = NaN, users -l 10 = parseInt('10', 30) = 30,
+  // retention -w 12 = parseInt('12', 8) = 10.
+  type Method = 'getEventsList' | 'getUsers' | 'getRetention';
+  const cases: [string, string[], Method, Record<string, unknown>][] = [
+    ['events -l 200', ['events', '-l', '200'], 'getEventsList', { limit: 200 }],
+    ['events -l 10', ['events', '-l', '10'], 'getEventsList', { limit: 10 }],
+    ['events --offset 100', ['events', '--offset', '100'], 'getEventsList', { limit: 50, offset: 100 }],
+    ['events, a repeated -l', ['events', '-l', '10', '-l', '20'], 'getEventsList', { limit: 20 }],
+    ['events, no flags', ['events'], 'getEventsList', { limit: 50, offset: undefined }],
+    ['users -l 10', ['users', '-l', '10'], 'getUsers', { limit: 10 }],
+    ['users -l 200', ['users', '-l', '200'], 'getUsers', { limit: 200 }],
+    ['users, no flags', ['users'], 'getUsers', { limit: 30, offset: undefined }],
+    ['retention -w 12', ['retention', '-w', '12'], 'getRetention', { weeks: 12 }],
+    ['retention -w 8', ['retention', '-w', '8'], 'getRetention', { weeks: 8 }],
+    ['retention, no flags', ['retention'], 'getRetention', { weeks: 8 }],
+  ];
+
+  it.each(cases)('%s', async (_name, args, method, expected) => {
+    const client = mockClient();
+    await run(...args);
+    expect(client[method]).toHaveBeenCalledWith(expect.objectContaining(expected));
+  });
+
+  it('stats -l 5', async () => {
+    const client = mockClient();
+    await run('stats', 'top_pages', '-l', '5');
+    expect(client.getStats).toHaveBeenCalledWith('top_pages', expect.objectContaining({ limit: 5 }));
+  });
+
+  it('stats without -l leaves the limit to the server', async () => {
+    const client = mockClient();
+    await run('stats', 'top_pages');
+    expect(client.getStats).toHaveBeenCalledWith('top_pages', expect.objectContaining({ limit: undefined }));
+  });
+});
+
+describe('a value that is not a whole number', () => {
+  const bad: [string[], string][] = [
+    [['events', '-l', 'abc'], '--limit must be a whole number, got "abc".'],
+    [['users', '--offset', '1.5'], '--offset must be a whole number, got "1.5".'],
+    [['users', 'events', 'abc', '-l', '12abc'], '--limit must be a whole number, got "12abc".'],
+    [['retention', '-w', 'x'], '--weeks must be a whole number, got "x".'],
+    [['stats', 'top_pages', '-l', 'NaN'], '--limit must be a whole number, got "NaN".'],
+  ];
+
+  it.each(bad)('%j exits 1 with the JSON envelope and sends nothing', async (args, message) => {
+    mockClient();
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {
+      throw new Error('exit');
+    }) as never);
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    await expect(run(...args)).rejects.toThrow('exit');
+
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    expect(errSpy.mock.calls.map((c) => JSON.parse(c[0] as string))).toEqual([{ error: message }]);
+    expect(asMock).not.toHaveBeenCalled();
   });
 });
