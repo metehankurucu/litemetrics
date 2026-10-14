@@ -35,7 +35,8 @@ async function main() {
   }
 
   await db.init();
-  console.log(`Connected to ${adapterType} at ${url}`);
+  // Not the URL: it carries the password, and the caller already knows where it points.
+  console.log(`Connected to ${adapterType}`);
 
   // Query all identify events that have a userId
   const sites = await db.listSites();

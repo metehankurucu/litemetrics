@@ -5,6 +5,7 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { existsSync } from 'fs';
 import { createCollectSummary } from './collect-summary';
+import { describeDatabaseUrl } from './database-url';
 import { intEnv } from './env';
 import {
   formatAccessLine,
@@ -277,7 +278,8 @@ for (const signal of ['SIGTERM', 'SIGINT'] as const) {
 // ─── Start server ────────────────────────────────────────
 app.listen(PORT, () => {
   console.log(`\n  Litemetrics Server running at http://localhost:${PORT}`);
-  console.log(`  Database: ${DB_ADAPTER} @ ${DATABASE_URL}\n`);
+  // Never the raw URL: it carries the password, and this line lands in the deploy logs.
+  console.log(`  Database: ${DB_ADAPTER} @ ${describeDatabaseUrl(DATABASE_URL)}\n`);
   console.log(`  API Endpoints:`);
   console.log(`    POST /api/collect     - Event collection`);
   console.log(`    GET  /api/stats       - Query analytics`);
