@@ -213,8 +213,11 @@ docker run -p 3002:3002 \
 | `BOT_VELOCITY_MAX_KEYS` | Cap on tracked `siteId:visitorId` windows (LRU-evicts the oldest) | `50000` |
 | `BOT_LOG_MAX_PER_MIN` | Detail `[bot-filter]` log lines allowed per minute; the overflow is counted as `suppressed=` on the `[collect]` summary | `20` |
 | `COLLECT_ERROR_LOG_MAX_PER_MIN` | Detail `[collect-error]` log lines allowed per minute; every failure is still counted in `err_codes=` on the `[collect]` summary | `5` |
+| `EVENT_RETENTION_DAYS` | **Postgres only.** Permanently delete raw event rows older than this many days: every site, every event type (including `identify`) and bot-flagged rows, judged by each event's client-supplied `timestamp`. Whole numbers from `30` to `36500`; unset, empty or `0` keeps everything, and an invalid value keeps everything and logs a warning | `0` (off) |
 
 > `DATABASE_URL` and `LITEMETRICS_ADMIN_SECRET` also work as aliases.
+
+> **Event retention is opt-in and deletions are permanent.** The library form is `db: { adapter: 'postgres', url, eventRetentionDays: 90 }`. Deletion starts one interval (10 minutes by default) after boot, not at boot, and proceeds gradually: a sweep every 10 minutes deletes at most 20,000 rows plus one window of at most 5,000 rows, so a large backlog takes many sweeps. The pace is per process, so run one process per database. Progress is logged as `[event-retention] sweep ...` lines. Read the [event retention section of the self-hosting guide](./docs/self-hosting.md#event-retention-opt-in-postgres-only) before enabling it: it lists what changes for readers (older periods, cohorts and period comparisons come back empty or partial) and what to check on disk and WAL first.
 
 <br/>
 

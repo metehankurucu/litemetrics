@@ -6,11 +6,12 @@ import { fileURLToPath } from 'url';
 import { existsSync } from 'fs';
 import { createCollectSummary } from './collect-summary';
 import { describeDatabaseUrl } from './database-url';
-import { intEnv } from './env';
+import { eventRetentionDaysEnv, intEnv } from './env';
 import {
   formatAccessLine,
   formatBotFilterLine,
   formatCollectErrorLine,
+  formatEventRetentionStatusLine,
   formatSiteTypeMismatchLine,
 } from './log-format';
 
@@ -48,6 +49,8 @@ const BOT_VELOCITY_MAX_KEYS = intEnv('BOT_VELOCITY_MAX_KEYS', 50_000);
 const BOT_VELOCITY_MAX_PAGEVIEWS = intEnv('BOT_VELOCITY_MAX_PAGEVIEWS', 60, { min: 0 });
 const BOT_LOG_MAX_PER_MIN = intEnv('BOT_LOG_MAX_PER_MIN', 20);
 const COLLECT_ERROR_LOG_MAX_PER_MIN = intEnv('COLLECT_ERROR_LOG_MAX_PER_MIN', 5);
+// Opt-in and permanent: 0 (unset, empty or invalid) keeps every raw event. Postgres only.
+const EVENT_RETENTION_DAYS = eventRetentionDaysEnv('EVENT_RETENTION_DAYS');
 
 const COLLECT_PATH = '/api/collect';
 
@@ -147,7 +150,8 @@ app.use(express.json());
 // ─── Initialize collector ────────────────────────────────
 const collector = await createCollector({
   db: { adapter: DB_ADAPTER, url: DATABASE_URL,
-    aggregateSnapshotKeeperPath: process.env.LITEMETRICS_AGGREGATE_KEEPER_PATH },
+    aggregateSnapshotKeeperPath: process.env.LITEMETRICS_AGGREGATE_KEEPER_PATH,
+    eventRetentionDays: EVENT_RETENTION_DAYS },
   adminSecret: ADMIN_SECRET,
   geoip: GEOIP,
   trustProxy: TRUST_PROXY,
@@ -279,7 +283,8 @@ for (const signal of ['SIGTERM', 'SIGINT'] as const) {
 app.listen(PORT, () => {
   console.log(`\n  Litemetrics Server running at http://localhost:${PORT}`);
   // Never the raw URL: it carries the password, and this line lands in the deploy logs.
-  console.log(`  Database: ${DB_ADAPTER} @ ${describeDatabaseUrl(DATABASE_URL)}\n`);
+  console.log(`  Database: ${DB_ADAPTER} @ ${describeDatabaseUrl(DATABASE_URL)}`);
+  console.log(`  ${formatEventRetentionStatusLine(EVENT_RETENTION_DAYS, DB_ADAPTER)}\n`);
   console.log(`  API Endpoints:`);
   console.log(`    POST /api/collect     - Event collection`);
   console.log(`    GET  /api/stats       - Query analytics`);

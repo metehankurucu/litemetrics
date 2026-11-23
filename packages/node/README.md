@@ -65,6 +65,24 @@ const collector = await createCollector({
 
 Full feature parity with the ClickHouse adapter — every metric, time series, top-N query, and retention cohort produces identical results across both backends. Uses native `jsonb` for properties/traits, indexed `(site_id, timestamp)` for fast range scans, and a soft-delete column on sites. Tables are auto-created on init. Recommended when you already run Postgres and want one less moving piece.
 
+#### Event retention (opt-in, Postgres only)
+
+Raw events are kept forever unless you set `eventRetentionDays`. **Deletions are permanent.**
+
+```ts
+const collector = await createCollector({
+  db: { adapter: 'postgres', url: process.env.DATABASE_URL!, eventRetentionDays: 90 },
+});
+```
+
+- **What is deleted:** raw event rows older than N days, for every site, every event type including `identify`, and bot-flagged rows too. It keys on each event's client-supplied `timestamp`, not on ingestion time. Sites, the identity map and the aggregate snapshot tables are not touched.
+- **Scope:** Postgres only, off by default. Accepted: integers from 30 to 36500. `undefined` or `0` is off; any other value keeps it off and logs one `[event-retention] invalid ...` warning. With the ClickHouse or MongoDB adapter the option logs a warning and deletes nothing.
+- **Pacing:** nothing is deleted at startup. The first sweep runs one interval (10 minutes) after `init()`, then every 10 minutes. A sweep deletes at most 20,000 rows plus one window (one site's oldest hour of events, at most 5,000 rows, in its own transaction under a 30 second statement timeout), so a large backlog clears gradually. The pace is per process: run one process per database, because k processes on one database multiply the pace by k. `close()` waits for the window in progress.
+- **Logs:** a sweep that deleted rows or failed prints one `[event-retention] sweep status=... deleted=... cutoff=... duration_ms=... more=...` line (errors on stderr, with `error_class=` and `error="..."`); a sweep that deleted nothing prints nothing.
+- **What changes for readers:** user detail lifetime counters and first-seen only count retained events; a user or visitor with no retained events returns 404 from the user detail endpoint while its identity mapping stays; cohort weeks and custom date ranges older than N days come back empty; any preset period or custom range reaching back past N days counts only retained events (for example `90d` when N is below 90), and so does the previous-period comparison (`compare`, which for `90d` looks 90 to 180 days back): while that window is partly deleted, `previousTotal` is too low and `changePercent` overstates growth; the identity backfill script only sees `identify` events within N days.
+- **Disk space:** deleted space is reused by Postgres after autovacuum but is not returned to the operating system.
+- **First run:** make sure WAL settings and free disk can absorb the first backlog, watch the log lines and disk, and set `0` (or leave it unset) to stop. Shortening the period takes effect on the next sweep; lengthening it does not bring deleted data back.
+
 ### MongoDB
 
 ```ts
@@ -199,6 +217,7 @@ Server wrapper env vars (`apps/server`):
 - `BOT_VELOCITY_MAX_PAGEVIEWS` (default `60`): max pageviews per window per `siteId:visitorId` before the velocity layer fires. Counted in pageviews, not requests, so batching does not hide a flood. Set to `0` to switch this layer off on its own.
 - `BOT_VELOCITY_MAX_KEYS` (default `50000`): cap on tracked `siteId:visitorId` windows. Past it the least recently used window is evicted, so a client sending rotating visitor ids can clear real windows; raise it on a busy host.
 - `BOT_LOG_MAX_PER_MIN` (default `20`): detail `[bot-filter]` log lines allowed per minute; the overflow is counted as `suppressed=` on the `[collect]` summary line.
+- `EVENT_RETENTION_DAYS` (default unset, off): Postgres only. Permanently delete raw events older than this many days; whole numbers from `30` to `36500`, plain digits. Unset, empty or `0` keeps everything; an invalid value keeps everything and logs a warning. The server passes it to the collector as `db.eventRetentionDays` and prints an `Event retention:` status line at boot.
 - `COLLECT_ERROR_LOG_MAX_PER_MIN` (default `5`): detail `[collect-error]` log lines allowed per minute. The `[collect]` summary's `err_codes=` lists the top 10 keys as `<stage>:<class>:<count>`, `other:N` for omitted occurrences and `untracked:N` for occurrences beyond the 50-key tracking cap. Sum all these counts for the total number of failures. Withheld lines are not part of `suppressed=` (that field is bot-filter only), so derive them by subtracting the printed lines from this total.
 
 Read endpoints (`/api/stats`, `/api/events`, `/api/users`) exclude flagged

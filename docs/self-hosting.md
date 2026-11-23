@@ -68,6 +68,7 @@ Open `http://localhost:3002` for the dashboard.
 | `BOT_VELOCITY_MAX_KEYS` | Cap on tracked `siteId:visitorId` windows; the least recently used is evicted past it | `50000` |
 | `BOT_LOG_MAX_PER_MIN` | Detail `[bot-filter]` log lines allowed per minute; the overflow is counted as `suppressed=` on the `[collect]` summary | `20` |
 | `COLLECT_ERROR_LOG_MAX_PER_MIN` | Detail `[collect-error]` log lines allowed per minute; every failure is still counted in `err_codes=` on the `[collect]` summary | `5` |
+| `EVENT_RETENTION_DAYS` | Postgres only: permanently delete raw events older than this many days (whole numbers from `30` to `36500`). Unset, empty or `0` keeps everything; an invalid value keeps everything and logs a warning. See [Event retention](#event-retention-opt-in-postgres-only) | `0` (off) |
 
 `DATABASE_URL` and `LITEMETRICS_ADMIN_SECRET` also work as aliases.
 
@@ -230,6 +231,29 @@ If using the Postgres adapter:
 - Sites use a `deleted_at` soft-delete column to mirror ClickHouse semantics
 - For backups, use `pg_dump` or your provider's snapshot feature (Supabase, Neon, RDS, Railway PG plugin)
 - Pgs at scale (>10M events) benefit from monthly partitioning; the schema is partition-friendly but not partitioned by default
+
+### Event retention (opt-in, Postgres only)
+
+By default every raw event is kept forever. Set `EVENT_RETENTION_DAYS` to delete raw event rows older than that many days. **Deletions are permanent**: there is no archive and no undo, so take a backup first if you might want the data.
+
+```bash
+EVENT_RETENTION_DAYS=90
+```
+
+Library users pass the same thing as `db: { adapter: 'postgres', url, eventRetentionDays: 90 }`.
+
+- **What is deleted.** Raw rows of the events table whose `timestamp` is older than N days: every site (including soft-deleted and unregistered ones), every event type (`pageview`, `event` and `identify`), and bot-flagged rows too. Retention keys on the `timestamp` each event carries, which is supplied by the client, not on when the row was ingested. Sites, the identity map and the aggregate snapshot tables are not touched.
+- **Scope and values.** Postgres only, off by default. Accepted: whole numbers from 30 to 36500, written as plain digits. `0`, empty or unset means off. Anything else (`120d`, `1.5`, `-1`, `7`, a value above 36500) keeps retention off and logs one warning at boot. With the ClickHouse or MongoDB adapter the setting is ignored with a warning and nothing is deleted.
+- **Pacing.** Deletion begins one interval (10 minutes by default) after boot, not at boot. Then a sweep runs every 10 minutes and deletes at most 20,000 rows, plus the one window in progress. A window is one site's oldest hour of events, capped at 5,000 rows, deleted in its own transaction under a 30 second statement timeout. These are fixed defaults, not environment settings. A large backlog therefore clears gradually, over many sweeps. The pace is per process: run one collector process per database, because k processes on one database multiply the pace by k.
+- **Logs.** Every boot prints one `Event retention:` line, `off` or `N days`. A sweep that deleted rows or failed prints one line, for example `[event-retention] sweep status=ok deleted=20000 cutoff=2026-01-01T00:00:00.000Z duration_ms=900 more=true`. `status` is `ok`, `error` or `closed` (the process was shutting down); `more=true` means eligible rows are left for the next sweep; failures go to stderr and add `error_class=` and `error="..."`. A sweep that deleted nothing prints nothing. If the process clock and the database clock differ by more than 24 hours, the sweep deletes nothing and reports an error.
+- **What changes for readers.** Once rows are gone, queries only see the retained events:
+  - User detail lifetime counters and first-seen only count retained events. A user or visitor with no retained events returns 404 from the user detail endpoint, although its identity mapping stays in place.
+  - Cohort weeks and custom date ranges older than N days come back empty.
+  - Any preset period or custom range that reaches back past N days counts only retained events, for example `90d` when N is below 90.
+  - The previous-period comparison (`compare`, which for `90d` looks 90 to 180 days back) is affected the same way: while that comparison window is partly deleted, `previousTotal` is too low and `changePercent` overstates growth.
+  - The identity backfill script only sees `identify` events within the last N days.
+- **Disk space.** Deleted rows free space inside the table, which Postgres reuses after autovacuum. The file is not shrunk and the space is not returned to the operating system.
+- **First run.** The first sweeps may delete a large backlog. Before enabling, make sure your WAL settings and free disk can absorb it, then watch the `[event-retention]` lines and disk usage. Set `EVENT_RETENTION_DAYS=0` (or unset it) to stop. Shortening the period takes effect from the first sweep after the change is deployed; lengthening it does not bring deleted data back.
 
 ## MongoDB Notes
 

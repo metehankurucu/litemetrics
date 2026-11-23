@@ -129,3 +129,15 @@ export function formatAccessLine(input: AccessLogInput): string {
   if (input.aborted) parts.push('aborted');
   return parts.join(' ');
 }
+
+/**
+ * Boot status line for event retention. Printed on every boot, on or off, so an operator
+ * can read the state back after changing the variable.
+ */
+export function formatEventRetentionStatusLine(days: number, adapter: string): string {
+  if (!(days > 0)) return 'Event retention: off';
+  if (adapter === 'postgres') {
+    return `Event retention: ${days} days (raw events older than that are deleted permanently)`;
+  }
+  return 'Event retention: off (EVENT_RETENTION_DAYS is ignored: only the postgres adapter supports it)';
+}
