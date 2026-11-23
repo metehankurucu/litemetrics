@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+**Opt-in retention of raw events (Postgres only, off by default).** Set `EVENT_RETENTION_DAYS` on the server, or `db.eventRetentionDays` in the library, to delete raw event rows older than that many days. **Deletions are permanent.** Nothing changes unless you set it: unset, empty or `0` keeps every event, and an invalid value keeps every event and logs a warning. Accepted values are whole numbers from 30 to 36500. ClickHouse and MongoDB ignore the setting with a warning.
+
+- **Scope.** Every site, every event type (including `identify`) and bot-flagged rows, judged by each event's client-supplied `timestamp`. Sites, the identity map and the aggregate snapshot tables are not touched.
+- **Pacing.** Deletion starts one interval (10 minutes) after boot, not at boot. A sweep every 10 minutes deletes at most 20,000 rows plus one window of at most 5,000 rows, each window in its own transaction under a 30 second statement timeout, so a backlog clears gradually. The pace is per process: run one process per database. A sweep is skipped, with an error line, when the process clock and the database clock differ by more than 24 hours.
+- **Visibility.** Every server boot prints one `Event retention:` status line (`off` or `N days`). A sweep that deleted rows or failed prints one `[event-retention] sweep ...` line.
+- **What changes for readers.** Periods, cohorts, previous-period comparisons and user detail counters only see retained events; see the self-hosting guide before enabling it. Plan WAL and free disk for the first backlog: deleted space is reused after autovacuum but is not returned to the operating system.
+
 **`standard` bot-filter mode now runs layers 2 and 3, and a new layer 4 flags visitors moving faster than a person can read.** The default mode used to evaluate only the signature layer, so `bot_flag` was never set on a stored event and `litemetrics bots` always reported 0. Layers 1-3 each judge one request, so a browser-shaped client that batches and rotates addresses cleared all of them; layer 4 counts pageviews per visitor instead.
 
 ### `@litemetrics/node`
@@ -13,10 +20,12 @@
 - **`onBotDetected` reports `events`**, how many events of the batch the action covered, and the `[bot-filter]` log line carries it as `events=`: a layer-4 drop can take part of a batch.
 - **The per-IP key ignores an `X-Forwarded-For` or `X-Real-IP` longer than 45 characters** and falls back to the socket address, so caller-supplied header text cannot become an unbounded rate-limit key.
 - `createRateLimiter` takes `maxKeys` (`maxIps` still works) and `countLimited`.
+- `PostgresAdapter` takes an options object with `eventRetentionDays`, and the `PostgresAdapterOptions` type is exported (see the retention entry above).
 - **User detail honours the bot filter.** `GET /api/users/:identifier` and `getUserDetail` counted bot-flagged events that the user list and event history hid. They now exclude them by default and accept `includeBots`.
 
 ### `@litemetrics/core`
 
+- `DBConfig` gains the optional `eventRetentionDays` (see the retention entry above).
 - `DBAdapter.getUserDetail` takes an optional `UserDetailOptions` (`{ includeBots?: boolean }`).
 - `'velocity'` joins `EnrichedEvent.botFlag`, `BotDetectedInfo.layer` and `BotDropReason`; new `BotLayer` and `BotStats` types; `BotDetectedInfo.events`; `BotFilterConfig` gains `visitorVelocityWindowMs`, `visitorVelocityMaxPageviews` and `visitorVelocityMaxKeys`. `DBAdapter.queryBotStats` returns `byVelocity`.
 

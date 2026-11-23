@@ -373,6 +373,12 @@ export interface DBConfig {
   url: string;
   /** ClickHouse only: shared KeeperMap path. Required for aggregate page capability. */
   aggregateSnapshotKeeperPath?: string;
+  /**
+   * Postgres only: delete raw events older than this many days (opt-in, permanent).
+   * Unset or 0 disables it (the default). Accepted: integers 30..36500; any other value
+   * keeps retention disabled and logs one warning. Other adapters warn and delete nothing.
+   */
+  eventRetentionDays?: number;
 }
 
 export interface GeoIPConfig {

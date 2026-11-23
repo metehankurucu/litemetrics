@@ -6,6 +6,8 @@ import { AggregatePager, SNAPSHOT_BUILD_TIMEOUT } from '../aggregate-page.js';
 import { PostgresAggregateBackend } from './aggregate-postgres.js';
 import type { QueryPageOptions, QueryPageParams, QueryPageResult } from '@litemetrics/core';
 import { isValidTimezone, aggregateBotStats } from '../query-helpers.js';
+import { EventRetentionSweeper, resolveEventRetentionDays } from '../event-retention.js';
+import { PostgresEventRetentionStore } from './event-retention-postgres.js';
 
 const EVENTS_TABLE = 'litemetrics_events';
 const SITES_TABLE = 'litemetrics_sites';
@@ -422,10 +424,22 @@ interface SiteRow {
 
 // ─── Adapter ───────────────────────────────────────────────────
 
+export interface PostgresAdapterOptions {
+  /**
+   * Delete raw events older than this many days (opt-in, permanent). Unset or 0 disables it
+   * (the default). Accepted: integers 30..36500; any other value keeps retention disabled
+   * and logs one warning.
+   */
+  eventRetentionDays?: number;
+}
+
 export class PostgresAdapter implements DBAdapter {
   private pool: Pool;
   private aggregatePager?: AggregatePager;
   private aggregateBackend?: PostgresAggregateBackend;
+  /** Present only when a valid retention period was configured. */
+  private retentionSweeper?: EventRetentionSweeper;
+  private closed = false;
 
   private getAggregateBackend(): PostgresAggregateBackend {
     return this.aggregateBackend ??= new PostgresAggregateBackend(this.pool, pgNormalizedReferrerExpr, pgChannelClassificationExpr);
@@ -447,7 +461,7 @@ export class PostgresAdapter implements DBAdapter {
     return row ? this.toSite(row) : null;
   }
 
-  constructor(url: string) {
+  constructor(url: string, options: PostgresAdapterOptions = {}) {
     const max = Number(process.env.LITEMETRICS_PG_POOL_MAX ?? 10);
     this.pool = new Pool({
       connectionString: url,
@@ -456,6 +470,23 @@ export class PostgresAdapter implements DBAdapter {
       // Aggregate leases additionally enforce their remaining absolute budget.
       connectionTimeoutMillis: SNAPSHOT_BUILD_TIMEOUT,
     });
+
+    // Event retention is off unless a valid period is configured. A bad value never deletes.
+    const requested = options?.eventRetentionDays;
+    const retention = resolveEventRetentionDays(requested);
+    if (retention.status === 'invalid') {
+      let printed: string;
+      try { printed = String(requested); } catch { printed = 'unprintable'; }
+      console.warn(
+        `[event-retention] invalid eventRetentionDays=${printed}: expected an integer from 30 to 36500; ` +
+        'event retention stays off and nothing will be deleted',
+      );
+    } else if (retention.status === 'enabled') {
+      this.retentionSweeper = new EventRetentionSweeper(
+        new PostgresEventRetentionStore(this.pool),
+        { retentionDays: retention.days },
+      );
+    }
   }
 
   async init(): Promise<void> {
@@ -483,9 +514,15 @@ export class PostgresAdapter implements DBAdapter {
     // Aggregate paging is additive: unavailable capability must not break
     // legacy collection. Successful initialization owns the idle expiry task.
     await this.getAggregateBackend().ensure().catch(() => {});
+    // Retention starts last, only after the schema is in place. It runs no sweep here: the
+    // first one happens one interval after this call. A close() that raced init() wins.
+    if (!this.closed) this.retentionSweeper?.start();
   }
 
   async close(): Promise<void> {
+    this.closed = true;
+    // Let a window in flight finish on a live pool before the pool is ended.
+    await this.retentionSweeper?.close();
     await this.aggregateBackend?.close();
     await this.pool.end();
   }

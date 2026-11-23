@@ -30,3 +30,35 @@ export function intEnv(name: string, fallback: number, options: IntEnvOptions = 
   }
   return parsed;
 }
+
+const MIN_EVENT_RETENTION_DAYS = 30;
+const MAX_EVENT_RETENTION_DAYS = 36_500;
+
+/**
+ * Strict reader for EVENT_RETENTION_DAYS, the opt-in period after which raw events are
+ * deleted. Returns 0 (disabled) or an integer from 30 to 36500, and never throws.
+ *
+ * Deliberately not `intEnv`: that parser accepts "120d" as 120 and falls back to a default
+ * on a bad value, and for a setting that deletes data a typo must never turn into a
+ * different, valid period. Anything that is not plain ASCII digits within the accepted
+ * range disables retention and warns once; the server keeps booting.
+ */
+export function eventRetentionDaysEnv(name: string): number {
+  const raw = process.env[name];
+  if (raw === undefined || raw === '') return 0;
+  const reject = (): number => {
+    console.warn(
+      `Warning: ${name}="${raw}" is not an integer from ${MIN_EVENT_RETENTION_DAYS} to ${MAX_EVENT_RETENTION_DAYS}; ` +
+      'event retention stays off and nothing will be deleted',
+    );
+    return 0;
+  };
+  if (!/^[0-9]+$/.test(raw)) return reject();
+  const digits = raw.replace(/^0+/, '');
+  if (digits === '') return 0;
+  // More than five significant digits is beyond the maximum, and beyond safe-integer range too.
+  if (digits.length > 5) return reject();
+  const days = Number(digits);
+  if (days < MIN_EVENT_RETENTION_DAYS || days > MAX_EVENT_RETENTION_DAYS) return reject();
+  return days;
+}

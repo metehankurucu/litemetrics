@@ -117,6 +117,15 @@ app.listen(3002);`}</code>
             <td><code>true</code></td>
             <td>Set when running behind a load balancer.</td>
           </tr>
+          <tr>
+            <td><code>EVENT_RETENTION_DAYS</code></td>
+            <td><code>0</code> (off)</td>
+            <td>
+              Opt-in. Permanently deletes raw events older than this many
+              days (30 to 36500). See{' '}
+              <a href="#event-retention">Event retention</a>.
+            </td>
+          </tr>
         </tbody>
       </table>
 
@@ -155,15 +164,81 @@ app.listen(3002);`}</code>
           concurrent traffic.
         </li>
         <li>
-          <strong>Vacuum</strong>: events are insert-only with TTL deletions
-          (when configured). Postgres autovacuum keeps things tidy without
-          intervention.
+          <strong>Vacuum</strong>: events are insert-only unless you enable{' '}
+          <a href="#event-retention">event retention</a>, which deletes old
+          rows. Postgres autovacuum keeps things tidy without intervention
+          and reuses the space freed by deletions.
         </li>
         <li>
           <strong>Partitioning</strong>: for multi-tenant deployments above
           a few million events per site per month, declarative partitioning
           on <code>timestamp</code> reduces query and vacuum costs. Add it
           via a manual migration; the adapter does not require it.
+        </li>
+      </ul>
+
+      <h2 id="event-retention">Event retention (opt-in)</h2>
+      <p>
+        Raw events are kept forever by default. Set{' '}
+        <code>EVENT_RETENTION_DAYS</code> (or pass{' '}
+        <code>eventRetentionDays</code> in the <code>db</code> option of{' '}
+        <code>createCollector</code>) to delete raw events older than that
+        many days. <strong>Deletions are permanent.</strong>
+      </p>
+      <ul>
+        <li>
+          <strong>What is deleted</strong>: event rows older than N days for
+          every site and every event type, including <code>identify</code>,
+          and bot-flagged rows too. It keys on each event's client-supplied{' '}
+          <code>timestamp</code>, not on ingestion time. Sites, the identity
+          map and the aggregate snapshot tables are not touched.
+        </li>
+        <li>
+          <strong>Scope</strong>: Postgres only, off by default. Accepted
+          values are whole numbers from 30 to 36500; unset, empty or{' '}
+          <code>0</code> is off, and any other value keeps it off and logs a
+          warning.
+        </li>
+        <li>
+          <strong>Pacing</strong>: deletion begins 10 minutes after boot, not
+          at boot. A sweep runs every 10 minutes and deletes at most 20,000
+          rows plus one window of at most 5,000 rows (one site's oldest hour
+          of events, in its own transaction under a 30 second statement
+          timeout), so a large backlog clears gradually. The pace is per
+          process: run one process per database, because k processes on one
+          database multiply the pace by k.
+        </li>
+        <li>
+          <strong>Logs</strong>: each boot prints an{' '}
+          <code>Event retention:</code> status line, and a sweep that deleted
+          rows or failed prints one{' '}
+          <code>[event-retention] sweep ...</code> line.
+        </li>
+        <li>
+          <strong>What changes for readers</strong>: user detail lifetime
+          counters and first-seen only count retained events; a user or
+          visitor with no retained events returns 404 from the user detail
+          endpoint while its identity mapping stays; cohort weeks and custom
+          date ranges older than N days come back empty; any preset period
+          or custom range reaching back past N days counts only retained
+          events (for example <code>90d</code> when N is below 90), and so
+          does the previous-period comparison, which for <code>90d</code>{' '}
+          looks 90 to 180 days back: while that window is partly deleted,{' '}
+          <code>previousTotal</code> is too low and{' '}
+          <code>changePercent</code> overstates growth; the identity
+          backfill script only sees <code>identify</code> events within N
+          days.
+        </li>
+        <li>
+          <strong>Disk space</strong>: deleted space is reused by Postgres
+          after autovacuum but is not returned to the operating system.
+        </li>
+        <li>
+          <strong>First run</strong>: make sure WAL settings and free disk
+          can absorb the first backlog, watch the log lines and disk, and
+          set <code>0</code> (or unset the variable) to stop. Shortening the
+          period takes effect on the next sweep; lengthening it does not
+          bring deleted data back.
         </li>
       </ul>
 

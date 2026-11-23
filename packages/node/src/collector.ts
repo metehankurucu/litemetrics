@@ -1139,15 +1139,28 @@ export async function createCollector(config: CollectorConfig): Promise<Collecto
   };
 }
 
+/** Event retention exists for Postgres only; elsewhere a configured period is reported once and ignored. */
+function warnRetentionUnsupported(adapter: 'clickhouse' | 'mongodb', value: number | undefined): void {
+  if (value === undefined || value === 0) return;
+  let printed: string;
+  try { printed = String(value); } catch { printed = 'unprintable'; }
+  console.warn(
+    `[event-retention] unsupported adapter=${adapter} eventRetentionDays=${printed}: ` +
+    'event retention is only available for the postgres adapter, so nothing will be deleted',
+  );
+}
+
 function createAdapter(config: CollectorConfig['db']): DBAdapter {
   const adapter = config.adapter ?? 'clickhouse';
   switch (adapter) {
     case 'clickhouse':
+      warnRetentionUnsupported('clickhouse', config.eventRetentionDays);
       return new ClickHouseAdapter(config.url, { aggregateSnapshotKeeperPath: config.aggregateSnapshotKeeperPath });
     case 'mongodb':
+      warnRetentionUnsupported('mongodb', config.eventRetentionDays);
       return new MongoDBAdapter(config.url);
     case 'postgres':
-      return new PostgresAdapter(config.url);
+      return new PostgresAdapter(config.url, { eventRetentionDays: config.eventRetentionDays });
     default:
       throw new Error(`Unknown DB adapter: ${adapter}. Supported: clickhouse, mongodb, postgres`);
   }

@@ -47,3 +47,4 @@ export type {
   CollectErrorInfo,
   CollectErrorStage,
 } from '@litemetrics/core';
+export type { PostgresAdapterOptions } from './adapters/postgres';
