@@ -252,6 +252,7 @@ Library users pass the same thing as `db: { adapter: 'postgres', url, eventReten
   - Any preset period or custom range that reaches back past N days counts only retained events, for example `90d` when N is below 90.
   - The previous-period comparison (`compare`, which for `90d` looks 90 to 180 days back) is affected the same way: while that comparison window is partly deleted, `previousTotal` is too low and `changePercent` overstates growth.
   - The identity backfill script only sees `identify` events within the last N days.
+- **Clocks.** The cutoff comes from the server process clock. Each sweep first compares it with the database clock and deletes nothing when they differ by more than 24 hours (the sweep logs an error instead). Within that tolerance the process clock is trusted: a process clock a few hours fast deletes rows that many hours before they are N days old. Keep the host clock synchronised.
 - **Disk space.** Deleted rows free space inside the table, which Postgres reuses after autovacuum. The file is not shrunk and the space is not returned to the operating system.
 - **First run.** The first sweeps may delete a large backlog. Before enabling, make sure your WAL settings and free disk can absorb it, then watch the `[event-retention]` lines and disk usage. Set `EVENT_RETENTION_DAYS=0` (or unset it) to stop. Shortening the period takes effect from the first sweep after the change is deployed; lengthening it does not bring deleted data back.
 

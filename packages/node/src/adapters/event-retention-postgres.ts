@@ -56,9 +56,12 @@ WHERE s.site_id IS NOT NULL
   AND EXISTS (SELECT 1 FROM ${EVENTS_TABLE} e WHERE e.site_id = s.site_id AND e.timestamp < $1::timestamptz)
 `;
 
-/** Oldest eligible row of one site: the start of the next window. Read back as text, never as a JS Date. */
+/**
+ * Oldest eligible row of one site: the start of the next window. Read back as ISO 8601 UTC text with
+ * microseconds (never as a JS Date), so the round trip does not depend on the session DateStyle or TimeZone.
+ */
 const OLDEST_ELIGIBLE_SQL = `
-SELECT e.timestamp::text AS t0
+SELECT to_char(e.timestamp AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS t0
 FROM ${EVENTS_TABLE} e
 WHERE e.site_id = $1 AND e.timestamp < $2::timestamptz
 ORDER BY e.timestamp ASC
@@ -74,7 +77,9 @@ LIMIT 1
  */
 const DELETE_WINDOW_SQL = `
 DELETE FROM ${EVENTS_TABLE}
-WHERE event_id IN (
+WHERE site_id = $1
+  AND timestamp < $4::timestamptz
+  AND event_id IN (
   SELECT e.event_id
   FROM ${EVENTS_TABLE} e
   WHERE e.site_id = $1
@@ -213,10 +218,17 @@ export class PostgresEventRetentionStore implements EventRetentionStore {
    */
   private async inTransaction<T>(work: (query: Query) => Promise<T>): Promise<T> {
     const client = await this.checkout();
+    // pg-pool removes its own idle 'error' listener while a client is checked out, and pg emits
+    // 'error' on the client when its socket dies. Without a listener that would crash the process.
+    // The pending query rejects on its own; the connection is destroyed on release.
+    const emitter = client as unknown as { on?: (e: string, f: () => void) => void; removeListener?: (e: string, f: () => void) => void };
+    const onClientError = (): void => { /* handled through the rejected query */ };
+    if (typeof emitter.on === 'function') emitter.on.call(client, 'error', onClientError);
     let released = false;
     const release = (destroy: boolean): void => {
       if (released) return;
       released = true;
+      if (typeof emitter.removeListener === 'function') emitter.removeListener.call(client, 'error', onClientError);
       try { client.release(destroy); } catch { /* already gone */ }
     };
     // Each statement must settle within the deadline. On a miss the connection is destroyed (its
@@ -262,6 +274,9 @@ export class PostgresEventRetentionStore implements EventRetentionStore {
       await query('BEGIN');
       // Validated integer, the one value allowed in SQL text. LOCAL: gone at COMMIT or ROLLBACK.
       await query(`SET LOCAL statement_timeout = ${this.statementTimeoutMs}`);
+      // If the client gives up (deadline) on a half-open socket, the server still ends the idle
+      // transaction and its row locks on its own. Validated integer, same rule as above.
+      await query(`SET LOCAL idle_in_transaction_session_timeout = ${this.deadlineMs()}`);
       const value = await work(query);
       await query('COMMIT');
       release(false);

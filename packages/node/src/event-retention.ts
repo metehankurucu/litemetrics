@@ -252,9 +252,18 @@ export class EventRetentionSweeper {
         databaseNow !== null && typeof databaseNow === 'object' && typeof databaseNow.getTime === 'function'
           ? databaseNow.getTime()
           : NaN;
-      if (!Number.isFinite(processMs) || !Number.isFinite(databaseMs) || Math.abs(processMs - databaseMs) > DAY_MS) {
+      // Both process readings are checked: `startMs` is the one the cutoff was computed from, so a
+      // clock that was fast at the start and corrected during `databaseNow()` must still fail.
+      if (
+        !Number.isFinite(startMs) ||
+        !Number.isFinite(processMs) ||
+        !Number.isFinite(databaseMs) ||
+        Math.abs(startMs - databaseMs) > DAY_MS ||
+        Math.abs(processMs - databaseMs) > DAY_MS
+      ) {
+        const reading = Number.isFinite(startMs) && Math.abs(startMs - databaseMs) > DAY_MS ? startMs : processMs;
         throw new RangeError(
-          `process clock and database clock differ by more than 24 hours (process ${safeIso(processMs)}, database ${safeIso(databaseMs)}); nothing was deleted`,
+          `process clock and database clock differ by more than 24 hours (process ${safeIso(reading)}, database ${safeIso(databaseMs)}); nothing was deleted`,
         );
       }
       if (this.closed) {

@@ -482,6 +482,24 @@ describe('R2 clock check', () => {
     expect(errorLines()[0]!.startsWith(LINE_START)).toBe(true);
     expect(token(errorLines()[0]!, 'status')).toBe('error');
   });
+
+  it('R2 clock check validates the reading the cutoff came from, even when the clock steps back during databaseNow', async () => {
+    // The first read (used for the cutoff) is 2 days fast; the clock is corrected before any later read.
+    let calls = 0;
+    const now = () => (calls++ === 0 ? NOW + 2 * DAY_MS : NOW);
+    const store = fakeStore({
+      databaseNow: () => new Date(NOW),
+      sites: ['site-a'],
+      windows: { 'site-a': [{ deleted: 5, remaining: false }] },
+    });
+    const result = await settle(sweeperFor(store, { now }).sweep());
+    expect(result).toMatchObject({ status: 'error', deleted: 0, more: true });
+    expect(result.error).toBeInstanceOf(RangeError);
+    expect(store.listSiteIdsWithEventsBefore).not.toHaveBeenCalled();
+    expect(store.deleteOldestWindow).not.toHaveBeenCalled();
+    expect(logLines()).toEqual([]);
+    expect(errorLines()).toHaveLength(1);
+  });
 });
 
 // ─── R3 (d): budget ───────────────────────────────────────────
